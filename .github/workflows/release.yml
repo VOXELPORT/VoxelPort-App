@@ -1,0 +1,51 @@
+name: Build & Release App
+
+on:
+  push:
+    tags:
+      - 'v*'   # v1.0.2, v1.1.0, ...
+
+permissions:
+  contents: write   # create GitHub Releases
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            build: npm run dist:win
+            files: |
+              release/VoxelPort-Setup.exe
+              release/VoxelPort-Portable.exe
+          - os: ubuntu-latest
+            build: npm run dist:linux
+            files: |
+              release/VoxelPort-Linux.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (${{ matrix.os }})
+        run: ${{ matrix.build }}
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: VoxelPort App ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: ${{ matrix.files }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
