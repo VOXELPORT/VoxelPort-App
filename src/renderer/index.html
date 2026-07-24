@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>VoxelPort</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="head">
+    <div class="brand">Voxel<span>Port</span></div>
+    <div class="tagline">Host any Minecraft server. No port forwarding.</div>
+  </header>
+
+  <main class="panel">
+    <div class="statusline">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Idle</span>
+    </div>
+
+    <label class="field">
+      <span class="label">Local server port</span>
+      <input id="localPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+      <span class="hint">The port your Minecraft server or LAN world runs on.</span>
+    </label>
+
+    <button id="toggleBtn" class="primary">Start hosting</button>
+
+    <section id="share" class="share hidden">
+      <div class="share-label">Share this address with players</div>
+      <div class="address-row">
+        <code id="address">—</code>
+        <button id="copyBtn" class="ghost" title="Copy">Copy</button>
+      </div>
+      <div class="stats">
+        <div><strong id="players">0</strong><span>players</span></div>
+        <div><strong id="ping">—</strong><span>relay ping</span></div>
+      </div>
+    </section>
+
+    <details class="advanced">
+      <summary>Advanced</summary>
+      <label class="field">
+        <span class="label">Relay URL</span>
+        <input id="relayUrl" type="text" placeholder="wss://relay.voxelport.in" />
+      </label>
+      <label class="field">
+        <span class="label">Device token</span>
+        <input id="token" type="text" readonly />
+        <span class="hint">Generated automatically. Keep it private — it's your key to the relay.</span>
+      </label>
+    </details>
+
+    <div class="log" id="log" aria-live="polite"></div>
+  </main>
+
+  <footer class="foot">
+    <span id="version"></span>
+    <a href="https://www.voxelport.in" target="_blank" rel="noreferrer">voxelport.in</a>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
