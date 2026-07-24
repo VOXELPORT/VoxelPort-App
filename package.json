@@ -40,7 +40,11 @@
     },
     "nsis": {
       "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "VoxelPort-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "VoxelPort-Portable.${ext}"
     },
     "mac": {
       "icon": "build/icon.png",
@@ -52,9 +56,10 @@
     "linux": {
       "icon": "build/icon.png",
       "target": [
-        "AppImage"
+        "tar.gz"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "artifactName": "VoxelPort-Linux.${ext}"
     }
   }
 }
