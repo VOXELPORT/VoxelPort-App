@@ -15,12 +15,12 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            build: npm run dist:win
+            build: npm run dist:win -- --publish never
             files: |
               release/VoxelPort-Setup.exe
               release/VoxelPort-Portable.exe
           - os: ubuntu-latest
-            build: npm run dist:linux
+            build: npm run dist:linux -- --publish never
             files: |
               release/VoxelPort-Linux.tar.gz
     runs-on: ${{ matrix.os }}
