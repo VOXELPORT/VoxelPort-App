@@ -18,7 +18,7 @@ function createWindow() {
     height: 660,
     minWidth: 460,
     minHeight: 560,
-    backgroundColor: '#0a0f0d',
+    backgroundColor: '#0a0a0a',
     title: 'VoxelPort',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
     webPreferences: {
