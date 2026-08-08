@@ -1,6 +1,6 @@
 {
   "name": "voxelport-app",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "VoxelPort — host any Minecraft server over the internet with no port forwarding.",
   "author": "VoxelPort",
   "license": "MIT",
@@ -39,9 +39,14 @@
       ]
     },
     "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "artifactName": "VoxelPort-Setup.${ext}"
+      "artifactName": "VoxelPort-Setup.${ext}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "portable": {
       "artifactName": "VoxelPort-Portable.${ext}"
