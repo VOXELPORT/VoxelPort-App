@@ -1,9 +1,16 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const { Tunnel } = require('./tunnel');
 const { loadOrCreateToken } = require('./token');
+const mcVersions = require('./mcVersions');
+const { checkJava, requiredJavaMajor } = require('./javaCheck');
+const { getServerDir, downloadServerJar, writeEula, writeServerProperties } = require('./serverInstall');
+const { ServerProcess } = require('./serverProcess');
+const { loadServerConfig, saveServerConfig } = require('./serverConfig');
 
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
 const PUBLIC_HOST = 'play.voxelport.in';
@@ -11,13 +18,14 @@ const PUBLIC_HOST = 'play.voxelport.in';
 let mainWindow = null;
 let tunnel = null;
 let deviceToken = '';
+const serverProc = new ServerProcess();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 520,
-    height: 660,
-    minWidth: 460,
-    minHeight: 560,
+    width: 620,
+    height: 780,
+    minWidth: 520,
+    minHeight: 620,
     backgroundColor: '#0a0a0a',
     title: 'VoxelPort',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
@@ -54,6 +62,22 @@ function wireTunnel(t) {
   t.on('stopped', () => send('tunnel:status', 'stopped'));
 }
 
+function wireServerProcess(p) {
+  p.on('status', (s) => send('server:status', s));
+  p.on('log', (line) => send('server:log', line));
+  p.on('players', (n) => send('server:players', n));
+  p.on('exit', (code) => send('server:exit', code));
+}
+wireServerProcess(serverProc);
+
+/** ~2GB reserved for the OS, then a tiered slice of what's left. */
+function recommendedRamMb(totalMemMb) {
+  if (totalMemMb <= 4096) return 1024;
+  if (totalMemMb <= 8192) return 3072;
+  if (totalMemMb <= 16384) return 6144;
+  return 8192;
+}
+
 // One VoxelPort instance per machine. A second copy would share the same device
 // token and fight the first for the single tunnel that token is allowed — an
 // endless reconnect war. Instead, focus the window that's already running.
@@ -80,6 +104,7 @@ if (!gotLock) {
 
 app.on('window-all-closed', () => {
   if (tunnel) tunnel.stop();
+  if (serverProc.child) serverProc.stop();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -112,5 +137,90 @@ ipcMain.handle('tunnel:stop', () => {
     tunnel.stop();
     tunnel = null;
   }
+  return { ok: true };
+});
+
+// ─── Server install & management ───────────────────────────────────────────
+
+ipcMain.handle('system:specs', () => {
+  const totalMemMb = Math.round(os.totalmem() / (1024 * 1024));
+  return { totalMemMb, recommendedRamMb: recommendedRamMb(totalMemMb) };
+});
+
+ipcMain.handle('java:check', async (_evt, { version }) => {
+  const result = await checkJava();
+  const required = requiredJavaMajor(version || '1.20.5');
+  return { ...result, required, satisfied: result.found && result.major !== null && result.major >= required };
+});
+
+ipcMain.handle('java:openDownloadPage', () => {
+  shell.openExternal('https://adoptium.net/temurin/releases/');
+  return { ok: true };
+});
+
+ipcMain.handle('server:types', () => mcVersions.getTypes());
+
+ipcMain.handle('server:versions', (_evt, { type }) => mcVersions.listVersions(type));
+
+ipcMain.handle('server:hasExisting', () => loadServerConfig(app.getPath('userData')));
+
+ipcMain.handle('server:defaultDir', () => getServerDir(app.getPath('userData')));
+
+ipcMain.handle('server:chooseFolder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a folder for the server files',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle('server:install', async (_evt, { type, version, port, minRamMb, maxRamMb, serverDir }) => {
+  const userDataDir = app.getPath('userData');
+  const dir = serverDir || getServerDir(userDataDir);
+  fs.mkdirSync(dir, { recursive: true });
+
+  send('install:progress', { phase: 'resolving' });
+  const { url } = await mcVersions.resolveDownload(type, version);
+
+  send('install:progress', { phase: 'downloading', received: 0, total: 0 });
+  await downloadServerJar(url, path.join(dir, 'server.jar'), (p) => {
+    send('install:progress', { phase: 'downloading', ...p });
+  });
+
+  writeEula(dir);
+  writeServerProperties(dir, { port });
+
+  const config = { type, version, port, minRamMb, maxRamMb, serverDir: dir };
+  saveServerConfig(userDataDir, config);
+  send('install:progress', { phase: 'done' });
+  return { ok: true, config };
+});
+
+ipcMain.handle('server:start', () => {
+  const config = loadServerConfig(app.getPath('userData'));
+  if (!config) return { ok: false, error: 'No server installed yet.' };
+  serverProc.start({
+    serverDir: config.serverDir || getServerDir(app.getPath('userData')),
+    minRamMb: config.minRamMb,
+    maxRamMb: config.maxRamMb,
+  });
+  return { ok: true, port: config.port };
+});
+
+ipcMain.handle('server:stop', () => {
+  serverProc.stop();
+  return { ok: true };
+});
+
+ipcMain.handle('server:command', (_evt, { command }) => {
+  serverProc.sendCommand(command);
+  return { ok: true };
+});
+
+ipcMain.handle('server:openFolder', () => {
+  const config = loadServerConfig(app.getPath('userData'));
+  const dir = (config && config.serverDir) || getServerDir(app.getPath('userData'));
+  shell.openPath(dir);
   return { ok: true };
 });

@@ -47,5 +47,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: ${{ matrix.files }}
           fail_on_unmatched_files: true
+          append_body: true
+          body: ${{ matrix.os == 'windows-latest' && format('\n---\nWindows builds are code-signed for free courtesy of [SignPath.io](https://signpath.io), certificate by the [SignPath Foundation](https://signpath.org).') || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
