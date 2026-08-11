@@ -1,6 +1,20 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+
+// ─── Screen router (shared by wizard.js / console.js) ──────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach((el) => el.classList.remove('active'));
+  const target = $(id);
+  if (target) target.classList.add('active');
+}
+window.showScreen = showScreen;
+
+document.querySelectorAll('[data-back]').forEach((btn) => {
+  btn.addEventListener('click', () => showScreen(btn.dataset.back));
+});
+
+// ─── Manual tunnel screen (host a server you already run elsewhere) ────────
 const dot = $('dot');
 const statusText = $('statusText');
 const localPort = $('localPort');
@@ -93,10 +107,21 @@ window.vp.on('tunnel:error', (message) => {
   setRunningUI(false);
 });
 
+// ─── Mode select ─────────────────────────────────────────────────────────
+$('modeManualBtn').addEventListener('click', () => showScreen('screen-manual'));
+$('modeInstallBtn').addEventListener('click', async () => {
+  const existing = await window.vp.server.hasExisting();
+  showScreen(existing ? 'screen-console' : 'screen-type');
+});
+
+// ─── Init ────────────────────────────────────────────────────────────────
 (async function init() {
   const info = await window.vp.info();
   relayUrl.placeholder = info.defaultRelayUrl;
   tokenField.value = info.token;
   version.textContent = 'v' + info.version;
   log('Ready. Set your local port and click Start hosting.');
+
+  const existing = await window.vp.server.hasExisting();
+  showScreen(existing ? 'screen-console' : 'screen-mode');
 })();

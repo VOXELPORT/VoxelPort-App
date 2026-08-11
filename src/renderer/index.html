@@ -13,46 +13,163 @@
     <div class="tagline">Host any Minecraft server. No port forwarding.</div>
   </header>
 
-  <main class="panel">
-    <div class="statusline">
-      <span class="dot" id="dot"></span>
-      <span id="statusText">Idle</span>
-    </div>
+  <main id="app">
 
-    <label class="field">
-      <span class="label">Local server port</span>
-      <input id="localPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
-      <span class="hint">The port your Minecraft server or LAN world runs on.</span>
-    </label>
-
-    <button id="toggleBtn" class="primary">Start hosting</button>
-
-    <section id="share" class="share hidden">
-      <div class="share-label">Share this address with players</div>
-      <div class="address-row">
-        <code id="address">—</code>
-        <button id="copyBtn" class="ghost" title="Copy">Copy</button>
-      </div>
-      <div class="stats">
-        <div><strong id="players">0</strong><span>players</span></div>
-        <div><strong id="ping">—</strong><span>relay ping</span></div>
+    <!-- MODE SELECT -->
+    <section class="screen panel active" id="screen-mode">
+      <div class="mode-grid">
+        <button class="mode-card" id="modeInstallBtn">
+          <div class="mode-title">Install a server</div>
+          <div class="mode-desc">Pick a version, we'll download and run it — then make it public.</div>
+        </button>
+        <button class="mode-card" id="modeManualBtn">
+          <div class="mode-title">Tunnel my own server</div>
+          <div class="mode-desc">Already running a server somewhere? Just point us at the port.</div>
+        </button>
       </div>
     </section>
 
-    <details class="advanced">
-      <summary>Advanced</summary>
-      <label class="field">
-        <span class="label">Relay URL</span>
-        <input id="relayUrl" type="text" placeholder="wss://relay.voxelport.in" />
-      </label>
-      <label class="field">
-        <span class="label">Device token</span>
-        <input id="token" type="text" readonly />
-        <span class="hint">Generated automatically. Keep it private — it's your key to the relay.</span>
-      </label>
-    </details>
+    <!-- MANUAL TUNNEL (existing flow) -->
+    <section class="screen panel" id="screen-manual">
+      <button class="back-link" data-back="screen-mode">‹ Back</button>
 
-    <div class="log" id="log" aria-live="polite"></div>
+      <div class="statusline">
+        <span class="dot" id="dot"></span>
+        <span id="statusText">Idle</span>
+      </div>
+
+      <label class="field">
+        <span class="label">Local server port</span>
+        <input id="localPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+        <span class="hint">The port your Minecraft server or LAN world runs on.</span>
+      </label>
+
+      <button id="toggleBtn" class="primary">Start hosting</button>
+
+      <section id="share" class="share hidden">
+        <div class="share-label">Share this address with players</div>
+        <div class="address-row">
+          <code id="address">—</code>
+          <button id="copyBtn" class="ghost" title="Copy">Copy</button>
+        </div>
+        <div class="stats">
+          <div><strong id="players">0</strong><span>players</span></div>
+          <div><strong id="ping">—</strong><span>relay ping</span></div>
+        </div>
+      </section>
+
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <label class="field">
+          <span class="label">Relay URL</span>
+          <input id="relayUrl" type="text" placeholder="wss://relay.voxelport.in" />
+        </label>
+        <label class="field">
+          <span class="label">Device token</span>
+          <input id="token" type="text" readonly />
+          <span class="hint">Generated automatically. Keep it private — it's your key to the relay.</span>
+        </label>
+      </details>
+
+      <div class="log" id="log" aria-live="polite"></div>
+    </section>
+
+    <!-- WIZARD STEP 1: server type + version -->
+    <section class="screen panel" id="screen-type">
+      <button class="back-link" data-back="screen-mode">‹ Back</button>
+      <div class="label" style="margin-bottom: 4px;">Server type</div>
+      <div class="mode-grid" id="typeGrid"></div>
+
+      <label class="field">
+        <span class="label">Version</span>
+        <select id="versionSelect"><option>Loading…</option></select>
+      </label>
+
+      <button id="typeNextBtn" class="primary" disabled>Continue</button>
+    </section>
+
+    <!-- WIZARD STEP 2: RAM + Java + EULA -->
+    <section class="screen panel" id="screen-config">
+      <button class="back-link" data-back="screen-type">‹ Back</button>
+
+      <div id="javaBlock">
+        <div class="label">Java</div>
+        <div class="hint" id="javaStatusText">Checking for Java…</div>
+        <button id="installJavaBtn" class="ghost hidden">Get Java (Adoptium)</button>
+        <button id="recheckJavaBtn" class="ghost hidden">Re-check</button>
+      </div>
+
+      <label class="field">
+        <span class="label">Memory (RAM) — <span id="ramValueLabel">–</span> MB</span>
+        <input id="ramSlider" type="range" min="512" max="4096" step="256" />
+        <span class="hint" id="ramHint">Recommended based on your PC's specs.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Local port</span>
+        <input id="serverPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+      </label>
+
+      <div class="field">
+        <span class="label">Server folder</span>
+        <div class="folder-row">
+          <input id="serverDirDisplay" type="text" readonly />
+          <button id="chooseFolderBtn" class="ghost" type="button">Choose…</button>
+        </div>
+        <span class="hint">Where the world, mods, and logs are stored. Pick any drive with room.</span>
+      </div>
+
+      <label class="field eula-row">
+        <input type="checkbox" id="eulaCheck" />
+        <span>I agree to the <a href="https://www.minecraft.net/eula" target="_blank" rel="noreferrer">Minecraft EULA</a>.</span>
+      </label>
+
+      <button id="installBtn" class="primary" disabled>Install &amp; start</button>
+    </section>
+
+    <!-- WIZARD STEP 3: install progress -->
+    <section class="screen panel" id="screen-install">
+      <div class="label">Installing…</div>
+      <div class="progress-track"><div class="progress-fill" id="installFill"></div></div>
+      <div class="hint" id="installText">Preparing…</div>
+    </section>
+
+    <!-- CONSOLE / MANAGE -->
+    <section class="screen panel" id="screen-console">
+      <div class="statusline">
+        <span class="dot" id="srvDot"></span>
+        <span id="srvStatusText">Stopped</span>
+        <span class="spacer"></span>
+        <strong id="srvPlayers">0</strong><span class="hint">&nbsp;players</span>
+      </div>
+
+      <div class="console-actions">
+        <button id="srvStartBtn" class="primary">Start server</button>
+        <button id="srvStopBtn" class="ghost hidden">Stop</button>
+        <button id="srvFolderBtn" class="ghost">Open folder</button>
+      </div>
+
+      <section id="publicShare" class="share hidden">
+        <div class="share-label">Share this address with players</div>
+        <div class="address-row">
+          <code id="srvAddress">—</code>
+          <button id="srvCopyBtn" class="ghost" title="Copy">Copy</button>
+        </div>
+        <div class="stats">
+          <div><strong id="srvTunnelPlayers">0</strong><span>players</span></div>
+          <div><strong id="srvPing">—</strong><span>relay ping</span></div>
+        </div>
+      </section>
+      <button id="makePublicBtn" class="ghost">Make public</button>
+
+      <div class="log console-log" id="srvLog" aria-live="polite"></div>
+
+      <div class="cmd-row">
+        <input id="cmdInput" type="text" placeholder="Type a server command…" />
+        <button id="cmdSendBtn" class="ghost">Send</button>
+      </div>
+    </section>
+
   </main>
 
   <footer class="foot">
@@ -61,5 +178,7 @@
   </footer>
 
   <script src="renderer.js"></script>
+  <script src="wizard.js"></script>
+  <script src="console.js"></script>
 </body>
 </html>
