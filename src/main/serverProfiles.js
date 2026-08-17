@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getServerDir } = require('./serverInstall');
 
 const KNOWN_TYPES = new Set(['vanilla', 'paper', 'fabric']);
 const STORE_VERSION = 2;
@@ -84,12 +85,19 @@ function migrateLegacyIfNeeded(userDataDir) {
 
   const now = new Date().toISOString();
   const minRamMb = Number.isInteger(legacy && legacy.minRamMb) ? legacy.minRamMb : 1024;
+  // Some earlier builds of the app never persisted serverDir at all (it was
+  // implicitly always the single default install location) -- fall back to
+  // that same conventional path rather than dropping a real, already-
+  // installed server's profile just because the field is missing.
+  const legacyServerDir = (legacy && typeof legacy.serverDir === 'string' && legacy.serverDir)
+    ? legacy.serverDir
+    : getServerDir(userDataDir);
   const profile = {
     id: newId(),
     name: 'My Server',
     type: legacy && legacy.type,
     version: legacy && legacy.version,
-    serverDir: legacy && legacy.serverDir,
+    serverDir: legacyServerDir,
     port: Number(legacy && legacy.port),
     minRamMb,
     maxRamMb: Number.isInteger(legacy && legacy.maxRamMb) ? legacy.maxRamMb : minRamMb,

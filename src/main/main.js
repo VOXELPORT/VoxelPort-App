@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage } = r
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { Tunnel } = require('./tunnel');
 const { loadOrCreateToken, maskToken } = require('./token');
 const mcVersions = require('./mcVersions');
@@ -355,7 +356,13 @@ ipcMain.handle('java:openDownloadPage', guarded(g, () => {
 
 ipcMain.handle('server:types', guarded(g, () => mcVersions.getTypes()));
 ipcMain.handle('server:versions', guarded(g, (_evt, { type }) => mcVersions.listVersions(type)));
-ipcMain.handle('server:defaultDir', guarded(g, () => getServerDir(userDataDir())));
+// A fresh suggested folder per install (not the old fixed single-server
+// path) so multiple installed servers never collide unless the user
+// explicitly chooses the same folder themselves.
+ipcMain.handle('server:defaultDir', guarded(g, () => {
+  const slug = crypto.randomBytes(4).toString('hex');
+  return path.join(userDataDir(), 'servers', `server-${Date.now()}-${slug}`);
+}));
 
 ipcMain.handle('server:chooseFolder', guarded(g, async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

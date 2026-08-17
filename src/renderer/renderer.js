@@ -2,17 +2,28 @@
 
 const $ = (id) => document.getElementById(id);
 
-// ─── Screen router (shared by wizard.js / console.js) ──────────────────────
+// ─── Screen router (shared by library.js / wizard.js / import.js / console.js) ─
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((el) => el.classList.remove('active'));
   const target = $(id);
   if (target) target.classList.add('active');
+  if (id === 'screen-library' && window.refreshLibrary) window.refreshLibrary();
 }
 window.showScreen = showScreen;
 
 document.querySelectorAll('[data-back]').forEach((btn) => {
   btn.addEventListener('click', () => showScreen(btn.dataset.back));
 });
+
+// ─── Shared app state (item 8) — always reflects what main.js actually reports ──
+window.appState = { activeServerProfileId: null, publicServerProfileId: null, manualTunnelActive: false, serverStatus: 'stopped' };
+window.onAppState = []; // callback list other screens register to react to state pushes
+function applyAppState(state) {
+  Object.assign(window.appState, state);
+  for (const cb of window.onAppState) {
+    try { cb(window.appState); } catch { /* ignore a single bad listener */ }
+  }
+}
 
 // ─── Manual tunnel screen (host a server you already run elsewhere) ────────
 const dot = $('dot');
@@ -26,6 +37,7 @@ const players = $('players');
 const ping = $('ping');
 const relayUrl = $('relayUrl');
 const tokenField = $('token');
+const copyTokenBtn = $('copyTokenBtn');
 const logBox = $('log');
 const version = $('version');
 
@@ -72,10 +84,14 @@ toggleBtn.addEventListener('click', async () => {
   } else {
     setStatus('connecting');
     setRunningUI(true);
-    await window.vp.start({
+    const res = await window.vp.start({
       localPort: localPort.value,
       relayUrl: relayUrl.value,
     });
+    if (res && res.cancelled) {
+      setRunningUI(false);
+      setStatus('idle');
+    }
   }
 });
 
@@ -86,6 +102,14 @@ copyBtn.addEventListener('click', async () => {
     copyBtn.classList.add('copied');
     setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 1400);
   } catch { /* ignore */ }
+});
+
+copyTokenBtn.addEventListener('click', async () => {
+  // The raw token never reaches the renderer — main.js writes it straight
+  // to the OS clipboard (item 12).
+  await window.vp.copyToken();
+  copyTokenBtn.textContent = 'Copied';
+  setTimeout(() => { copyTokenBtn.textContent = 'Copy'; }, 1400);
 });
 
 window.vp.on('tunnel:status', (s) => {
@@ -106,22 +130,30 @@ window.vp.on('tunnel:error', (message) => {
   setStatus('error');
   setRunningUI(false);
 });
+window.vp.on('app:state', applyAppState);
 
-// ─── Mode select ─────────────────────────────────────────────────────────
-$('modeManualBtn').addEventListener('click', () => showScreen('screen-manual'));
-$('modeInstallBtn').addEventListener('click', async () => {
-  const existing = await window.vp.server.hasExisting();
-  showScreen(existing ? 'screen-console' : 'screen-type');
-});
+// ─── Library entry point ────────────────────────────────────────────────
+$('manualModeLink').addEventListener('click', () => showScreen('screen-manual'));
 
 // ─── Init ────────────────────────────────────────────────────────────────
+// Waits for DOMContentLoaded before touching anything defined by the other
+// <script> tags (library.js/wizard.js/import.js/console.js) — those load
+// after this file, so calling into them (e.g. via showScreen's
+// window.refreshLibrary hook) before the document has finished parsing is a
+// real race: the IPC round-trip below can resolve before the browser has
+// gotten around to fetching and executing the later script tags.
+function whenDomReady() {
+  if (document.readyState !== 'loading') return Promise.resolve();
+  return new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+}
+
 (async function init() {
-  const info = await window.vp.info();
+  const [info, state] = await Promise.all([window.vp.info(), window.vp.server.state()]);
+  await whenDomReady();
   relayUrl.placeholder = info.defaultRelayUrl;
-  tokenField.value = info.token;
+  tokenField.value = info.maskedToken;
   version.textContent = 'v' + info.version;
   log('Ready. Set your local port and click Start hosting.');
-
-  const existing = await window.vp.server.hasExisting();
-  showScreen(existing ? 'screen-console' : 'screen-mode');
+  applyAppState(state);
+  showScreen('screen-library');
 })();

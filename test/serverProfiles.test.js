@@ -187,6 +187,25 @@ test('migration runs at most once and is idempotent even if called repeatedly', 
   assert.equal(third.length, 0);
 });
 
+test('migration falls back to the conventional default server dir when the legacy config omits serverDir', () => {
+  // Discovered against a real pre-existing install on this machine: an
+  // older app build never persisted serverDir at all (it was implicitly
+  // always the single default location) -- migration must not silently
+  // drop that server's profile just because the field is missing.
+  const dir = tmpUserData();
+  const defaultServerDir = path.join(dir, 'server');
+  fs.mkdirSync(defaultServerDir, { recursive: true });
+  fs.writeFileSync(path.join(defaultServerDir, 'server.jar'), 'a real, already-installed server jar');
+  fs.writeFileSync(path.join(dir, 'server-config.json'), JSON.stringify({
+    type: 'paper', version: '26.2', port: 25565, minRamMb: 8192, maxRamMb: 8192,
+  }));
+
+  const profiles = listProfiles(dir);
+  assert.equal(profiles.length, 1, 'a legacy config missing serverDir must still migrate, not be silently dropped');
+  assert.equal(profiles[0].serverDir, defaultServerDir);
+  assert.equal(fs.existsSync(path.join(defaultServerDir, 'server.jar')), true);
+});
+
 test('migration with no legacy config just starts with an empty profile list', () => {
   const dir = tmpUserData();
   const profiles = listProfiles(dir);
