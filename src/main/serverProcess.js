@@ -1,16 +1,22 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const path = require('path');
 const { EventEmitter } = require('events');
 
 const READY_RE = /Done \([^)]*\)!/;
 const JOIN_RE = /: (\S+) joined the game/;
 const LEAVE_RE = /: (\S+) left the game/;
 
+const STOP_GRACE_MS = 20000;
+const MAX_COMMAND_LEN = 512;
+
 /**
- * Runs the java server process for the currently-installed server and
+ * Runs the java server process for the currently-active server profile and
  * mirrors the shape of Tunnel (EventEmitter, start/stop) so the renderer
- * side can treat it the same way.
+ * side can treat it the same way. Always spawn()s a fixed argv (never
+ * exec()/shell:true — item 28), and only ever manages a single child at a
+ * time.
  *
  * Events: 'status' (state), 'log' (line), 'players' (count), 'exit' (code).
  */
@@ -24,7 +30,18 @@ class ServerProcess extends EventEmitter {
   }
 
   start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb }) {
-    if (this.child) return;
+    if (this.child) return; // only one managed process, ever
+    if (typeof serverDir !== 'string' || !path.isAbsolute(serverDir)) {
+      this.emit('log', 'Refusing to start: invalid server folder.');
+      this._setStatus('crashed');
+      return;
+    }
+    if (!Number.isInteger(minRamMb) || !Number.isInteger(maxRamMb) || minRamMb < 256 || maxRamMb < minRamMb || maxRamMb > 131072) {
+      this.emit('log', 'Refusing to start: invalid RAM allocation.');
+      this._setStatus('crashed');
+      return;
+    }
+
     this.online.clear();
     this._setStatus('starting');
 
@@ -33,13 +50,14 @@ class ServerProcess extends EventEmitter {
       `-Xmx${maxRamMb}M`,
       '-jar', jarName,
       'nogui',
-    ], { cwd: serverDir });
+    ], { cwd: serverDir, shell: false });
 
     this.child.stdout.on('data', (buf) => this._onLine(buf.toString()));
     this.child.stderr.on('data', (buf) => this._onLine(buf.toString()));
 
     this.child.on('exit', (code) => {
       clearTimeout(this.stopTimer);
+      this.stopTimer = null;
       const crashed = this.status !== 'stopping' && code !== 0;
       this.child = null;
       this.online.clear();
@@ -50,6 +68,9 @@ class ServerProcess extends EventEmitter {
 
     this.child.on('error', (err) => {
       this.emit('log', `Failed to start Java: ${err.message}`);
+      this.child = null;
+      clearTimeout(this.stopTimer);
+      this.stopTimer = null;
       this._setStatus('crashed');
     });
   }
@@ -67,9 +88,18 @@ class ServerProcess extends EventEmitter {
     }
   }
 
+  /**
+   * Console input is Minecraft command input, sent only to the child's
+   * stdin — never a shell (item 29). Bounded length, and an embedded
+   * newline/control character is stripped rather than allowed to smuggle a
+   * second command into a single IPC call.
+   */
   sendCommand(cmd) {
-    if (!this.child || !cmd) return;
-    this.child.stdin.write(cmd.trim() + '\n');
+    if (!this.child || typeof cmd !== 'string') return;
+    // eslint-disable-next-line no-control-regex
+    const sanitized = cmd.replace(/[\r\n\x00-\x1f]/g, '').trim().slice(0, MAX_COMMAND_LEN);
+    if (!sanitized) return;
+    this.child.stdin.write(sanitized + '\n');
   }
 
   stop() {
@@ -78,7 +108,7 @@ class ServerProcess extends EventEmitter {
     this.sendCommand('stop');
     this.stopTimer = setTimeout(() => {
       if (this.child) this.child.kill('SIGKILL');
-    }, 20000);
+    }, STOP_GRACE_MS);
   }
 
   _setStatus(status) {
