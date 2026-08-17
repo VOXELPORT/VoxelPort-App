@@ -11,6 +11,7 @@ const { checkJava, requiredJavaMajor } = require('./javaCheck');
 const { getServerDir, downloadServerJar, writeEula, writeServerProperties } = require('./serverInstall');
 const { ServerProcess } = require('./serverProcess');
 const { loadServerConfig, saveServerConfig } = require('./serverConfig');
+const { isSafeRelayUrl } = require('./relayUrlSafety');
 
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
 const PUBLIC_HOST = 'play.voxelport.in';
@@ -121,11 +122,16 @@ ipcMain.handle('tunnel:start', (_evt, { localPort, relayUrl }) => {
     send('tunnel:error', 'Enter a valid local port (1–65535).');
     return { ok: false };
   }
+  const resolvedRelayUrl = (relayUrl && relayUrl.trim()) || DEFAULT_RELAY_URL;
+  if (!isSafeRelayUrl(resolvedRelayUrl)) {
+    send('tunnel:error', 'Relay URL must be wss:// (plain ws:// is only allowed for localhost/private addresses).');
+    return { ok: false };
+  }
   if (tunnel) tunnel.stop();
   tunnel = new Tunnel();
   wireTunnel(tunnel);
   tunnel.start({
-    relayUrl: (relayUrl && relayUrl.trim()) || DEFAULT_RELAY_URL,
+    relayUrl: resolvedRelayUrl,
     token: deviceToken,
     localPort: port,
   });
@@ -176,22 +182,35 @@ ipcMain.handle('server:chooseFolder', async () => {
 });
 
 ipcMain.handle('server:install', async (_evt, { type, version, port, minRamMb, maxRamMb, serverDir }) => {
+  const portNum = Number(port);
+  if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    throw new Error('Enter a valid server port (1–65535).');
+  }
+  const minRam = Number(minRamMb);
+  const maxRam = Number(maxRamMb);
+  if (!Number.isInteger(minRam) || !Number.isInteger(maxRam) || minRam < 256 || maxRam < minRam || maxRam > 131072) {
+    throw new Error('Invalid RAM allocation.');
+  }
+  if (serverDir !== undefined && serverDir !== null && (typeof serverDir !== 'string' || !path.isAbsolute(serverDir))) {
+    throw new Error('Invalid server folder.');
+  }
+
   const userDataDir = app.getPath('userData');
   const dir = serverDir || getServerDir(userDataDir);
   fs.mkdirSync(dir, { recursive: true });
 
   send('install:progress', { phase: 'resolving' });
-  const { url } = await mcVersions.resolveDownload(type, version);
+  const { url, checksum } = await mcVersions.resolveDownload(type, version);
 
   send('install:progress', { phase: 'downloading', received: 0, total: 0 });
   await downloadServerJar(url, path.join(dir, 'server.jar'), (p) => {
     send('install:progress', { phase: 'downloading', ...p });
-  });
+  }, checksum);
 
   writeEula(dir);
-  writeServerProperties(dir, { port });
+  writeServerProperties(dir, { port: portNum });
 
-  const config = { type, version, port, minRamMb, maxRamMb, serverDir: dir };
+  const config = { type, version, port: portNum, minRamMb: minRam, maxRamMb: maxRam, serverDir: dir };
   saveServerConfig(userDataDir, config);
   send('install:progress', { phase: 'done' });
   return { ok: true, config };
