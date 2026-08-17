@@ -1,8 +1,9 @@
 'use strict';
 
-// Shared state for the install wizard, read by console.js once install finishes.
-const wizardState = { type: null, version: null, ramMb: null, serverDir: null };
+// Shared state for the install wizard.
+const wizardState = { name: null, type: null, version: null, ramMb: null, serverDir: null };
 
+const serverNameInput = $('serverName');
 const typeGrid = $('typeGrid');
 const versionSelect = $('versionSelect');
 const typeNextBtn = $('typeNextBtn');
@@ -59,7 +60,10 @@ async function selectType(type, btn) {
 
 versionSelect.addEventListener('change', () => { wizardState.version = versionSelect.value; });
 
+serverNameInput.addEventListener('input', () => { wizardState.name = serverNameInput.value.trim(); });
+
 typeNextBtn.addEventListener('click', async () => {
+  wizardState.name = serverNameInput.value.trim();
   showScreen('screen-config');
   await Promise.all([loadSpecs(), runJavaCheck(), loadDefaultDir()]);
   updateInstallEnabled();
@@ -131,17 +135,27 @@ installBtn.addEventListener('click', async () => {
   installFill.style.width = '0%';
   installText.textContent = 'Preparing…';
 
-  await window.vp.server.install({
-    type: wizardState.type,
-    version: wizardState.version,
-    port: Number(serverPort.value) || 25565,
-    minRamMb: wizardState.ramMb,
-    maxRamMb: wizardState.ramMb,
-    serverDir: wizardState.serverDir,
-  });
+  let result;
+  try {
+    result = await window.vp.server.install({
+      name: wizardState.name,
+      type: wizardState.type,
+      version: wizardState.version,
+      port: Number(serverPort.value) || 25565,
+      minRamMb: wizardState.ramMb,
+      maxRamMb: wizardState.ramMb,
+      serverDir: wizardState.serverDir,
+    });
+  } catch (err) {
+    installText.textContent = 'Install failed: ' + (err && err.message ? err.message : err);
+    return;
+  }
 
-  await window.vp.server.start();
+  await window.refreshLibrary();
+  window.openManagementScreen(result.profile.id);
   showScreen('screen-console');
+  const startRes = await window.vp.server.start(result.profile.id);
+  if (startRes && startRes.cancelled) return; // shouldn't happen for a brand-new profile, but handled anyway
 });
 
 window.vp.on('install:progress', (p) => {

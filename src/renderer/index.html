@@ -15,23 +15,20 @@
 
   <main id="app">
 
-    <!-- MODE SELECT -->
-    <section class="screen panel active" id="screen-mode">
-      <div class="mode-grid">
-        <button class="mode-card" id="modeInstallBtn">
-          <div class="mode-title">Install a server</div>
-          <div class="mode-desc">Pick a version, we'll download and run it — then make it public.</div>
-        </button>
-        <button class="mode-card" id="modeManualBtn">
-          <div class="mode-title">Tunnel my own server</div>
-          <div class="mode-desc">Already running a server somewhere? Just point us at the port.</div>
-        </button>
+    <!-- LIBRARY (home screen) -->
+    <section class="screen panel active" id="screen-library">
+      <div class="label">My Servers</div>
+      <div class="server-list" id="serverList"></div>
+      <div class="library-actions">
+        <button class="primary" id="addServerBtn">+ Add Server</button>
+        <button class="ghost" id="importServerBtn">Import Existing Server</button>
       </div>
+      <button class="back-link" id="manualModeLink">Tunnel a server I already run elsewhere ›</button>
     </section>
 
-    <!-- MANUAL TUNNEL (existing flow) -->
+    <!-- MANUAL TUNNEL (existing flow, unchanged) -->
     <section class="screen panel" id="screen-manual">
-      <button class="back-link" data-back="screen-mode">‹ Back</button>
+      <button class="back-link" data-back="screen-library">‹ Back</button>
 
       <div class="statusline">
         <span class="dot" id="dot"></span>
@@ -66,17 +63,26 @@
         </label>
         <label class="field">
           <span class="label">Device token</span>
-          <input id="token" type="text" readonly />
-          <span class="hint">Generated automatically. Keep it private — it's your key to the relay.</span>
+          <div class="folder-row">
+            <input id="token" type="text" readonly />
+            <button id="copyTokenBtn" class="ghost" type="button">Copy</button>
+          </div>
+          <span class="hint">Generated automatically. Treat it like a password — anyone with it can reconnect as this install.</span>
         </label>
       </details>
 
       <div class="log" id="log" aria-live="polite"></div>
     </section>
 
-    <!-- WIZARD STEP 1: server type + version -->
+    <!-- WIZARD STEP 1: name + server type + version -->
     <section class="screen panel" id="screen-type">
-      <button class="back-link" data-back="screen-mode">‹ Back</button>
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+
+      <label class="field">
+        <span class="label">Server name</span>
+        <input id="serverName" type="text" placeholder="Survival SMP" maxlength="60" />
+      </label>
+
       <div class="label" style="margin-bottom: 4px;">Server type</div>
       <div class="mode-grid" id="typeGrid"></div>
 
@@ -134,8 +140,56 @@
       <div class="hint" id="installText">Preparing…</div>
     </section>
 
-    <!-- CONSOLE / MANAGE -->
+    <!-- IMPORT EXISTING SERVER -->
+    <section class="screen panel" id="screen-import">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+
+      <label class="field">
+        <span class="label">Server folder</span>
+        <div class="folder-row">
+          <input id="importDirDisplay" type="text" readonly placeholder="Choose the folder your server already runs from" />
+          <button id="importChooseFolderBtn" class="ghost" type="button">Choose…</button>
+        </div>
+      </label>
+
+      <div class="hint" id="importDetectText"></div>
+
+      <label class="field">
+        <span class="label">Server name</span>
+        <input id="importName" type="text" placeholder="Survival SMP" maxlength="60" />
+      </label>
+
+      <label class="field">
+        <span class="label">Server type</span>
+        <select id="importType">
+          <option value="vanilla">Vanilla</option>
+          <option value="paper">Paper</option>
+          <option value="fabric">Fabric</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">Local port</span>
+        <input id="importPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+      </label>
+
+      <label class="field">
+        <span class="label">Memory (RAM) — <span id="importRamValueLabel">2048</span> MB</span>
+        <input id="importRamSlider" type="range" min="512" max="16384" step="256" value="2048" />
+      </label>
+
+      <button id="importConfirmBtn" class="primary" disabled>Add to VoxelPort</button>
+    </section>
+
+    <!-- MANAGE (per-server console) -->
     <section class="screen panel" id="screen-console">
+      <button class="back-link" data-back="screen-library">‹ Back to library</button>
+
+      <div class="manage-header">
+        <div class="manage-name" id="mgName">—</div>
+        <div class="hint" id="mgMeta">—</div>
+      </div>
+
       <div class="statusline">
         <span class="dot" id="srvDot"></span>
         <span id="srvStatusText">Stopped</span>
@@ -147,6 +201,7 @@
         <button id="srvStartBtn" class="primary">Start server</button>
         <button id="srvStopBtn" class="ghost hidden">Stop</button>
         <button id="srvFolderBtn" class="ghost">Open folder</button>
+        <button id="srvRemoveBtn" class="ghost">Remove from VoxelPort</button>
       </div>
 
       <section id="publicShare" class="share hidden">
@@ -159,6 +214,7 @@
           <div><strong id="srvTunnelPlayers">0</strong><span>players</span></div>
           <div><strong id="srvPing">—</strong><span>relay ping</span></div>
         </div>
+        <button id="stopPublicBtn" class="ghost">Stop public tunnel</button>
       </section>
       <button id="makePublicBtn" class="ghost">Make public</button>
 
@@ -178,7 +234,9 @@
   </footer>
 
   <script src="renderer.js"></script>
+  <script src="library.js"></script>
   <script src="wizard.js"></script>
+  <script src="import.js"></script>
   <script src="console.js"></script>
 </body>
 </html>

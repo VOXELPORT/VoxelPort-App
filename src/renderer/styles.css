@@ -223,3 +223,36 @@ input[type="range"] { accent-color: var(--green); padding: 0; background: none; 
 .cmd-row input { flex: 1; }
 
 .spacer { flex: 1; }
+
+/* ─── Server library (home screen) ─────────────────────────────────────── */
+.server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.server-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #0d0d0e;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.server-card:hover { border-color: var(--border-bright); }
+.server-card-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.server-card-name { font-size: 0.95rem; font-weight: 600; color: #fff; }
+.server-card-meta { font-size: 0.74rem; color: var(--muted); }
+.server-card-status { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--muted); }
+.public-badge { color: var(--green); font-weight: 600; }
+.server-card-actions { display: flex; gap: 8px; flex: none; }
+.ghost.small { padding: 0 10px; font-size: 0.78rem; height: 32px; }
+
+.library-actions { display: flex; gap: 8px; }
+.library-actions .primary { flex: 1; }
+
+/* ─── Management (per-server console) header ───────────────────────────── */
+.manage-header { display: flex; flex-direction: column; gap: 2px; }
+.manage-name { font-size: 1.05rem; font-weight: 700; color: #fff; }
