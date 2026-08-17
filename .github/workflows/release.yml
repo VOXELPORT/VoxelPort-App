@@ -40,6 +40,12 @@ jobs:
       - name: Build (${{ matrix.os }})
         run: ${{ matrix.build }}
 
+      - name: Upload built artifacts (for checksum step)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: ${{ matrix.files }}
+
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -47,7 +53,30 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: ${{ matrix.files }}
           fail_on_unmatched_files: true
-          append_body: true
-          body: ${{ matrix.os == 'windows-latest' && format('\n---\nWindows builds are code-signed for free courtesy of [SignPath.io](https://signpath.io), certificate by the [SignPath Foundation](https://signpath.org).') || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.exe' -o -name '*.tar.gz' \) -exec cp {} . \;
+          sha256sum *.exe *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish checksums to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/SHA256SUMS.txt
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
