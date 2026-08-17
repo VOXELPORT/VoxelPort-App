@@ -26,3 +26,6 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Audit dependencies (fail on high/critical only)
+        run: npm audit --audit-level=high
