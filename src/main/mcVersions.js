@@ -31,7 +31,7 @@ async function resolveVanilla(version) {
   const detail = await getJson(entry.url);
   const server = detail.downloads && detail.downloads.server;
   if (!server) throw new Error(`${version} has no server download (too old?)`);
-  return { url: server.url, fileName: 'server.jar' };
+  return { url: server.url, fileName: 'server.jar', checksum: server.sha1 ? { algorithm: 'sha1', expected: server.sha1 } : null };
 }
 
 async function listPaperVersions() {
@@ -42,12 +42,15 @@ async function listPaperVersions() {
 }
 
 async function resolvePaper(version) {
+  const known = await listPaperVersions();
+  if (!known.includes(version)) throw new Error(`Unknown Paper version: ${version}`);
   const builds = await getJson(`${PAPER_API}/versions/${version}/builds`);
   const stable = builds.filter((b) => b.channel === 'STABLE');
   const build = (stable.length ? stable : builds).reduce((a, b) => (b.id > a.id ? b : a));
   const download = build.downloads['server:default'];
   if (!download) throw new Error(`Paper ${version} build ${build.id} has no server download`);
-  return { url: download.url, fileName: 'server.jar' };
+  const sha256 = download.checksums && download.checksums.sha256;
+  return { url: download.url, fileName: 'server.jar', checksum: sha256 ? { algorithm: 'sha256', expected: sha256 } : null };
 }
 
 async function listFabricVersions() {
@@ -56,6 +59,8 @@ async function listFabricVersions() {
 }
 
 async function resolveFabric(version) {
+  const known = await listFabricVersions();
+  if (!known.includes(version)) throw new Error(`Unknown Fabric version: ${version}`);
   const [loaders, installers] = await Promise.all([
     getJson(`${FABRIC_META}/versions/loader/${version}`),
     getJson(`${FABRIC_META}/versions/installer`),
@@ -68,6 +73,9 @@ async function resolveFabric(version) {
   return {
     url: `${FABRIC_META}/versions/loader/${version}/${loaderVersion}/${installerVersion}/server/jar`,
     fileName: 'server.jar',
+    // Fabric's server/jar endpoint assembles the jar on request — no published
+    // hash to verify against, unlike Vanilla (sha1) and Paper (sha256).
+    checksum: null,
   };
 }
 
