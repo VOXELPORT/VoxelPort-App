@@ -62,10 +62,14 @@ function downloadServerJar(url, destPath, onProgress, checksum = null) {
     .then(() => new Promise((resolve, reject) => {
       fs.rename(tmpPath, destPath, (err) => (err ? reject(err) : resolve()));
     }))
-    .catch((err) => {
-      fs.unlink(tmpPath, () => {});
-      throw err;
-    });
+    .catch((err) => new Promise((_resolve, reject) => {
+      // Wait for the temp file to actually be gone before this rejection
+      // settles -- a fire-and-forget unlink() here means a caller (or a
+      // test) checking the directory immediately after rejection can still
+      // see the leftover temp file, since deletion hasn't necessarily
+      // finished yet.
+      fs.unlink(tmpPath, () => reject(err));
+    }));
 
   function attempt(currentUrl, redirectsLeft) {
     return new Promise((resolve, reject) => {
