@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('vp', {
       'server:exit',
       'install:progress',
       'app:state',
+      'update:available',
+      'update:downloaded',
+      'update:error',
     ];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_evt, payload) => cb(payload));
@@ -60,5 +63,10 @@ contextBridge.exposeInMainWorld('vp', {
     makePublic: (id) => ipcRenderer.invoke('server:makePublic', { id }),
 
     state: () => ipcRenderer.invoke('server:state'),
+  },
+
+  update: {
+    state: () => ipcRenderer.invoke('update:state'),
+    install: () => ipcRenderer.invoke('update:install'),
   },
 });

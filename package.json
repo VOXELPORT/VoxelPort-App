@@ -15,6 +15,7 @@
     "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "ws": "^8.21.0"
   },
   "devDependencies": {
@@ -27,6 +28,11 @@
     "directories": {
       "output": "release",
       "buildResources": "build"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "VOXELPORT",
+      "repo": "VoxelPort-App"
     },
     "files": [
       "src/**/*",

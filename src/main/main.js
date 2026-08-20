@@ -14,6 +14,7 @@ const {
   detectExistingServer, updateServerPropertiesSafely,
 } = require('./serverInstall');
 const { ServerProcess } = require('./serverProcess');
+const { Updater } = require('./updater');
 const serverProfiles = require('./serverProfiles');
 const { isSafeRelayUrl } = require('./relayUrlSafety');
 const { isApprovedExternalUrl } = require('./externalLinkSafety');
@@ -28,6 +29,7 @@ let tunnel = null;
 let deviceToken = '';
 let tokenEncryptedAtRest = false;
 const serverProc = new ServerProcess();
+const updater = new Updater();
 
 // ─── Explicit, always-accurate app state (item 8) ──────────────────────────
 // activeServerProfileId: which managed profile's child process is running (or null).
@@ -129,6 +131,13 @@ function wireServerProcess(p) {
 }
 wireServerProcess(serverProc);
 
+function wireUpdater(u) {
+  u.on('available', (version) => send('update:available', version));
+  u.on('downloaded', (version) => send('update:downloaded', version));
+  u.on('error', (message) => send('update:error', message));
+}
+wireUpdater(updater);
+
 /** ~2GB reserved for the OS, then a tiered slice of what's left. */
 function recommendedRamMb(totalMemMb) {
   if (totalMemMb <= 4096) return 1024;
@@ -174,6 +183,7 @@ if (!gotLock) {
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
     createWindow();
+    updater.start({ isPackaged: app.isPackaged, platform: process.platform });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -182,6 +192,7 @@ if (!gotLock) {
 }
 
 app.on('window-all-closed', () => {
+  updater.stop();
   if (tunnel) tunnel.stop();
   if (serverProc.child) serverProc.stop();
   if (process.platform !== 'darwin') app.quit();
@@ -203,6 +214,34 @@ ipcMain.handle('app:info', guarded(g, () => ({
 // straight from the main process to the OS clipboard.
 ipcMain.handle('token:copy', guarded(g, () => {
   clipboard.writeText(deviceToken);
+  return { ok: true };
+}));
+
+// ─── Auto-update ────────────────────────────────────────────────────────────
+
+ipcMain.handle('update:state', guarded(g, () => ({ readyToInstall: updater.readyToInstall })));
+
+// Applying a downloaded update quits and relaunches the app — never do that
+// silently while a managed server is running or the tunnel is public
+// without asking first, same as any other switch/stop in this app.
+ipcMain.handle('update:install', guarded(g, async () => {
+  if (!updater.readyToInstall) return { ok: false };
+
+  if (serverProc.child || (tunnel && tunnel.running)) {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: ['Cancel', 'Restart & Update'],
+      defaultId: 1,
+      cancelId: 0,
+      message: serverProc.child
+        ? 'A managed server is currently running.'
+        : 'The VoxelPort tunnel is currently public.',
+      detail: 'Restarting to install the update will stop it. Continue?',
+    });
+    if (response !== 1) return { ok: false, cancelled: true };
+  }
+
+  updater.install();
   return { ok: true };
 }));
 

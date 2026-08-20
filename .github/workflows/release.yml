@@ -18,7 +18,9 @@ jobs:
             build: npm run dist:win -- --publish never
             files: |
               release/VoxelPort-Setup.exe
+              release/VoxelPort-Setup.exe.blockmap
               release/VoxelPort-Portable.exe
+              release/latest.yml
           - os: ubuntu-latest
             build: npm run dist:linux -- --publish never
             files: |

@@ -256,3 +256,18 @@ input[type="range"] { accent-color: var(--green); padding: 0; background: none; 
 /* ─── Management (per-server console) header ───────────────────────────── */
 .manage-header { display: flex; flex-direction: column; gap: 2px; }
 .manage-name { font-size: 1.05rem; font-weight: 700; color: #fff; }
+
+/* ─── Update banner ─────────────────────────────────────────────────────── */
+.update-banner {
+  margin-top: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--green-dim);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+.update-banner.hidden { display: none; }

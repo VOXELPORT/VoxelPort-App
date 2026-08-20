@@ -102,6 +102,36 @@ Editing a managed setting (like the port) on an imported server updates only
 that specific line in `server.properties`, preserving every other custom
 setting you already had.
 
+## Auto-update
+
+The installed Windows build checks for new versions via `electron-updater`,
+scoped entirely to this app's own GitHub repository:
+
+- The update feed URL (`api.github.com`, this specific `owner/repo`) is
+  fixed at build time in `package.json`'s `build.publish` config — it is
+  **not** something a running instance of the app, or anything reachable
+  from the renderer, can redirect elsewhere.
+- Before ever applying an update, `electron-updater` verifies the
+  downloaded installer's SHA-512 checksum against the value published in
+  `latest.yml` on the GitHub release, both fetched over HTTPS. This is real
+  integrity verification — a corrupted or tampered download is rejected,
+  not just trusted.
+- **What this does not give you**, stated honestly rather than implied:
+  since the app is not currently code-signed (see "A note on Windows code
+  signing" in the README), there is no Authenticode publisher-identity
+  check on top of the checksum. Checksum verification confirms the
+  downloaded bytes match what GitHub actually served for this release; it
+  does not by itself prove who built them. That gap closes once real code
+  signing is in place.
+- Downloading a new version happens automatically in the background, but
+  **applying** it (quitting and relaunching into the new version) always
+  requires an explicit click in the app — never silent, never forced — and
+  if a managed server is running or the tunnel is public, you're asked to
+  confirm before either gets interrupted.
+- The portable `.exe` and the Linux build intentionally do not auto-update
+  — there's no single fixed install location for `electron-updater` to
+  safely replace in-place the way it can for the installed Windows build.
+
 ## Electron security model
 
 - `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true` —
