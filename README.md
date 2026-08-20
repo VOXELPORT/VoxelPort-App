@@ -35,6 +35,16 @@ Each release publishes a `SHA256SUMS.txt` alongside the binaries — verify a
 download with `sha256sum -c SHA256SUMS.txt` (or `Get-FileHash` on Windows)
 before running it.
 
+**Auto-update:** the installed Windows build (`VoxelPort-Setup.exe`) checks
+GitHub for new releases in the background and, once a new version has
+finished downloading and its checksum has been verified, shows an in-app
+banner — installing it is always your choice, never silent or forced, and
+it won't interrupt a running server or public tunnel without asking first.
+The portable `.exe` and the Linux build don't auto-update (there's no fixed
+install location to safely replace); update those manually from this page.
+See [SECURITY.md](SECURITY.md) for exactly what this does and doesn't
+guarantee.
+
 **A note on Windows code signing:** earlier versions of this README claimed
 the Windows builds were signed via SignPath. This repo's release workflow
 does not currently perform any signing step, and no evidence of a working
@@ -91,6 +101,7 @@ app/
     token.js           device token generation, safeStorage-encrypted at rest
     mcVersions.js      Vanilla/Paper/Fabric version + download resolution
     javaCheck.js       detects installed Java, compares against what's needed
+    updater.js         GitHub-based auto-update (Windows installer only)
     ipcSenders.js      central IPC sender validation
     relayUrlSafety.js  validates custom relay URLs (real IP literals only)
     externalLinkSafety.js  allowlist for shell.openExternal

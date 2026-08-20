@@ -132,6 +132,24 @@ window.vp.on('tunnel:error', (message) => {
 });
 window.vp.on('app:state', applyAppState);
 
+// ─── Auto-update banner ─────────────────────────────────────────────────
+const updateBanner = $('updateBanner');
+const updateBannerText = $('updateBannerText');
+const updateInstallBtn = $('updateInstallBtn');
+
+window.vp.on('update:downloaded', (version) => {
+  updateBannerText.textContent = `VoxelPort v${version} is ready to install.`;
+  updateBanner.classList.remove('hidden');
+});
+window.vp.on('update:error', () => { /* background check failure — nothing actionable for the user */ });
+
+updateInstallBtn.addEventListener('click', async () => {
+  updateInstallBtn.disabled = true;
+  const res = await window.vp.update.install();
+  updateInstallBtn.disabled = false;
+  if (res && res.cancelled) return; // user declined the restart-now confirmation
+});
+
 // ─── Library entry point ────────────────────────────────────────────────
 $('manualModeLink').addEventListener('click', () => showScreen('screen-manual'));
 
