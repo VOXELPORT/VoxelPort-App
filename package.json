@@ -1,6 +1,6 @@
 {
   "name": "voxelport-app",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "VoxelPort — host any Minecraft server over the internet with no port forwarding.",
   "author": "VoxelPort",
   "license": "MIT",
@@ -72,6 +72,18 @@
       ],
       "category": "Utility",
       "artifactName": "VoxelPort-Linux.${ext}"
+    },
+    "appx": {
+      "identityName": "VoxelPort.Voxelport",
+      "publisher": "CN=7BCD0C82-76E6-4816-9510-432674891EAF",
+      "publisherDisplayName": "VoxelPort",
+      "applicationId": "VoxelPort",
+      "displayName": "Voxelport",
+      "backgroundColor": "#F3EBDC",
+      "languages": [
+        "en-US"
+      ],
+      "artifactName": "VoxelPort-Store.${ext}"
     }
   }
 }

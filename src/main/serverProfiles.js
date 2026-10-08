@@ -30,7 +30,9 @@ function isValidProfile(p) {
     && typeof p.serverDir === 'string' && path.isAbsolute(p.serverDir)
     && Number.isInteger(p.port) && p.port >= 1 && p.port <= 65535
     && Number.isInteger(p.minRamMb) && p.minRamMb >= 256 && p.minRamMb <= 131072
-    && Number.isInteger(p.maxRamMb) && p.maxRamMb >= p.minRamMb && p.maxRamMb <= 131072;
+    && Number.isInteger(p.maxRamMb) && p.maxRamMb >= p.minRamMb && p.maxRamMb <= 131072
+    // Optional: a Java major this server was found to need at runtime.
+    && (p.javaMajor === undefined || (Number.isInteger(p.javaMajor) && p.javaMajor >= 8 && p.javaMajor <= 99));
 }
 
 function newId() {

@@ -8,6 +8,7 @@ const { execFile } = require('child_process');
  * depends on the underlying MC version, not the loader on top of it.
  */
 const JAVA_REQUIREMENTS = [
+  { since: '26.0', major: 25 }, // year-based versions (26.1, 26.2…) need Java 25
   { since: '1.20.5', major: 21 },
   { since: '1.18', major: 17 },
   { since: '1.17', major: 16 },
@@ -35,10 +36,13 @@ function requiredJavaMajor(mcVersion) {
   return 8;
 }
 
-/** Resolves { found, major, raw } — major is null if java isn't on PATH. */
-function checkJava() {
+/**
+ * Resolves { found, major, raw } for `javaPath` (default: java on PATH) —
+ * major is null if that java can't be run.
+ */
+function checkJava(javaPath = 'java') {
   return new Promise((resolve) => {
-    execFile('java', ['-version'], (err, _stdout, stderr) => {
+    execFile(javaPath, ['-version'], { windowsHide: true }, (err, _stdout, stderr) => {
       if (err) {
         resolve({ found: false, major: null, raw: null });
         return;
@@ -57,4 +61,27 @@ function checkJava() {
   });
 }
 
-module.exports = { checkJava, requiredJavaMajor };
+/**
+ * Reads the Java major a server says it needs from one line of its output,
+ * or null. Catches the explicit messages Paper/Fabric print as well as the
+ * JVM's own UnsupportedClassVersionError (class file version N → Java N-44),
+ * so a version missing from JAVA_REQUIREMENTS still gets fixed at runtime.
+ */
+function requiredJavaFromLog(line) {
+  const text = String(line);
+  let m = /requires? (?:running the server with )?Java (\d{1,2})\b/i.exec(text)
+    || /Java (\d{1,2}) or (?:above|higher|newer|later) is required/i.exec(text)
+    || /needs? (?:at least )?Java (\d{1,2})\b/i.exec(text);
+  if (m) {
+    const major = parseInt(m[1], 10);
+    return major >= 8 && major <= 99 ? major : null;
+  }
+  m = /UnsupportedClassVersionError[\s\S]*?class file version (\d{2,3})(?:\.\d+)?/.exec(text);
+  if (m) {
+    const major = parseInt(m[1], 10) - 44;
+    return major >= 8 && major <= 99 ? major : null;
+  }
+  return null;
+}
+
+module.exports = { checkJava, requiredJavaMajor, requiredJavaFromLog };

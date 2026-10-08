@@ -8,7 +8,8 @@ const crypto = require('crypto');
 const { Tunnel } = require('./tunnel');
 const { loadOrCreateToken, maskToken } = require('./token');
 const mcVersions = require('./mcVersions');
-const { checkJava, requiredJavaMajor } = require('./javaCheck');
+const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaCheck');
+const { installJava, findManagedJava } = require('./javaInstall');
 const {
   getServerDir, downloadServerJar, writeEula, writeServerProperties,
   detectExistingServer, updateServerPropertiesSafely,
@@ -21,6 +22,10 @@ const { isApprovedExternalUrl } = require('./externalLinkSafety');
 const { guarded } = require('./ipcSenders');
 
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
+// Tried first when no custom relay is set: same relay, reached directly
+// instead of through Cloudflare (which routes some Indian ISPs via
+// Singapore, adding ~130 ms). Falls back to DEFAULT_RELAY_URL if blocked.
+const DIRECT_RELAY_URL = 'wss://direct.voxelport.in:26499';
 const PUBLIC_HOST = 'play.voxelport.in';
 const STOP_WAIT_TIMEOUT_MS = 25000; // a little past ServerProcess's own 20s force-kill grace
 
@@ -49,7 +54,7 @@ function createWindow() {
     height: 800,
     minWidth: 540,
     minHeight: 640,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#F3EBDC',
     title: 'VoxelPort',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
     webPreferences: {
@@ -89,12 +94,19 @@ function send(channel, payload) {
   }
 }
 
+// True while server:start is fetching Java before launching the process —
+// shown to the UI as "starting" so the server doesn't look idle meanwhile.
+let preparingJava = false;
+function currentServerStatus() {
+  return preparingJava ? 'starting' : serverProc.status;
+}
+
 function broadcastState() {
   send('app:state', {
     activeServerProfileId,
     publicServerProfileId,
     manualTunnelActive,
-    serverStatus: serverProc.status,
+    serverStatus: currentServerStatus(),
   });
 }
 
@@ -113,9 +125,21 @@ function wireTunnel(t) {
   });
 }
 
+// Watches the running server's output for "needs Java N" errors, so a
+// version our requirement table doesn't know yet still gets fixed: on a
+// failed exit, the right Java is installed, remembered on the profile, and
+// the server restarted once.
+let javaWatch = null; // { profileId, usedMajor, neededMajor, retried }
+
 function wireServerProcess(p) {
   p.on('status', (s) => { send('server:status', s); broadcastState(); });
-  p.on('log', (line) => send('server:log', line));
+  p.on('log', (line) => {
+    send('server:log', line);
+    if (javaWatch) {
+      const need = requiredJavaFromLog(line);
+      if (need && need > (javaWatch.usedMajor || 0)) javaWatch.neededMajor = Math.max(javaWatch.neededMajor || 0, need);
+    }
+  });
   p.on('players', (n) => send('server:players', n));
   p.on('exit', (code) => {
     send('server:exit', code);
@@ -127,6 +151,22 @@ function wireServerProcess(p) {
     }
     activeServerProfileId = null;
     broadcastState();
+
+    const watch = javaWatch;
+    javaWatch = null;
+    if (code !== 0 && watch && watch.neededMajor) {
+      if (watch.retried) {
+        send('server:log', `[VoxelPort] The server still reports it needs Java ${watch.neededMajor}. Please check the server files.`);
+        return;
+      }
+      send('server:log', `[VoxelPort] This server needs Java ${watch.neededMajor} — fixing that and restarting…`);
+      try {
+        serverProfiles.updateProfile(userDataDir(), watch.profileId, { javaMajor: watch.neededMajor });
+      } catch { /* profile was removed meanwhile */ }
+      startServerProfile(watch.profileId, { retried: true }).then((res) => {
+        if (res && !res.ok && res.error) send('server:log', `[VoxelPort] ${res.error}`);
+      });
+    }
   });
 }
 wireServerProcess(serverProc);
@@ -183,7 +223,7 @@ if (!gotLock) {
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
     createWindow();
-    updater.start({ isPackaged: app.isPackaged, platform: process.platform });
+    updater.start({ isPackaged: app.isPackaged, platform: process.platform, windowsStore: Boolean(process.windowsStore) });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -285,7 +325,9 @@ async function startTunnelInternal({ localPort, relayUrl, profileId }) {
 
   tunnel = new Tunnel();
   wireTunnel(tunnel);
-  tunnel.start({ relayUrl: resolvedRelayUrl, token: deviceToken, localPort: port });
+  const usingDefault = resolvedRelayUrl.replace(/\/+$/, '') === DEFAULT_RELAY_URL;
+  const relayUrls = usingDefault ? [DIRECT_RELAY_URL, DEFAULT_RELAY_URL] : [resolvedRelayUrl];
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port });
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
   broadcastState();
@@ -381,11 +423,61 @@ ipcMain.handle('system:specs', guarded(g, () => {
   return { totalMemMb, recommendedRamMb: recommendedRamMb(totalMemMb) };
 }));
 
-ipcMain.handle('java:check', guarded(g, async (_evt, { version }) => {
+/**
+ * The Java to use for a Minecraft version: Java that VoxelPort installed
+ * itself (if one is new enough), else java on the PATH. Resolves with the
+ * checkJava() result plus { required, satisfied, javaPath, managed }.
+ */
+async function resolveJava(mcVersion, minMajor = 0) {
+  const required = Math.max(requiredJavaMajor(mcVersion || '1.20.5'), minMajor);
+  const managed = findManagedJava(userDataDir(), required);
+  if (managed) {
+    const result = await checkJava(managed.javaPath);
+    if (result.found && result.major !== null && result.major >= required) {
+      return { ...result, required, satisfied: true, javaPath: managed.javaPath, managed: true };
+    }
+  }
   const result = await checkJava();
-  const required = requiredJavaMajor(version || '1.20.5');
-  return { ...result, required, satisfied: result.found && result.major !== null && result.major >= required };
+  return { ...result, required, satisfied: result.found && result.major !== null && result.major >= required, javaPath: 'java', managed: false };
+}
+
+ipcMain.handle('java:check', guarded(g, async (_evt, { version }) => {
+  const { javaPath, ...result } = await resolveJava(version); // the path stays in main
+  return result;
 }));
+
+// One Java install at a time; a second request for the same major joins it.
+let javaInstallInFlight = null;
+function installJavaOnce(major, onProgress) {
+  if (javaInstallInFlight && javaInstallInFlight.major === major) return javaInstallInFlight.promise;
+  const promise = installJava({ userDataDir: userDataDir(), major, onProgress })
+    .finally(() => { if (javaInstallInFlight && javaInstallInFlight.promise === promise) javaInstallInFlight = null; });
+  javaInstallInFlight = { major, promise };
+  return promise;
+}
+
+ipcMain.handle('java:install', guarded(g, async (_evt, { version }) => {
+  const major = requiredJavaMajor(version || '1.20.5');
+  try {
+    const res = await installJavaOnce(major, (p) => send('java:progress', p));
+    return { ok: true, major: res.major };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}));
+
+/** Progress callback that narrates a Java install into the server console. */
+function javaProgressToConsole(major) {
+  let lastPct = -1;
+  return (p) => {
+    if (p.stage === 'resolve') send('server:log', `[VoxelPort] Downloading Java ${major} (Eclipse Temurin)…`);
+    else if (p.stage === 'download' && p.total) {
+      const pct = Math.floor((p.received / p.total) * 100);
+      if (pct >= lastPct + 20 || pct === 100) { lastPct = pct; send('server:log', `[VoxelPort] Java download ${pct}%`); }
+    } else if (p.stage === 'extract') send('server:log', '[VoxelPort] Unpacking Java…');
+    else if (p.stage === 'done') send('server:log', `[VoxelPort] Java ${major} ready.`);
+  };
+}
 
 ipcMain.handle('java:openDownloadPage', guarded(g, () => {
   const url = 'https://adoptium.net/temurin/releases/';
@@ -453,7 +545,15 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
 
 // ─── Single managed server process (item 6) ─────────────────────────────────
 
-ipcMain.handle('server:start', guarded(g, async (_evt, { id }) => {
+ipcMain.handle('server:start', guarded(g, (_evt, { id }) => startServerProfile(id)));
+
+/**
+ * Starts a server profile, first making sure a new-enough Java exists —
+ * installing Eclipse Temurin automatically if not. `retried` marks the
+ * one automatic restart after a server reported needing a newer Java.
+ */
+async function startServerProfile(id, { retried = false } = {}) {
+  if (preparingJava) return { ok: false, error: 'Already getting Java ready for a server — one moment.' };
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };
 
@@ -481,10 +581,38 @@ ipcMain.handle('server:start', guarded(g, async (_evt, { id }) => {
 
   serverProfiles.touchProfile(userDataDir(), id);
   activeServerProfileId = id;
-  serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb });
+
+  // Prefer the Java VoxelPort installed itself; otherwise java on the PATH.
+  // If neither is new enough for this server, fetch the right one first.
+  const minMajor = profile.javaMajor || 0;
+  let java = await resolveJava(profile.version, minMajor);
+  if (!java.satisfied) {
+    preparingJava = true;
+    broadcastState();
+    send('server:log', `[VoxelPort] ${profile.name} needs Java ${java.required}` +
+      `${java.found && java.major ? ` (this PC has Java ${java.major})` : ''} — installing it automatically…`);
+    try {
+      await installJavaOnce(java.required, javaProgressToConsole(java.required));
+      java = await resolveJava(profile.version, minMajor);
+    } catch (err) {
+      java = { satisfied: false, required: java.required, error: err.message };
+    } finally {
+      preparingJava = false;
+    }
+    if (!java.satisfied) {
+      const error = `Couldn't set up Java ${java.required}${java.error ? `: ${java.error}` : ''}. Check your internet connection and try again.`;
+      send('server:log', `[VoxelPort] ${error}`);
+      activeServerProfileId = null;
+      broadcastState();
+      return { ok: false, error };
+    }
+  }
+
+  javaWatch = { profileId: id, usedMajor: java.major, neededMajor: null, retried };
+  serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath });
   broadcastState();
   return { ok: true, port: profile.port };
-}));
+}
 
 ipcMain.handle('server:stop', guarded(g, () => {
   serverProc.stop();
@@ -507,5 +635,5 @@ ipcMain.handle('server:state', guarded(g, () => ({
   activeServerProfileId,
   publicServerProfileId,
   manualTunnelActive,
-  serverStatus: serverProc.status,
+  serverStatus: currentServerStatus(),
 })));

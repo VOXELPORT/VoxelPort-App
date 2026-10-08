@@ -31,6 +31,8 @@ function srvLogLine(line) {
   while (srvLog.childElementCount > 400) srvLog.removeChild(srvLog.firstChild);
 }
 
+window.consoleLogLine = srvLogLine;
+
 function isThisProfileActive() {
   return managingProfileId && managingProfileId === window.appState.activeServerProfileId;
 }

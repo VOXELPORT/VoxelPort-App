@@ -29,10 +29,17 @@ class ServerProcess extends EventEmitter {
     this.stopTimer = null;
   }
 
-  start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb }) {
+  start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb, javaPath = 'java' }) {
     if (this.child) return; // only one managed process, ever
     if (typeof serverDir !== 'string' || !path.isAbsolute(serverDir)) {
       this.emit('log', 'Refusing to start: invalid server folder.');
+      this._setStatus('crashed');
+      return;
+    }
+    // Either java on the PATH or an absolute path to a java executable
+    // (the JRE VoxelPort installs into its own data folder).
+    if (javaPath !== 'java' && !(typeof javaPath === 'string' && path.isAbsolute(javaPath) && /^java(\.exe)?$/i.test(path.basename(javaPath)))) {
+      this.emit('log', 'Refusing to start: invalid Java path.');
       this._setStatus('crashed');
       return;
     }
@@ -45,7 +52,7 @@ class ServerProcess extends EventEmitter {
     this.online.clear();
     this._setStatus('starting');
 
-    this.child = spawn('java', [
+    this.child = spawn(javaPath, [
       `-Xms${minRamMb}M`,
       `-Xmx${maxRamMb}M`,
       '-jar', jarName,

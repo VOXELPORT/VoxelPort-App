@@ -58,11 +58,17 @@ function renderCards() {
         return;
       }
       startBtn.disabled = true;
+      // Open the console first so start-up output (including any automatic
+      // Java download) is visible while it happens.
+      openManagement(profile.id);
       const res = await window.vp.server.start(profile.id);
       startBtn.disabled = false;
-      if (res && res.cancelled) return; // user declined the switch confirmation
-      if (!res || !res.ok) { log(res && res.error ? res.error : 'Could not start server.', true); return; }
-      openManagement(profile.id);
+      if (res && res.cancelled) { showScreen('screen-library'); return; } // user declined the switch
+      if (!res || !res.ok) {
+        const msg = res && res.error ? res.error : 'Could not start server.';
+        log(msg, true);
+        if (window.consoleLogLine) window.consoleLogLine(msg);
+      }
     });
 
     const manageBtn = document.createElement('button');
@@ -70,7 +76,8 @@ function renderCards() {
     manageBtn.textContent = 'Manage';
     manageBtn.addEventListener('click', () => openManagement(profile.id));
 
-    actions.appendChild(startBtn);
+    // A running server's start button already reads "Manage" — don't show it twice.
+    if (status !== 'online' && status !== 'starting') actions.appendChild(startBtn);
     actions.appendChild(manageBtn);
     card.appendChild(info);
     card.appendChild(actions);

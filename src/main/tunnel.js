@@ -21,6 +21,10 @@ const MAX_CONN_ID_LEN = 128;
 // bottleneck below what the relay would already allow.
 const MAX_LOCAL_PLAYERS = 256;
 
+// Handshake timeout for a relay candidate that has a fallback behind it, so a
+// network that silently drops the direct port doesn't stall hosting for long.
+const FALLBACK_HANDSHAKE_TIMEOUT_MS = 5000;
+
 // Item 20: per-player bound on bytes handed to a local socket that hasn't
 // finished flushing them yet. Backpressure, not deletion — once exceeded,
 // the player is disconnected cleanly rather than growing memory forever.
@@ -87,8 +91,16 @@ class Tunnel extends EventEmitter {
     this.wsStallTimer = null;
   }
 
-  start({ relayUrl, token, localPort }) {
-    this.relayUrl = relayUrl;
+  /**
+   * `relayUrls` is an ordered list of candidates (preferred first). If a
+   * candidate can't be reached at all, the next one is tried immediately;
+   * after any drop of an established connection, the preferred one is tried
+   * again first. `relayUrl` alone is the single-candidate form.
+   */
+  start({ relayUrl, relayUrls, token, localPort }) {
+    this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
+    this.urlIndex = 0;
+    this.relayUrl = this.relayUrls[0];
     this.token = token;
     this.localPort = localPort;
     this.manualStop = false;
@@ -96,13 +108,17 @@ class Tunnel extends EventEmitter {
   }
 
   _connect() {
+    this.relayUrl = this.relayUrls[this.urlIndex];
+    const hasFallback = this.urlIndex < this.relayUrls.length - 1;
     this.emit('status', 'connecting');
     this.emit('log', `Connecting to ${this.relayUrl}…`);
 
     let ws;
+    let opened = false;
     try {
       ws = new WebSocket(this.relayUrl.replace(/\/+$/, '') + '/ws', {
-        handshakeTimeout: 15000,
+        // Fail over quickly when another candidate is waiting.
+        handshakeTimeout: hasFallback ? FALLBACK_HANDSHAKE_TIMEOUT_MS : 15000,
         maxPayload: MAX_WS_MESSAGE_BYTES,
       });
     } catch (err) {
@@ -112,6 +128,7 @@ class Tunnel extends EventEmitter {
     this.ws = ws;
 
     ws.on('open', () => {
+      opened = true;
       this.emit('log', 'Connected. Registering…');
       this._send({ type: 'register', token: this.token });
     });
@@ -128,8 +145,17 @@ class Tunnel extends EventEmitter {
         this.emit('stopped');
         return;
       }
-      // Unexpected drop — retry with backoff while the user wants it running.
       this.running = false;
+      // Never reached this candidate — move straight on to the next one.
+      if (!opened && hasFallback) {
+        this.urlIndex++;
+        this.emit('log', `Could not reach ${this.relayUrl}, trying ${this.relayUrls[this.urlIndex]}…`);
+        this._connect();
+        return;
+      }
+      // Next attempt starts from the preferred candidate again.
+      this.urlIndex = 0;
+      // Unexpected drop — retry with backoff while the user wants it running.
       this.emit('status', 'reconnecting');
       this.emit('log', `Disconnected. Reconnecting in ${Math.round(this.reconnectDelay / 1000)}s…`);
       setTimeout(() => {
