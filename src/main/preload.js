@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('vp', {
       'server:players',
       'server:exit',
       'install:progress',
+      'java:progress',
       'app:state',
       'update:available',
       'update:downloaded',
@@ -39,6 +40,7 @@ contextBridge.exposeInMainWorld('vp', {
 
   java: {
     check: (version) => ipcRenderer.invoke('java:check', { version }),
+    install: (version) => ipcRenderer.invoke('java:install', { version }),
     openDownloadPage: () => ipcRenderer.invoke('java:openDownloadPage'),
   },
 

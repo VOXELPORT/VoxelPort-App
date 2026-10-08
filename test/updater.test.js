@@ -19,6 +19,13 @@ test('start() no-ops on non-Windows platforms', () => {
   assert.equal(u.autoUpdater, null);
 });
 
+test('start() no-ops in the Microsoft Store build — the Store delivers updates', () => {
+  const u = new Updater();
+  u.start({ isPackaged: true, platform: 'win32', windowsStore: true });
+  assert.equal(u.autoUpdater, null);
+  assert.equal(u.checkTimer, null);
+});
+
 test('install() does nothing if no update has actually finished downloading', () => {
   const u = new Updater();
   // autoUpdater is null (never started) — install() must not throw or assume it exists.

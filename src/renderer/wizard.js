@@ -110,7 +110,9 @@ async function runJavaCheck() {
   javaSatisfied = result.satisfied;
 
   if (result.satisfied) {
-    javaStatusText.textContent = `Java ${result.major} detected — ready.`;
+    javaStatusText.textContent = result.managed
+      ? `Java ${result.major} (installed by VoxelPort) — ready.`
+      : `Java ${result.major} detected — ready.`;
   } else if (result.found) {
     javaStatusText.textContent = `Found Java ${result.major ?? '?'}, but this version needs Java ${result.required}+.`;
     installJavaBtn.classList.remove('hidden');
@@ -122,7 +124,34 @@ async function runJavaCheck() {
   updateInstallEnabled();
 }
 
-installJavaBtn.addEventListener('click', () => window.vp.java.openDownloadPage());
+// Downloads Eclipse Temurin into VoxelPort's own folder — no admin, no website.
+installJavaBtn.addEventListener('click', async () => {
+  installJavaBtn.disabled = true;
+  recheckJavaBtn.disabled = true;
+  installJavaBtn.textContent = 'Installing Java…';
+  javaStatusText.textContent = 'Finding the right Java build…';
+  const res = await window.vp.java.install(wizardState.version);
+  installJavaBtn.disabled = false;
+  recheckJavaBtn.disabled = false;
+  installJavaBtn.textContent = 'Install Java for me';
+  if (!res || !res.ok) {
+    javaStatusText.textContent = `Couldn't install Java: ${(res && res.error) || 'unknown error'}. Check your connection and try again.`;
+    return;
+  }
+  await runJavaCheck();
+});
+
+window.vp.on('java:progress', (p) => {
+  if (!p) return;
+  if (p.stage === 'resolve') javaStatusText.textContent = 'Finding the right Java build…';
+  else if (p.stage === 'download') {
+    const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+    javaStatusText.textContent = p.total
+      ? `Downloading Java… ${mb(p.received)} / ${mb(p.total)} MB (${Math.floor((p.received / p.total) * 100)}%)`
+      : `Downloading Java… ${mb(p.received)} MB`;
+  } else if (p.stage === 'extract') javaStatusText.textContent = 'Unpacking Java…';
+  else if (p.stage === 'done') javaStatusText.textContent = 'Java installed — checking…';
+});
 recheckJavaBtn.addEventListener('click', runJavaCheck);
 
 function updateInstallEnabled() {

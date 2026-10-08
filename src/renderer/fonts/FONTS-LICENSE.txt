@@ -1,0 +1,4 @@
+Bundled fonts (latin subsets), all under the SIL Open Font License 1.1:
+  Bangers (Vernon Adams), Space Grotesk (Florian Karsten),
+  Courier Prime (Alan Dague-Greene), Silkscreen (Jason Kottke).
+License text: https://openfontlicense.org

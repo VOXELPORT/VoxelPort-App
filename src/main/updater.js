@@ -31,9 +31,13 @@ class Updater extends EventEmitter {
     this.checkTimer = null;
   }
 
-  /** No-ops safely on unpackaged dev runs and non-Windows platforms -- there's nothing to update to/from. */
-  start({ isPackaged, platform }) {
-    if (!isPackaged || platform !== 'win32') return;
+  /**
+   * No-ops safely on unpackaged dev runs and non-Windows platforms -- there's
+   * nothing to update to/from -- and in the Microsoft Store (MSIX) build,
+   * where the Store delivers updates and an in-app updater isn't allowed.
+   */
+  start({ isPackaged, platform, windowsStore = false }) {
+    if (!isPackaged || platform !== 'win32' || windowsStore) return;
 
     // Required lazily (not at module load) so requiring this file in a
     // plain Node test process never touches Electron's app singleton.

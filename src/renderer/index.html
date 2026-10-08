@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
   <title>VoxelPort</title>
+  <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="head">
-    <div class="brand">Voxel<span>Port</span></div>
-    <div class="tagline">Host any Minecraft server. No port forwarding.</div>
+    <div class="brand"><img class="brand-icon" src="icon.svg" width="40" height="40" alt="" /><span class="brand-word">VOXEL<span>PORT</span></span></div>
+    <div class="tagline">Host any Minecraft server · no port forwarding</div>
   </header>
 
   <main id="app">
 
     <!-- LIBRARY (home screen) -->
     <section class="screen panel active" id="screen-library">
-      <div class="label">My Servers</div>
+      <div class="screen-title"><svg class="px px-grass" viewBox="0 0 16 16" width="40" height="40" shape-rendering="crispEdges" aria-hidden="true"><rect x="0" y="0" width="16.02" height="1.02" fill="#15120F"/><rect x="0" y="1" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="1" width="2.02" height="1.02" fill="#6DBE45"/><rect x="3" y="1" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="4" y="1" width="4.02" height="1.02" fill="#6DBE45"/><rect x="8" y="1" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="9" y="1" width="3.02" height="1.02" fill="#6DBE45"/><rect x="12" y="1" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="13" y="1" width="2.02" height="1.02" fill="#6DBE45"/><rect x="15" y="1" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="2" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="2" width="1.02" height="1.02" fill="#6DBE45"/><rect x="2" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="3" y="2" width="3.02" height="1.02" fill="#6DBE45"/><rect x="6" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="7" y="2" width="4.02" height="1.02" fill="#6DBE45"/><rect x="11" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="12" y="2" width="2.02" height="1.02" fill="#6DBE45"/><rect x="14" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="15" y="2" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="3" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="3" width="3.02" height="1.02" fill="#6DBE45"/><rect x="4" y="3" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="5" y="3" width="4.02" height="1.02" fill="#6DBE45"/><rect x="9" y="3" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="10" y="3" width="5.02" height="1.02" fill="#6DBE45"/><rect x="15" y="3" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="4" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="4" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="2" y="4" width="4.02" height="1.02" fill="#6DBE45"/><rect x="6" y="4" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="7" y="4" width="5.02" height="1.02" fill="#6DBE45"/><rect x="12" y="4" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="13" y="4" width="2.02" height="1.02" fill="#6DBE45"/><rect x="15" y="4" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="5" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="5" width="1.02" height="1.02" fill="#6DBE45"/><rect x="2" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="3" y="5" width="1.02" height="1.02" fill="#8B5A36"/><rect x="4" y="5" width="2.02" height="1.02" fill="#6DBE45"/><rect x="6" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="7" y="5" width="1.02" height="1.02" fill="#8B5A36"/><rect x="8" y="5" width="2.02" height="1.02" fill="#6DBE45"/><rect x="10" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="11" y="5" width="1.02" height="1.02" fill="#6DBE45"/><rect x="12" y="5" width="1.02" height="1.02" fill="#8B5A36"/><rect x="13" y="5" width="1.02" height="1.02" fill="#6DBE45"/><rect x="14" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="15" y="5" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="6" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="6" width="3.02" height="1.02" fill="#8B5A36"/><rect x="4" y="6" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="5" y="6" width="3.02" height="1.02" fill="#8B5A36"/><rect x="8" y="6" width="1.02" height="1.02" fill="#6B4226"/><rect x="9" y="6" width="2.02" height="1.02" fill="#8B5A36"/><rect x="11" y="6" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="12" y="6" width="3.02" height="1.02" fill="#8B5A36"/><rect x="15" y="6" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="7" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="7" width="1.02" height="1.02" fill="#8B5A36"/><rect x="2" y="7" width="1.02" height="1.02" fill="#A27752"/><rect x="3" y="7" width="10.02" height="1.02" fill="#8B5A36"/><rect x="13" y="7" width="1.02" height="1.02" fill="#A27752"/><rect x="14" y="7" width="1.02" height="1.02" fill="#8B5A36"/><rect x="15" y="7" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="8" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="8" width="4.02" height="1.02" fill="#8B5A36"/><rect x="5" y="8" width="1.02" height="1.02" fill="#6B4226"/><rect x="6" y="8" width="2.02" height="1.02" fill="#8B5A36"/><rect x="8" y="8" width="1.02" height="1.02" fill="#A27752"/><rect x="9" y="8" width="6.02" height="1.02" fill="#8B5A36"/><rect x="15" y="8" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="9" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="9" width="1.02" height="1.02" fill="#8B5A36"/><rect x="2" y="9" width="1.02" height="1.02" fill="#6B4226"/><rect x="3" y="9" width="8.02" height="1.02" fill="#8B5A36"/><rect x="11" y="9" width="1.02" height="1.02" fill="#6B4226"/><rect x="12" y="9" width="3.02" height="1.02" fill="#8B5A36"/><rect x="15" y="9" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="10" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="10" width="3.02" height="1.02" fill="#8B5A36"/><rect x="4" y="10" width="1.02" height="1.02" fill="#A27752"/><rect x="5" y="10" width="4.02" height="1.02" fill="#8B5A36"/><rect x="9" y="10" width="1.02" height="1.02" fill="#6B4226"/><rect x="10" y="10" width="4.02" height="1.02" fill="#8B5A36"/><rect x="14" y="10" width="1.02" height="1.02" fill="#A27752"/><rect x="15" y="10" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="11" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="11" width="6.02" height="1.02" fill="#8B5A36"/><rect x="7" y="11" width="1.02" height="1.02" fill="#6B4226"/><rect x="8" y="11" width="7.02" height="1.02" fill="#8B5A36"/><rect x="15" y="11" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="12" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="12" width="1.02" height="1.02" fill="#8B5A36"/><rect x="2" y="12" width="1.02" height="1.02" fill="#A27752"/><rect x="3" y="12" width="8.02" height="1.02" fill="#8B5A36"/><rect x="11" y="12" width="1.02" height="1.02" fill="#A27752"/><rect x="12" y="12" width="3.02" height="1.02" fill="#8B5A36"/><rect x="15" y="12" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="13" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="13" width="4.02" height="1.02" fill="#8B5A36"/><rect x="5" y="13" width="1.02" height="1.02" fill="#6B4226"/><rect x="6" y="13" width="7.02" height="1.02" fill="#8B5A36"/><rect x="13" y="13" width="1.02" height="1.02" fill="#6B4226"/><rect x="14" y="13" width="1.02" height="1.02" fill="#8B5A36"/><rect x="15" y="13" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="14" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="14" width="7.02" height="1.02" fill="#8B5A36"/><rect x="8" y="14" width="1.02" height="1.02" fill="#A27752"/><rect x="9" y="14" width="6.02" height="1.02" fill="#8B5A36"/><rect x="15" y="14" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="15" width="16.02" height="1.02" fill="#15120F"/></svg><div><div class="label">Your worlds</div><h1>MY SERVERS</h1></div></div>
       <div class="server-list" id="serverList"></div>
       <div class="library-actions">
         <button class="primary" id="addServerBtn">+ Add Server</button>
@@ -29,6 +30,7 @@
     <!-- MANUAL TUNNEL (existing flow, unchanged) -->
     <section class="screen panel" id="screen-manual">
       <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Already running a server?</div><h1>TUNNEL IT</h1></div></div>
 
       <div class="statusline">
         <span class="dot" id="dot"></span>
@@ -77,6 +79,7 @@
     <!-- WIZARD STEP 1: name + server type + version -->
     <section class="screen panel" id="screen-type">
       <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Step 1 of 2</div><h1>NEW SERVER</h1></div></div>
 
       <label class="field">
         <span class="label">Server name</span>
@@ -97,11 +100,12 @@
     <!-- WIZARD STEP 2: RAM + Java + EULA -->
     <section class="screen panel" id="screen-config">
       <button class="back-link" data-back="screen-type">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Step 2 of 2</div><h1>SERVER SETTINGS</h1></div></div>
 
       <div id="javaBlock">
         <div class="label">Java</div>
         <div class="hint" id="javaStatusText">Checking for Java…</div>
-        <button id="installJavaBtn" class="ghost hidden">Get Java (Adoptium)</button>
+        <button id="installJavaBtn" class="ghost hidden">Install Java for me</button>
         <button id="recheckJavaBtn" class="ghost hidden">Re-check</button>
       </div>
 
@@ -135,7 +139,7 @@
 
     <!-- WIZARD STEP 3: install progress -->
     <section class="screen panel" id="screen-install">
-      <div class="label">Installing…</div>
+      <div class="screen-title"><div><div class="label">Hang tight</div><h1>INSTALLING…</h1></div></div>
       <div class="progress-track"><div class="progress-fill" id="installFill"></div></div>
       <div class="hint" id="installText">Preparing…</div>
     </section>
@@ -143,6 +147,7 @@
     <!-- IMPORT EXISTING SERVER -->
     <section class="screen panel" id="screen-import">
       <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Bring your own</div><h1>IMPORT SERVER</h1></div></div>
 
       <label class="field">
         <span class="label">Server folder</span>

@@ -303,3 +303,46 @@ test('a player connecting when no local server is listening gets cleaned up (clo
   tunnel.stop();
   wss.close();
 });
+
+// ─── Relay candidate fallback (direct endpoint -> Cloudflare) ───────────────
+
+test('falls back to the next relay candidate when the preferred one is unreachable', async () => {
+  const { wss, url } = await startFakeRelay();
+  // Grab a free port, then close it so connecting there is refused.
+  const deadPort = await new Promise((resolve) => {
+    const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });
+  });
+  const tunnel = new Tunnel();
+  const logs = [];
+  tunnel.on('log', (l) => logs.push(l));
+
+  const connected = new Promise((resolve) => wss.once('connection', resolve));
+  tunnel.start({ relayUrls: [`ws://127.0.0.1:${deadPort}`, url], token: 'vp_testtoken1234567890', localPort: 1 });
+  const hostSocket = await connected;
+  await once(hostSocket, 'message'); // register received
+
+  try {
+    assert.equal(tunnel.relayUrl, url);
+    assert.ok(logs.some((l) => l.startsWith(`Could not reach ws://127.0.0.1:${deadPort}`)), 'logs the fallback');
+
+    // Once established, a later drop retries the preferred candidate first.
+    const reconnecting = once(tunnel, 'status');
+    hostSocket.close();
+    assert.equal(await reconnecting, 'reconnecting');
+    assert.equal(tunnel.urlIndex, 0);
+  } finally {
+    const stopped = once(tunnel, 'stopped');
+    tunnel.stop();
+    await stopped;
+    wss.close();
+  }
+});
+
+test('single relayUrl form still works (no fallback list)', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_testtoken1234567890', localPort: 1 });
+  assert.deepEqual(tunnel.relayUrls, [url]);
+  tunnel.stop();
+  wss.close();
+});
