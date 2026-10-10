@@ -1,12 +1,13 @@
 'use strict';
 
 // Shared state for the install wizard.
-const wizardState = { name: null, type: null, version: null, ramMb: null, serverDir: null };
+const wizardState = { name: null, type: null, version: null, ramMb: null, serverDir: null, templateId: null };
 
 const serverNameInput = $('serverName');
 const typeGrid = $('typeGrid');
 const versionSelect = $('versionSelect');
 const typeNextBtn = $('typeNextBtn');
+const templateGrid = $('templateGrid');
 
 const javaStatusText = $('javaStatusText');
 const installJavaBtn = $('installJavaBtn');
@@ -25,7 +26,46 @@ const installText = $('installText');
 
 let javaSatisfied = false;
 
-// ─── Step 1: server type + version ──────────────────────────────────────
+// ─── Step 1: template (optional) + server type + version ───────────────
+let templates = [];
+
+async function loadTemplates() {
+  templates = await window.vp.server.templates();
+  templateGrid.innerHTML = '';
+  for (const t of templates) {
+    const btn = document.createElement('button');
+    btn.className = 'mode-card template-card';
+    btn.type = 'button';
+    btn.dataset.template = t.id;
+    const title = document.createElement('div');
+    title.className = 'mode-title';
+    title.textContent = t.label;
+    const desc = document.createElement('div');
+    desc.className = 'mode-desc';
+    desc.textContent = t.blurb;
+    btn.append(title, desc);
+    if (t.bedrock) {
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = 'Bedrock';
+      btn.appendChild(pill);
+    }
+    btn.addEventListener('click', () => selectTemplate(t, btn));
+    templateGrid.appendChild(btn);
+  }
+}
+
+function selectTemplate(t, btn) {
+  const wasSelected = btn.classList.contains('selected');
+  templateGrid.querySelectorAll('.template-card').forEach((el) => el.classList.remove('selected'));
+  if (wasSelected) { wizardState.templateId = null; serverNameInput.placeholder = 'Survival SMP'; return; }
+  btn.classList.add('selected');
+  wizardState.templateId = t.id;
+  serverNameInput.placeholder = t.label;
+  const typeBtn = typeGrid.querySelector(`[data-type="${t.type}"]`);
+  if (typeBtn && wizardState.type !== t.type) selectType(t.type, typeBtn, { keepTemplate: true });
+}
+
 async function loadTypes() {
   const types = await window.vp.server.types();
   typeGrid.innerHTML = '';
@@ -39,10 +79,16 @@ async function loadTypes() {
   }
 }
 
-async function selectType(type, btn) {
+async function selectType(type, btn, { keepTemplate = false } = {}) {
   typeGrid.querySelectorAll('.mode-card').forEach((el) => el.classList.remove('selected'));
   btn.classList.add('selected');
   wizardState.type = type;
+  // Picking a different type by hand drops a template made for another type.
+  const tpl = templates.find((t) => t.id === wizardState.templateId);
+  if (!keepTemplate && tpl && tpl.type !== type) {
+    wizardState.templateId = null;
+    templateGrid.querySelectorAll('.template-card').forEach((el) => el.classList.remove('selected'));
+  }
 
   versionSelect.innerHTML = '<option>Loading…</option>';
   typeNextBtn.disabled = true;
@@ -63,7 +109,8 @@ versionSelect.addEventListener('change', () => { wizardState.version = versionSe
 serverNameInput.addEventListener('input', () => { wizardState.name = serverNameInput.value.trim(); });
 
 typeNextBtn.addEventListener('click', async () => {
-  wizardState.name = serverNameInput.value.trim();
+  const tpl = templates.find((t) => t.id === wizardState.templateId);
+  wizardState.name = serverNameInput.value.trim() || (tpl ? tpl.label : '');
   showScreen('screen-config');
   await Promise.all([loadSpecs(), runJavaCheck(), loadDefaultDir()]);
   updateInstallEnabled();
@@ -174,6 +221,7 @@ installBtn.addEventListener('click', async () => {
       minRamMb: wizardState.ramMb,
       maxRamMb: wizardState.ramMb,
       serverDir: wizardState.serverDir,
+      templateId: wizardState.templateId || undefined,
     });
   } catch (err) {
     installText.textContent = 'Install failed: ' + (err && err.message ? err.message : err);
@@ -181,8 +229,9 @@ installBtn.addEventListener('click', async () => {
   }
 
   await window.refreshLibrary();
-  window.openManagementScreen(result.profile.id);
+  await window.openManagementScreen(result.profile.id);
   showScreen('screen-console');
+  if (result.warning && window.consoleLogLine) window.consoleLogLine(result.warning);
   const startRes = await window.vp.server.start(result.profile.id);
   if (startRes && startRes.cancelled) return; // shouldn't happen for a brand-new profile, but handled anyway
 });
@@ -197,6 +246,9 @@ window.vp.on('install:progress', (p) => {
     installText.textContent = p.total
       ? `Downloading… ${pct}% (${mb(p.received)} / ${mb(p.total)} MB)`
       : 'Downloading…';
+  } else if (p.phase === 'bedrock') {
+    installFill.style.width = '100%';
+    installText.textContent = 'Adding Bedrock support (Geyser + Floodgate)…';
   } else if (p.phase === 'done') {
     installFill.style.width = '100%';
     installText.textContent = 'Starting server…';
@@ -204,3 +256,4 @@ window.vp.on('install:progress', (p) => {
 });
 
 loadTypes();
+loadTemplates();

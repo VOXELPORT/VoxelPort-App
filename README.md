@@ -59,7 +59,14 @@
 ## ✨ What you get
 
 - 🌍 **No port forwarding** — the app dials out to the relay; your router and home IP stay private.
-- 🎮 **Vanilla clients** — players need nothing but Minecraft: Java Edition.
+- 🏷️ **Your own address** — claim `yourname.voxelport.in` for free. Friends join without a port number.
+- 📱 **Bedrock players too** — one switch installs Geyser + Floodgate so phone, console and Windows players join the same server.
+- 🎮 **Vanilla clients** — Java players need nothing but Minecraft.
+- 🧩 **Templates** — Survival SMP, Java + Bedrock, Creative Flat, Hardcore, Peaceful, Modded — pick one and go.
+- ⚙️ **Settings screen** — game mode, difficulty, max players, whitelist, MOTD, view distance and more, without editing files.
+- 📊 **Performance panel** — live CPU, RAM and TPS, with a warning when the server can't keep up.
+- 🩺 **Crash explanations** — if the server stops, VoxelPort says why in plain words (port in use, missing mod, out of memory…) and offers the fix.
+- 🌐 **Server list** — optionally show your server on [voxelport.in/servers](https://voxelport.in/#/servers).
 - ☕ **Automatic Java** — installs the correct Eclipse Temurin (Java 25 for Minecraft 26.1+) and fixes "needs a newer Java" errors on its own.
 - 📦 **Any server** — Vanilla, Paper, Fabric, modpacks, or any server jar you already have.
 - 🚀 **Low ping** — connects straight to the relay, with an automatic Cloudflare fallback if your network blocks it.

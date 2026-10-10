@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('vp', {
       'update:available',
       'update:downloaded',
       'update:error',
+      'tunnel:name',
+      'tunnel:nameError',
+      'perf:sample',
+      'server:diagnosis',
+      'bedrock:progress',
     ];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_evt, payload) => cb(payload));
@@ -63,8 +68,19 @@ contextBridge.exposeInMainWorld('vp', {
     command: (command) => ipcRenderer.invoke('server:command', { command }),
     openFolder: (id) => ipcRenderer.invoke('server:openFolder', { id }),
     makePublic: (id) => ipcRenderer.invoke('server:makePublic', { id }),
+    templates: () => ipcRenderer.invoke('server:templates'),
+    getSettings: (id) => ipcRenderer.invoke('server:settings:get', { id }),
+    saveSettings: (input) => ipcRenderer.invoke('server:settings:save', input),
+    setBedrock: (id, enabled) => ipcRenderer.invoke('server:bedrock:set', { id, enabled }),
+    fix: (id, action) => ipcRenderer.invoke('server:fix', { id, action }),
 
     state: () => ipcRenderer.invoke('server:state'),
+  },
+
+  name: {
+    get: () => ipcRenderer.invoke('name:get'),
+    claim: (name) => ipcRenderer.invoke('name:claim', { name }),
+    release: () => ipcRenderer.invoke('name:release'),
   },
 
   update: {

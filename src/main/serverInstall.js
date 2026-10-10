@@ -18,7 +18,9 @@ function getServerDir(userDataDir) {
 // meta.fabricmc.net), plus each project's other known first-party domains
 // so a CDN subdomain change doesn't need a code update. Anything else
 // (including an HTTPS→HTTP downgrade) is rejected rather than followed.
-const ALLOWED_DOWNLOAD_DOMAINS = ['mojang.com', 'minecraft.net', 'papermc.io', 'fabricmc.net'];
+// geysermc.org and modrinth.com serve the Geyser/Floodgate/Fabric API jars
+// for one-click Bedrock support (bedrock.js), always checksum-verified.
+const ALLOWED_DOWNLOAD_DOMAINS = ['mojang.com', 'minecraft.net', 'papermc.io', 'fabricmc.net', 'geysermc.org', 'modrinth.com'];
 
 const MAX_REDIRECTS = 5;
 const MAX_SERVER_JAR_BYTES = 500 * 1024 * 1024; // generous — real server jars are low tens of MB
@@ -169,7 +171,7 @@ function writeEula(serverDir) {
   );
 }
 
-function writeServerProperties(serverDir, { port = 25565, maxPlayers = 20, difficulty = 'easy', gamemode = 'survival', motd = 'A VoxelPort server' } = {}) {
+function writeServerProperties(serverDir, { port = 25565, maxPlayers = 20, difficulty = 'easy', gamemode = 'survival', motd = 'A VoxelPort server', extra = {} } = {}) {
   // port is written into a config file as a bare value — coerce to a plain
   // integer (not just interpolate the caller's value) so it can't smuggle in
   // extra server.properties lines (e.g. a newline followed by enable-rcon=true).
@@ -183,6 +185,15 @@ function writeServerProperties(serverDir, { port = 25565, maxPlayers = 20, diffi
     'online-mode=true',
     'enable-command-block=false',
   ];
+  // Template settings (already in server.properties form, from serverSettings.js
+  // TEMPLATES) override the defaults above — except the security-relevant keys.
+  const PROTECTED = new Set(['server-port', 'online-mode', 'enable-command-block', 'enable-rcon']);
+  for (const [key, value] of Object.entries(extra)) {
+    if (PROTECTED.has(key) || !/^[a-z0-9.-]+$/.test(key) || /[\r\n]/.test(String(value))) continue;
+    const i = lines.findIndex((l) => l.startsWith(key + '='));
+    if (i !== -1) lines[i] = `${key}=${value}`;
+    else lines.push(`${key}=${value}`);
+  }
   fs.writeFileSync(path.join(serverDir, 'server.properties'), lines.join('\n') + '\n');
 }
 
