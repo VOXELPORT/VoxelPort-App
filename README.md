@@ -15,7 +15,11 @@
 </h3>
 
 <p align="center">
-  <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Setup.exe"><img src="https://img.shields.io/badge/Download-Windows-5FAE3B?style=for-the-badge&logo=windows&logoColor=white&labelColor=3F7F25" alt="Download for Windows" height="40" /></a>
+  <a href="https://apps.microsoft.com/detail/9NGRX9CFNBD6"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" height="56" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Setup.exe"><img src="https://img.shields.io/badge/Download-Windows%20.exe-5FAE3B?style=for-the-badge&logo=windows&logoColor=white&labelColor=3F7F25" alt="Download for Windows" height="40" /></a>
   &nbsp;
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Portable.exe"><img src="https://img.shields.io/badge/Portable-.exe-F3EBDC?style=for-the-badge&labelColor=15120F" alt="Portable exe" height="40" /></a>
   &nbsp;
@@ -30,7 +34,7 @@
 
 | | |
 |:-:|---|
-| **1** | **Install** the app — no account needed. |
+| **1** | **Install** the app from the [Microsoft Store](https://apps.microsoft.com/detail/9NGRX9CFNBD6) — no account needed. |
 | **2** | **Create** a new server (Vanilla, Paper or Fabric) or **import** one you already have. |
 | **3** | Press **Start**, then **Make public**. You get an address like `play.voxelport.in:26137`. |
 | **4** | Friends paste it into **Multiplayer → Add Server**. Done. |
@@ -71,7 +75,7 @@
 <details>
 <summary><b>Windows says "Windows protected your PC"</b></summary>
 
-The app isn't code-signed yet. Click **More info → Run anyway**. Every release ships a `SHA256SUMS.txt` you can check with `Get-FileHash`. A Microsoft Store version is on the way.
+That's the `.exe` download, which isn't code-signed yet. Get VoxelPort from the **[Microsoft Store](https://apps.microsoft.com/detail/9NGRX9CFNBD6)** instead — it's verified by Microsoft and updates automatically. If you use the `.exe`, click **More info → Run anyway**; every release ships a `SHA256SUMS.txt` you can check with `Get-FileHash`.
 </details>
 
 <details>
