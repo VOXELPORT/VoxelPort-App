@@ -53,6 +53,10 @@ app/
     javaCheck.js       detects installed Java, compares against what's needed,
                         reads "needs Java N" errors from server logs
     javaInstall.js     downloads Eclipse Temurin (Adoptium, checksum-verified)
+    serverSettings.js  editable server.properties keys + validation, server templates
+    bedrock.js         one-click Geyser + Floodgate (GeyserMC / Modrinth, checksum-verified)
+    perfMonitor.js     CPU/RAM sampling of the server process, TPS from `tick query`
+    crashExplain.js    plain-English reasons (and fixes) for why a server stopped
     updater.js         GitHub-based auto-update (Windows installer only)
     ipcSenders.js      central IPC sender validation
     relayUrlSafety.js  validates custom relay URLs (real IP literals only)

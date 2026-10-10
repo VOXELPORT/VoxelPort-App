@@ -1,6 +1,7 @@
 'use strict';
 
 const net = require('net');
+const dgram = require('dgram');
 const { EventEmitter } = require('events');
 const WebSocket = require('ws');
 
@@ -38,6 +39,12 @@ const WS_BUFFERED_LOW_WATERMARK = 1 * 1024 * 1024;
 
 const LOCAL_CONNECT_TIMEOUT_MS = 10000;
 
+// Bedrock (UDP) sessions — mirrors the relay's own caps (relay/udp.go).
+const MAX_UDP_SESSIONS = 256;
+const MAX_UDP_DATAGRAM = 2048;
+const MAX_UDP_B64_CHARS = Math.ceil((MAX_UDP_DATAGRAM * 4) / 3) + 4;
+const UDP_SESSION_IDLE_MS = 60000;
+
 function isValidConnId(id) {
   return typeof id === 'string' && id.length > 0 && id.length <= MAX_CONN_ID_LEN;
 }
@@ -61,7 +68,18 @@ function isValidRelayMessage(msg) {
     case 'close':
       return isValidConnId(msg.conn);
     case 'error':
-      return msg.message === undefined || typeof msg.message === 'string';
+    case 'name_error':
+    case 'listing_error':
+    case 'udp_error':
+      return msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 500);
+    case 'udp':
+      return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_UDP_B64_CHARS
+        && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
+    case 'udp_close':
+      return isValidConnId(msg.conn);
+    case 'name':
+      return (msg.name === undefined || (typeof msg.name === 'string' && /^[a-z0-9-]{0,32}$/.test(msg.name)))
+        && (msg.address === undefined || (typeof msg.address === 'string' && msg.address.length <= 253));
     case 'pong':
       return true;
     default:
@@ -76,7 +94,13 @@ function isValidRelayMessage(msg) {
  * each vanilla player connection to a local Minecraft server.
  *
  * Events: 'status' (state), 'assigned' (port), 'players' (count), 'ping' (ms),
- *         'log' (line), 'error' (message), 'stopped'.
+ *         'log' (line), 'error' (message), 'stopped',
+ *         'name' ({ name, address } — empty when none), 'nameError' (message),
+ *         'listingError' (message), 'udpError' (message).
+ *
+ * With `udpPort`, Bedrock players are bridged too: the relay forwards UDP on
+ * the same public port, and each remote player becomes a local UDP socket
+ * talking to Geyser on 127.0.0.1:udpPort.
  */
 class Tunnel extends EventEmitter {
   constructor() {
@@ -89,6 +113,8 @@ class Tunnel extends EventEmitter {
     this.lastPingSent = 0;
     this.reconnectDelay = 1000;
     this.wsStallTimer = null;
+    this.udpSessions = new Map(); // connID -> { sock, idleTimer }
+    this.listing = null; // re-sent after every (re)registration
   }
 
   /**
@@ -97,12 +123,13 @@ class Tunnel extends EventEmitter {
    * after any drop of an established connection, the preferred one is tried
    * again first. `relayUrl` alone is the single-candidate form.
    */
-  start({ relayUrl, relayUrls, token, localPort }) {
+  start({ relayUrl, relayUrls, token, localPort, udpPort = null }) {
     this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
     this.urlIndex = 0;
     this.relayUrl = this.relayUrls[0];
     this.token = token;
     this.localPort = localPort;
+    this.udpPort = udpPort;
     this.manualStop = false;
     this._connect();
   }
@@ -130,13 +157,16 @@ class Tunnel extends EventEmitter {
     ws.on('open', () => {
       opened = true;
       this.emit('log', 'Connected. Registering…');
-      this._send({ type: 'register', token: this.token });
+      const reg = { type: 'register', token: this.token };
+      if (this.udpPort) reg.udp = true;
+      this._send(reg);
     });
 
     ws.on('message', (raw) => this._onMessage(raw));
 
     ws.on('close', () => {
       this._teardownPlayers();
+      this._teardownUdp();
       this._stopPing();
       this._clearWsStallTimer();
       if (this.manualStop) {
@@ -190,6 +220,43 @@ class Tunnel extends EventEmitter {
         this.emit('assigned', msg.port);
         this.emit('log', `Tunnel is live on public port ${msg.port}.`);
         this._startPing();
+        if (this.listing) this._send({ type: 'listing', listing: this.listing });
+        break;
+
+      case 'name':
+        this.emit('name', { name: msg.name || '', address: msg.address || '' });
+        break;
+
+      case 'name_error':
+        this.emit('nameError', msg.message || 'Could not set that address.');
+        break;
+
+      case 'listing_error':
+        this.emit('listingError', msg.message || 'Could not list this server.');
+        break;
+
+      case 'udp_error':
+        this.emit('udpError', msg.message || 'Bedrock forwarding is unavailable.');
+        this.emit('log', 'Relay: ' + (msg.message || 'Bedrock forwarding is unavailable.'));
+        break;
+
+      case 'udp': {
+        if (!this.udpPort) break;
+        let data;
+        try { data = Buffer.from(msg.data, 'base64'); } catch { break; }
+        if (!data.length || data.length > MAX_UDP_DATAGRAM) break;
+        let s = this.udpSessions.get(msg.conn);
+        if (!s) {
+          if (this.udpSessions.size >= MAX_UDP_SESSIONS) break;
+          s = this._openUdpSession(msg.conn);
+        }
+        this._touchUdpSession(msg.conn, s);
+        s.sock.send(data, this.udpPort, '127.0.0.1');
+        break;
+      }
+
+      case 'udp_close':
+        this._closeUdpSession(msg.conn, false);
         break;
 
       case 'error':
@@ -343,6 +410,52 @@ class Tunnel extends EventEmitter {
     this.emit('players', this.players.size);
   }
 
+  _openUdpSession(conn) {
+    const sock = dgram.createSocket('udp4');
+    const s = { sock, idleTimer: null };
+    this.udpSessions.set(conn, s);
+    sock.on('message', (buf) => {
+      if (buf.length > MAX_UDP_DATAGRAM) return;
+      this._touchUdpSession(conn, s);
+      this._send({ type: 'udp', conn, data: buf.toString('base64') });
+    });
+    sock.on('error', () => this._closeUdpSession(conn, true));
+    return s;
+  }
+
+  _touchUdpSession(conn, s) {
+    clearTimeout(s.idleTimer);
+    s.idleTimer = setTimeout(() => this._closeUdpSession(conn, true), UDP_SESSION_IDLE_MS);
+  }
+
+  _closeUdpSession(conn, notifyRelay) {
+    const s = this.udpSessions.get(conn);
+    if (!s) return;
+    this.udpSessions.delete(conn);
+    clearTimeout(s.idleTimer);
+    try { s.sock.close(); } catch { /* already closed */ }
+    if (notifyRelay) this._send({ type: 'udp_close', conn });
+  }
+
+  _teardownUdp() {
+    for (const conn of [...this.udpSessions.keys()]) this._closeUdpSession(conn, false);
+  }
+
+  /** Asks the relay for the custom address `name` (answered by 'name' or 'nameError'). */
+  claimName(name) {
+    this._send({ type: 'claim_name', name: String(name || '').trim().toLowerCase() });
+  }
+
+  releaseName() {
+    this._send({ type: 'release_name' });
+  }
+
+  /** Publishes (or, with null, withdraws) this server's public-list entry. */
+  setListing(listing) {
+    this.listing = listing || null;
+    if (this.running) this._send(listing ? { type: 'listing', listing } : { type: 'listing' });
+  }
+
   _startPing() {
     this._stopPing();
     this.pingTimer = setInterval(() => {
@@ -378,6 +491,7 @@ class Tunnel extends EventEmitter {
     this._stopPing();
     this._clearWsStallTimer();
     this._teardownPlayers();
+    this._teardownUdp();
     this.running = false;
     // If we're mid-reconnect-backoff, this.ws is already closed and its
     // 'close' handler already ran (with manualStop still false at the

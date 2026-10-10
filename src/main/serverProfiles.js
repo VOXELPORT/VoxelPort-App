@@ -32,7 +32,17 @@ function isValidProfile(p) {
     && Number.isInteger(p.minRamMb) && p.minRamMb >= 256 && p.minRamMb <= 131072
     && Number.isInteger(p.maxRamMb) && p.maxRamMb >= p.minRamMb && p.maxRamMb <= 131072
     // Optional: a Java major this server was found to need at runtime.
-    && (p.javaMajor === undefined || (Number.isInteger(p.javaMajor) && p.javaMajor >= 8 && p.javaMajor <= 99));
+    && (p.javaMajor === undefined || (Number.isInteger(p.javaMajor) && p.javaMajor >= 8 && p.javaMajor <= 99))
+    // Optional: Bedrock players via Geyser, the public server-list opt-in,
+    // and the template the server was created from.
+    && (p.bedrock === undefined || typeof p.bedrock === 'boolean')
+    && (p.listing === undefined || isValidListing(p.listing))
+    && (p.template === undefined || (typeof p.template === 'string' && /^[a-z0-9-]{1,32}$/.test(p.template)));
+}
+
+function isValidListing(l) {
+  return !!l && typeof l === 'object' && typeof l.enabled === 'boolean'
+    && (l.description === undefined || (typeof l.description === 'string' && l.description.length <= 160));
 }
 
 function newId() {
@@ -151,6 +161,7 @@ function createProfile(userDataDir, input) {
     createdAt: now,
     lastUsedAt: now,
   };
+  if (input.template) profile.template = input.template;
   if (!isValidProfile(profile)) throw new Error('Invalid server profile.');
 
   const profiles = loadProfiles(userDataDir);

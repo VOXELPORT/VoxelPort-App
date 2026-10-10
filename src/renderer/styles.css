@@ -319,3 +319,86 @@ button:focus-visible, input[type="checkbox"]:focus-visible, summary:focus-visibl
 
 /* App icon in the header — pixel art, so keep it crisp when scaled. */
 .brand-icon { display: block; image-rendering: pixelated; }
+
+/* ─── Templates (new-server wizard) ────────────────────────────────────── */
+.label-note { color: var(--muted); letter-spacing: .06em; }
+.template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.template-card { position: relative; padding: 11px 12px 10px; }
+.template-card .mode-title { font-size: 1.15rem; }
+.template-card.selected { background: var(--gold); }
+.template-card .pill { position: absolute; top: -9px; right: 8px; }
+.pill {
+  display: inline-block; font-family: var(--pixel); font-size: .58rem; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--diamond); color: var(--ink); border: 2px solid var(--ink); padding: 2px 6px 1px; line-height: 1.2;
+}
+
+/* ─── Performance panel ───────────────────────────────────────────────── */
+.perf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.perf-tile { background: var(--card); border: 2.5px solid var(--ink); box-shadow: var(--shadow-sm); padding: 8px 10px 9px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.perf-label { font-family: var(--pixel); font-size: .62rem; text-transform: uppercase; color: var(--muted); }
+.perf-tile strong { font-family: var(--display); font-weight: 400; font-size: 1.45rem; line-height: 1; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.perf-bar { height: 9px; background: var(--paper-2); border: 2px solid var(--ink); margin-top: 3px; overflow: hidden; }
+.perf-bar > div { height: 100%; width: 0; background: var(--grass); transition: width .4s ease; }
+.perf-bar > div.warn { background: var(--gold); }
+.perf-bar > div.bad { background: var(--red); }
+.perf-warn { font-size: .8rem; font-weight: 600; background: var(--gold); border: 2.5px solid var(--ink); padding: 8px 11px; }
+
+/* ─── "Why it stopped" card ───────────────────────────────────────────── */
+.diagnosis { background: var(--card); border: 3px solid var(--red); box-shadow: 5px 5px 0 var(--red); display: flex; flex-direction: column; }
+.diag-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--red); color: var(--card); padding: 7px 12px 5px;
+  font-family: var(--display); font-size: 1.2rem; letter-spacing: .05em;
+}
+.diag-head .link-btn { color: var(--card); }
+.diag-item { padding: 11px 13px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.diag-item + .diag-item { border-top: 2px dashed var(--ink); }
+.diag-title { font-family: var(--display); font-size: 1.15rem; letter-spacing: .03em; line-height: 1.05; }
+.diag-detail { font-size: .84rem; line-height: 1.45; color: var(--ink-2); user-select: text; }
+
+/* ─── Public address extras ───────────────────────────────────────────── */
+.share-alt { font-family: var(--type); font-size: .76rem; font-weight: 700; color: var(--ink-2); margin-top: -4px; user-select: text; }
+.bedrock-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .84rem; user-select: text; }
+.bedrock-line b { font-family: var(--type); }
+.name-box { background: var(--card); border: 2.5px solid var(--ink); padding: 10px 11px; display: flex; flex-direction: column; gap: 7px; }
+.name-view { display: flex; align-items: center; gap: 10px; font-size: .86rem; }
+.name-view b { font-family: var(--type); }
+.name-edit { display: flex; flex-direction: column; gap: 7px; }
+.name-row { display: flex; align-items: stretch; }
+.name-row input { flex: 1; min-width: 0; font-family: var(--type); font-weight: 700; padding: 8px 10px; }
+.name-suffix { display: flex; align-items: center; padding: 0 9px; font-family: var(--type); font-weight: 700; font-size: .85rem; background: var(--paper); border: 2.5px solid var(--ink); border-left: none; margin-right: 8px; }
+.name-msg { font-size: .76rem; color: var(--ink-2); line-height: 1.4; }
+.name-msg.err { color: var(--red); font-weight: 700; }
+.link-btn {
+  background: transparent; padding: 0; font-family: var(--type); font-weight: 700; font-size: .74rem;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--ink); border-bottom: 2px solid currentColor;
+}
+.link-btn:hover { color: var(--red); }
+.listed-line { font-family: var(--type); font-weight: 700; font-size: .78rem; }
+.listed-line a { color: var(--ink); }
+
+/* ─── Settings screen ─────────────────────────────────────────────────── */
+.set-group { border: 2.5px solid var(--ink); background: var(--paper); padding: 12px 13px 14px; display: flex; flex-direction: column; gap: 12px; }
+.set-group-title { font-family: var(--display); font-size: 1.3rem; letter-spacing: .04em; line-height: 1; }
+.set-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 14px; }
+.set-fields .span-2 { grid-column: span 2; }
+.set-fields .field input, .set-fields .field select { width: 100%; }
+.toggle-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.toggle-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--grass-dk); flex: none; margin-top: 1px; }
+.toggle-row > span { display: flex; flex-direction: column; gap: 3px; font-size: .9rem; }
+.toggle-row.compact { align-items: center; }
+textarea {
+  background: #fff; border: 2.5px solid var(--ink); color: var(--ink); padding: 9px 11px; resize: vertical;
+  font-family: var(--body); font-size: .9rem; outline: none; border-radius: 0;
+}
+textarea:focus { box-shadow: 3px 3px 0 var(--grass); }
+textarea:disabled { background: var(--paper-2); color: var(--muted); }
+.set-msg { font-weight: 700; font-size: .86rem; border: 2.5px solid var(--ink); padding: 9px 12px; }
+.set-msg.ok { background: var(--grass); }
+.set-msg.info { background: var(--gold); }
+.set-msg.err { background: var(--red); color: var(--card); }
+
+@media (max-width: 600px) {
+  .set-fields, .template-grid { grid-template-columns: 1fr; }
+  .set-fields .span-2 { grid-column: auto; }
+}

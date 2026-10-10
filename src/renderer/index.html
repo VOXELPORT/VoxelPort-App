@@ -86,6 +86,9 @@
         <input id="serverName" type="text" placeholder="Survival SMP" maxlength="60" />
       </label>
 
+      <div class="label" style="margin-bottom: 4px;">Start from a template <span class="label-note">— optional</span></div>
+      <div class="template-grid" id="templateGrid"></div>
+
       <div class="label" style="margin-bottom: 4px;">Server type</div>
       <div class="mode-grid" id="typeGrid"></div>
 
@@ -202,9 +205,17 @@
         <strong id="srvPlayers">0</strong><span class="hint">&nbsp;players</span>
       </div>
 
+      <div class="perf hidden" id="perfPanel" aria-label="Server performance">
+        <div class="perf-tile"><span class="perf-label">CPU</span><strong id="perfCpu">—</strong><div class="perf-bar"><div id="perfCpuBar"></div></div></div>
+        <div class="perf-tile"><span class="perf-label">RAM</span><strong id="perfRam">—</strong><div class="perf-bar"><div id="perfRamBar"></div></div></div>
+        <div class="perf-tile"><span class="perf-label">TPS</span><strong id="perfTps">—</strong><div class="perf-bar"><div id="perfTpsBar"></div></div></div>
+      </div>
+      <div class="perf-warn hidden" id="perfWarn"></div>
+
       <div class="console-actions">
         <button id="srvStartBtn" class="primary">Start server</button>
         <button id="srvStopBtn" class="ghost hidden">Stop</button>
+        <button id="srvSettingsBtn" class="ghost">Settings</button>
         <button id="srvFolderBtn" class="ghost">Open folder</button>
         <button id="srvRemoveBtn" class="ghost">Remove from VoxelPort</button>
       </div>
@@ -215,13 +226,39 @@
           <code id="srvAddress">—</code>
           <button id="srvCopyBtn" class="ghost" title="Copy">Copy</button>
         </div>
+        <div class="share-alt hidden" id="srvAltAddress"></div>
+        <div class="bedrock-line hidden" id="srvBedrock">
+          <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
+        </div>
         <div class="stats">
           <div><strong id="srvTunnelPlayers">0</strong><span>players</span></div>
           <div><strong id="srvPing">—</strong><span>relay ping</span></div>
         </div>
+
+        <div class="name-box">
+          <div class="name-view hidden" id="nameView">
+            <span>Your address: <b id="nameCurrent">—</b></span>
+            <span class="spacer"></span>
+            <button class="link-btn" id="nameChangeBtn" type="button">Change</button>
+            <button class="link-btn" id="nameRemoveBtn" type="button">Remove</button>
+          </div>
+          <div class="name-edit" id="nameEdit">
+            <span class="share-label">Get a custom address — free</span>
+            <div class="name-row">
+              <input id="nameInput" type="text" maxlength="20" placeholder="yourname" spellcheck="false" autocomplete="off" />
+              <span class="name-suffix">.voxelport.in</span>
+              <button id="nameClaimBtn" class="ghost small" type="button">Claim</button>
+            </div>
+            <div class="name-msg" id="nameMsg">Friends join without a port number. 3–20 letters, numbers or dashes.</div>
+          </div>
+        </div>
+
+        <div class="listed-line hidden" id="srvListed">★ Listed on <a href="https://voxelport.in/#/servers" target="_blank" rel="noreferrer">voxelport.in/servers</a></div>
         <button id="stopPublicBtn" class="ghost">Stop public tunnel</button>
       </section>
       <button id="makePublicBtn" class="ghost">Make public</button>
+
+      <div class="diagnosis hidden" id="diagnosis" role="alert"></div>
 
       <div class="log console-log" id="srvLog" aria-live="polite"></div>
 
@@ -229,6 +266,57 @@
         <input id="cmdInput" type="text" placeholder="Type a server command…" />
         <button id="cmdSendBtn" class="ghost">Send</button>
       </div>
+    </section>
+
+    <!-- SERVER SETTINGS -->
+    <section class="screen panel" id="screen-settings">
+      <button class="back-link" id="settingsBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="setSubtitle">Server settings</div><h1>SETTINGS</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">General</div>
+        <label class="field">
+          <span class="label">Server name</span>
+          <input id="setName" type="text" maxlength="60" />
+        </label>
+        <label class="field">
+          <span class="label">Local port</span>
+          <input id="setPort" type="number" min="1" max="65535" inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span class="label">Memory (RAM) — <span id="setRamLabel">–</span> MB</span>
+          <input id="setRam" type="range" min="512" step="256" />
+        </label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Gameplay</div>
+        <div class="set-fields" id="setFields"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Bedrock players</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setBedrock" />
+          <span><b>Let Bedrock players join</b><span class="hint">Phones, consoles and Minecraft for Windows. Installs Geyser + Floodgate (free, open source).</span></span>
+        </label>
+        <div class="hint" id="setBedrockMsg"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Public server list</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setListed" />
+          <span><b>Show on voxelport.in/servers</b><span class="hint">While this server is public, anyone can find it and join.</span></span>
+        </label>
+        <label class="field">
+          <span class="label">List description</span>
+          <textarea id="setListingDesc" maxlength="160" rows="2" placeholder="Friendly survival, no griefing, Discord in game"></textarea>
+        </label>
+      </div>
+
+      <button class="primary" id="setSaveBtn" type="button">Save settings</button>
+      <div class="set-msg hidden" id="setMsg"></div>
     </section>
 
   </main>
@@ -248,5 +336,6 @@
   <script src="wizard.js"></script>
   <script src="import.js"></script>
   <script src="console.js"></script>
+  <script src="settings.js"></script>
 </body>
 </html>

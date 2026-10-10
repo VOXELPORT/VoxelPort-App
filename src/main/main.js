@@ -20,6 +20,12 @@ const serverProfiles = require('./serverProfiles');
 const { isSafeRelayUrl } = require('./relayUrlSafety');
 const { isApprovedExternalUrl } = require('./externalLinkSafety');
 const { guarded } = require('./ipcSenders');
+const serverSettings = require('./serverSettings');
+const { explainCrash } = require('./crashExplain');
+const {
+  PerfMonitor, supportsTickQuery, isTickQueryLine, parseMspt, tpsFromMspt, LAG_RE,
+} = require('./perfMonitor');
+const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
 // Tried first when no custom relay is set: same relay, reached directly
@@ -44,6 +50,23 @@ let activeServerProfileId = null;
 let publicServerProfileId = null;
 let manualTunnelActive = false;
 
+// The custom address (steve.voxelport.in) belongs to this install's device
+// token, not to one server: whichever server is public uses it. The relay
+// re-announces it on every connection; this copy just lets the UI show it
+// while nothing is public.
+let customAddress = { name: '', address: '' };
+function customAddressPath() {
+  return path.join(userDataDir(), 'custom-address.json');
+}
+function loadCustomAddress() {
+  try {
+    const v = JSON.parse(fs.readFileSync(customAddressPath(), 'utf8'));
+    if (v && typeof v.name === 'string' && typeof v.address === 'string') customAddress = { name: v.name, address: v.address };
+  } catch { /* none yet */ }
+}
+function saveCustomAddress() {
+  try { fs.writeFileSync(customAddressPath(), JSON.stringify(customAddress)); } catch { /* best-effort */ }
+}
 function userDataDir() {
   return app.getPath('userData');
 }
@@ -117,6 +140,14 @@ function wireTunnel(t) {
   t.on('ping', (ms) => send('tunnel:ping', ms));
   t.on('log', (line) => send('tunnel:log', line));
   t.on('error', (message) => send('tunnel:error', message));
+  t.on('name', (n) => {
+    customAddress = { name: n.name, address: n.address };
+    saveCustomAddress();
+    send('tunnel:name', customAddress);
+  });
+  t.on('nameError', (message) => send('tunnel:nameError', message));
+  t.on('listingError', (message) => send('server:log', `[VoxelPort] Server list: ${message}`));
+  t.on('udpError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('stopped', () => {
     send('tunnel:status', 'stopped');
     publicServerProfileId = null;
@@ -131,17 +162,87 @@ function wireTunnel(t) {
 // the server restarted once.
 let javaWatch = null; // { profileId, usedMajor, neededMajor, retried }
 
+// Recent console lines, for crash explanations.
+const RECENT_LINES = 400;
+let recentLines = [];
+// True once the user (or a switch) asked the server to stop — such exits
+// aren't crashes and get no explanation.
+let stopRequested = false;
+
+// Performance panel: CPU/RAM from the OS, TPS from a hidden `tick query`.
+const perf = new PerfMonitor();
+let perfState = { cpuPercent: null, memMb: null, tps: null, mspt: null, lagWarnings: 0 };
+let tickTimer = null;
+let tickQueryAt = 0;
+let tickMisses = 0;
+const TICK_QUERY_EVERY_MS = 10000;
+const TICK_QUERY_WINDOW_MS = 3000;
+
+function sendPerf() {
+  const profile = activeServerProfileId ? serverProfiles.getProfile(userDataDir(), activeServerProfileId) : null;
+  send('perf:sample', { ...perfState, maxRamMb: profile ? profile.maxRamMb : null });
+}
+perf.on('sample', (s) => {
+  perfState.cpuPercent = s.cpuPercent;
+  perfState.memMb = s.memMb;
+  sendPerf();
+});
+
+function startTickPolling(profile) {
+  stopTickPolling();
+  if (!supportsTickQuery(profile.version)) return;
+  tickMisses = 0;
+  tickTimer = setInterval(() => {
+    if (serverProc.status !== 'online') return;
+    if (tickQueryAt && perfState.mspt === null) tickMisses++;
+    if (tickMisses >= 3) { stopTickPolling(); return; } // this server has no /tick
+    tickQueryAt = Date.now();
+    serverProc.sendCommand('tick query');
+  }, TICK_QUERY_EVERY_MS);
+}
+function stopTickPolling() {
+  if (tickTimer) clearInterval(tickTimer);
+  tickTimer = null;
+  tickQueryAt = 0;
+}
+
 function wireServerProcess(p) {
-  p.on('status', (s) => { send('server:status', s); broadcastState(); });
+  p.on('status', (s) => {
+    send('server:status', s);
+    broadcastState();
+    if (s === 'online') {
+      const profile = activeServerProfileId ? serverProfiles.getProfile(userDataDir(), activeServerProfileId) : null;
+      if (profile) startTickPolling(profile);
+    }
+  });
   p.on('log', (line) => {
+    recentLines.push(line);
+    if (recentLines.length > RECENT_LINES) recentLines = recentLines.slice(-RECENT_LINES);
+    if (tickQueryAt && Date.now() - tickQueryAt < TICK_QUERY_WINDOW_MS && isTickQueryLine(line)) {
+      const mspt = parseMspt(line);
+      if (mspt !== null) {
+        perfState.mspt = mspt;
+        perfState.tps = tpsFromMspt(mspt);
+        tickMisses = 0;
+        sendPerf();
+      }
+      return; // our own query — keep it out of the console
+    }
+    if (LAG_RE.test(line)) { perfState.lagWarnings++; sendPerf(); }
     send('server:log', line);
     if (javaWatch) {
       const need = requiredJavaFromLog(line);
       if (need && need > (javaWatch.usedMajor || 0)) javaWatch.neededMajor = Math.max(javaWatch.neededMajor || 0, need);
     }
   });
-  p.on('players', (n) => send('server:players', n));
+  p.on('players', (n) => {
+    send('server:players', n);
+    scheduleListingUpdate();
+  });
   p.on('exit', (code) => {
+    perf.stop();
+    stopTickPolling();
+    const exitedProfileId = activeServerProfileId;
     send('server:exit', code);
     if (activeServerProfileId && publicServerProfileId === activeServerProfileId) {
       // The managed server backing the public tunnel died — the tunnel
@@ -154,6 +255,12 @@ function wireServerProcess(p) {
 
     const watch = javaWatch;
     javaWatch = null;
+    const javaFix = code !== 0 && watch && watch.neededMajor && !watch.retried;
+    if (!stopRequested && !javaFix && exitedProfileId) {
+      const profile = serverProfiles.getProfile(userDataDir(), exitedProfileId);
+      const items = explainCrash(recentLines.slice(-200), { port: profile && profile.port, crashed: code !== 0 });
+      if (items.length) send('server:diagnosis', { profileId: exitedProfileId, items });
+    }
     if (code !== 0 && watch && watch.neededMajor) {
       if (watch.retried) {
         send('server:log', `[VoxelPort] The server still reports it needs Java ${watch.neededMajor}. Please check the server files.`);
@@ -222,6 +329,7 @@ if (!gotLock) {
     const loaded = loadOrCreateToken(userDataDir(), safeStorage);
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
+    loadCustomAddress();
     createWindow();
     updater.start({ isPackaged: app.isPackaged, platform: process.platform, windowsStore: Boolean(process.windowsStore) });
 
@@ -233,7 +341,10 @@ if (!gotLock) {
 
 app.on('window-all-closed', () => {
   updater.stop();
+  perf.stop();
+  stopTickPolling();
   if (tunnel) tunnel.stop();
+  stopRequested = true;
   if (serverProc.child) serverProc.stop();
   if (process.platform !== 'darwin') app.quit();
 });
@@ -287,7 +398,32 @@ ipcMain.handle('update:install', guarded(g, async () => {
 
 // ─── Tunnel (single global instance, item 7) ───────────────────────────────
 
-async function startTunnelInternal({ localPort, relayUrl, profileId }) {
+/** The public server-list entry for a profile, or null if it isn't opted in. */
+function buildListing(profile) {
+  if (!profile || !profile.listing || !profile.listing.enabled) return null;
+  const values = serverSettings.readSettings(profile.serverDir);
+  return {
+    title: profile.name,
+    description: profile.listing.description || values.motd || '',
+    version: profile.version,
+    mode: serverSettings.listingMode(values, profile.type),
+    players: activeServerProfileId === profile.id ? serverProc.online.size : 0,
+    max_players: values['max-players'],
+    bedrock: Boolean(profile.bedrock),
+  };
+}
+
+let listingTimer = null;
+function scheduleListingUpdate() {
+  if (listingTimer || !tunnel || !publicServerProfileId) return;
+  listingTimer = setTimeout(() => {
+    listingTimer = null;
+    if (!tunnel || !publicServerProfileId) return;
+    tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), publicServerProfileId)));
+  }, 5000);
+}
+
+async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = null }) {
   const port = Number(localPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     send('tunnel:error', 'Enter a valid local port (1–65535).');
@@ -327,7 +463,8 @@ async function startTunnelInternal({ localPort, relayUrl, profileId }) {
   wireTunnel(tunnel);
   const usingDefault = resolvedRelayUrl.replace(/\/+$/, '') === DEFAULT_RELAY_URL;
   const relayUrls = usingDefault ? [DIRECT_RELAY_URL, DEFAULT_RELAY_URL] : [resolvedRelayUrl];
-  tunnel.start({ relayUrls, token: deviceToken, localPort: port });
+  if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort });
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
   broadcastState();
@@ -344,7 +481,8 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
   if (activeServerProfileId !== id) {
     return { ok: false, error: 'Start this server before making it public.' };
   }
-  return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id });
+  const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
+  return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort });
 }));
 
 ipcMain.handle('tunnel:stop', guarded(g, () => {
@@ -506,7 +644,13 @@ ipcMain.handle('server:chooseFolder', guarded(g, async () => {
 
 // ─── Install (Vanilla/Paper/Fabric) ─────────────────────────────────────────
 
-ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, port, minRamMb, maxRamMb, serverDir }) => {
+ipcMain.handle('server:templates', guarded(g, () => serverSettings.TEMPLATES.map((t) => ({
+  id: t.id, label: t.label, blurb: t.blurb, type: t.type, bedrock: Boolean(t.bedrock),
+}))));
+
+ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, port, minRamMb, maxRamMb, serverDir, templateId }) => {
+  const template = templateId ? serverSettings.getTemplate(templateId) : null;
+  if (templateId && !template) throw new Error('Unknown template.');
   const portNum = Number(port);
   if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
     throw new Error('Enter a valid server port (1–65535).');
@@ -533,14 +677,26 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   }, checksum);
 
   writeEula(dir);
-  writeServerProperties(dir, { port: portNum });
+  writeServerProperties(dir, { port: portNum, extra: template ? template.properties : {} });
 
-  const profile = serverProfiles.createProfile(userDataDir(), {
-    name: name || `${type[0].toUpperCase()}${type.slice(1)} server`,
+  let profile = serverProfiles.createProfile(userDataDir(), {
+    name: name || (template ? template.label : `${type[0].toUpperCase()}${type.slice(1)} server`),
     type, version, serverDir: dir, port: portNum, minRamMb: minRam, maxRamMb: maxRam,
+    template: template ? template.id : undefined,
   });
+
+  let warning = null;
+  if (template && template.bedrock && bedrockSupported(type)) {
+    send('install:progress', { phase: 'bedrock' });
+    try {
+      await installBedrockSupport({ serverDir: dir, type, version });
+      profile = serverProfiles.updateProfile(userDataDir(), profile.id, { bedrock: true });
+    } catch (err) {
+      warning = `Bedrock support couldn't be added (${err.message}). You can turn it on later in Settings.`;
+    }
+  }
   send('install:progress', { phase: 'done' });
-  return { ok: true, profile };
+  return { ok: true, profile, warning };
 }));
 
 // ─── Single managed server process (item 6) ─────────────────────────────────
@@ -573,6 +729,7 @@ async function startServerProfile(id, { retried = false } = {}) {
       tunnel.stop();
       await waitForTunnelStopped(10000);
     }
+    stopRequested = true;
     serverProc.stop();
     await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
   } else if (serverProc.child && activeServerProfileId === id) {
@@ -609,12 +766,17 @@ async function startServerProfile(id, { retried = false } = {}) {
   }
 
   javaWatch = { profileId: id, usedMajor: java.major, neededMajor: null, retried };
+  stopRequested = false;
+  recentLines = [];
+  perfState = { cpuPercent: null, memMb: null, tps: null, mspt: null, lagWarnings: 0 };
   serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath });
+  if (serverProc.child && serverProc.child.pid) perf.start(serverProc.child.pid);
   broadcastState();
   return { ok: true, port: profile.port };
 }
 
 ipcMain.handle('server:stop', guarded(g, () => {
+  stopRequested = true;
   serverProc.stop();
   return { ok: true };
 }));
@@ -629,6 +791,142 @@ ipcMain.handle('server:openFolder', guarded(g, (_evt, { id }) => {
   const dir = (profile && profile.serverDir) || getServerDir(userDataDir());
   shell.openPath(dir);
   return { ok: true };
+}));
+
+// ─── Settings screen ───────────────────────────────────────────────────────
+
+ipcMain.handle('server:settings:get', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) throw new Error('Server profile not found.');
+  return {
+    profile,
+    fields: serverSettings.SETTINGS,
+    values: serverSettings.readSettings(profile.serverDir),
+    bedrock: { supported: bedrockSupported(profile.type), enabled: Boolean(profile.bedrock), port: bedrockPort(profile.serverDir) },
+    listing: profile.listing || { enabled: false, description: '' },
+    totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
+    running: activeServerProfileId === id && Boolean(serverProc.child),
+  };
+}));
+
+ipcMain.handle('server:settings:save', guarded(g, (_evt, { id, name, port, ramMb, properties, listing }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) throw new Error('Server profile not found.');
+
+  const props = serverSettings.validateSettings(properties || {});
+  const changes = {};
+  if (typeof name === 'string' && name.trim()) changes.name = name.trim().slice(0, 60);
+  if (port !== undefined) {
+    const p = Number(port);
+    if (!Number.isInteger(p) || p < 1 || p > 65535) throw new Error('Enter a valid port (1–65535).');
+    changes.port = p;
+    props['server-port'] = String(p);
+  }
+  if (ramMb !== undefined) {
+    const r = Number(ramMb);
+    if (!Number.isInteger(r) || r < 512 || r > 131072) throw new Error('Invalid RAM amount.');
+    changes.minRamMb = r;
+    changes.maxRamMb = r;
+  }
+  if (listing !== undefined) {
+    if (!listing || typeof listing.enabled !== 'boolean') throw new Error('Invalid server-list setting.');
+    const description = typeof listing.description === 'string' ? listing.description.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 160) : '';
+    changes.listing = { enabled: listing.enabled, description };
+  }
+
+  const updated = serverProfiles.updateProfile(userDataDir(), id, changes);
+  updateServerPropertiesSafely(updated.serverDir, props);
+
+  if (tunnel && publicServerProfileId === id) tunnel.setListing(buildListing(updated));
+  const running = activeServerProfileId === id && Boolean(serverProc.child);
+  return { ok: true, profile: updated, restartNeeded: running };
+}));
+
+// ─── Bedrock players (Geyser + Floodgate) ─────────────────────────────────
+
+let bedrockBusy = false;
+ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (bedrockBusy) return { ok: false, error: 'Already setting up Bedrock — one moment.' };
+  bedrockBusy = true;
+  try {
+    if (enabled) {
+      if (!bedrockSupported(profile.type)) return { ok: false, error: 'Bedrock players need a Paper or Fabric server.' };
+      await installBedrockSupport({
+        serverDir: profile.serverDir, type: profile.type, version: profile.version,
+        onProgress: (p) => send('bedrock:progress', p),
+      });
+    } else {
+      removeBedrockSupport(profile.serverDir);
+    }
+    const updated = serverProfiles.updateProfile(userDataDir(), id, { bedrock: Boolean(enabled) });
+
+    // A public tunnel only forwards UDP if it asked for it when connecting.
+    if (tunnel && publicServerProfileId === id) {
+      tunnel.stop();
+      await waitForTunnelStopped(10000);
+      tunnel = null;
+      publicServerProfileId = null;
+      await startTunnelInternal({
+        localPort: updated.port, relayUrl: DEFAULT_RELAY_URL, profileId: id,
+        udpPort: updated.bedrock ? bedrockPort(updated.serverDir) : null,
+      });
+    }
+    const running = activeServerProfileId === id && Boolean(serverProc.child);
+    return { ok: true, profile: updated, restartNeeded: running };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    bedrockBusy = false;
+  }
+}));
+
+// ─── Custom address (steve.voxelport.in) ──────────────────────────────────
+
+ipcMain.handle('name:get', guarded(g, () => customAddress));
+
+function awaitNameReply(t) {
+  return new Promise((resolve) => {
+    const done = (res) => {
+      clearTimeout(timer);
+      t.off('name', onName);
+      t.off('nameError', onError);
+      resolve(res);
+    };
+    const onName = (n) => done({ ok: true, ...n });
+    const onError = (message) => done({ ok: false, error: message });
+    const timer = setTimeout(() => done({ ok: false, error: 'The relay didn\'t answer — try again.' }), 30000);
+    t.on('name', onName);
+    t.on('nameError', onError);
+  });
+}
+
+ipcMain.handle('name:claim', guarded(g, async (_evt, { name }) => {
+  if (typeof name !== 'string' || name.length > 40) return { ok: false, error: 'Invalid name.' };
+  if (!tunnel || !tunnel.running) return { ok: false, error: 'Make a server public first, then pick your address.' };
+  const reply = awaitNameReply(tunnel);
+  tunnel.claimName(name);
+  return reply;
+}));
+
+ipcMain.handle('name:release', guarded(g, async () => {
+  if (!tunnel || !tunnel.running) return { ok: false, error: 'Make a server public first, then remove your address.' };
+  const reply = awaitNameReply(tunnel);
+  tunnel.releaseName();
+  return reply;
+}));
+
+// ─── Fixes offered by crash explanations ──────────────────────────────────
+
+ipcMain.handle('server:fix', guarded(g, (_evt, { id, action }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (action === 'eula') {
+    writeEula(profile.serverDir);
+    return { ok: true };
+  }
+  return { ok: false, error: 'Unknown fix.' };
 }));
 
 ipcMain.handle('server:state', guarded(g, () => ({

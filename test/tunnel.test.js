@@ -346,3 +346,91 @@ test('single relayUrl form still works (no fallback list)', async () => {
   tunnel.stop();
   wss.close();
 });
+
+// ─── Bedrock (UDP), custom addresses, public listing ───────────────────────
+
+const dgram = require('dgram');
+
+test('isValidRelayMessage checks the udp/name frames', () => {
+  assert.equal(isValidRelayMessage({ type: 'udp', conn: 'c1', data: 'aGk=', ip: '1.2.3.4' }), true);
+  assert.equal(isValidRelayMessage({ type: 'udp', conn: 'c1', data: 'x'.repeat(5000) }), false);
+  assert.equal(isValidRelayMessage({ type: 'udp_close', conn: '' }), false);
+  assert.equal(isValidRelayMessage({ type: 'name', name: 'steve', address: 'steve.voxelport.in' }), true);
+  assert.equal(isValidRelayMessage({ type: 'name' }), true);
+  assert.equal(isValidRelayMessage({ type: 'name', name: '<script>' }), false);
+  assert.equal(isValidRelayMessage({ type: 'name_error', message: 42 }), false);
+});
+
+test('registers with udp:true and bridges Bedrock datagrams to the local UDP port', async () => {
+  const { wss, url } = await startFakeRelay();
+  const geyser = dgram.createSocket('udp4');
+  await new Promise((r) => geyser.bind(0, '127.0.0.1', r));
+  // Geyser stand-in: answers every datagram with "pong:<payload>".
+  geyser.on('message', (buf, rinfo) => geyser.send(Buffer.concat([Buffer.from('pong:'), buf]), rinfo.port, rinfo.address));
+
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1, udpPort: geyser.address().port });
+  const reg = JSON.parse(await once(ws, 'message'));
+  assert.equal(reg.udp, true);
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+
+  ws.send(JSON.stringify({ type: 'udp', conn: 'sess1', ip: '9.9.9.9', data: Buffer.from('ping').toString('base64') }));
+  const reply = JSON.parse(await once(ws, 'message'));
+  assert.equal(reply.type, 'udp');
+  assert.equal(reply.conn, 'sess1');
+  assert.equal(Buffer.from(reply.data, 'base64').toString(), 'pong:ping');
+
+  tunnel.stop();
+  geyser.close();
+  wss.close();
+});
+
+test('without udpPort, register omits udp and udp frames are ignored', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  const reg = JSON.parse(await once(ws, 'message'));
+  assert.equal(reg.udp, undefined);
+  ws.send(JSON.stringify({ type: 'udp', conn: 'sess1', data: 'aGk=' }));
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(tunnel.udpSessions.size, 0);
+  tunnel.stop();
+  wss.close();
+});
+
+test('claimName sends claim_name and surfaces name / name_error frames', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message'); // register
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+
+  tunnel.claimName('  Steve ');
+  const claim = JSON.parse(await once(ws, 'message'));
+  assert.deepEqual(claim, { type: 'claim_name', name: 'steve' });
+
+  ws.send(JSON.stringify({ type: 'name', name: 'steve', address: 'steve.voxelport.in' }));
+  assert.deepEqual(await once(tunnel, 'name'), { name: 'steve', address: 'steve.voxelport.in' });
+  ws.send(JSON.stringify({ type: 'name_error', message: 'That name is taken — try another.' }));
+  assert.match(await once(tunnel, 'nameError'), /taken/);
+  tunnel.stop();
+  wss.close();
+});
+
+test('a listing set before going live is sent after registration, and withdrawn with null', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  tunnel.setListing({ title: 'Survival SMP', max_players: 20, players: 0 });
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message'); // register
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  const listing = JSON.parse(await once(ws, 'message'));
+  assert.equal(listing.type, 'listing');
+  assert.equal(listing.listing.title, 'Survival SMP');
+
+  tunnel.setListing(null);
+  assert.deepEqual(JSON.parse(await once(ws, 'message')), { type: 'listing' });
+  tunnel.stop();
+  wss.close();
+});
