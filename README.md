@@ -19,10 +19,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Setup.exe"><img src="https://img.shields.io/badge/Download-Windows%20.exe-5FAE3B?style=for-the-badge&logo=windows&logoColor=white&labelColor=3F7F25" alt="Download for Windows" height="40" /></a>
-  &nbsp;
-  <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Portable.exe"><img src="https://img.shields.io/badge/Portable-.exe-F3EBDC?style=for-the-badge&labelColor=15120F" alt="Portable exe" height="40" /></a>
-  &nbsp;
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Linux.tar.gz"><img src="https://img.shields.io/badge/Download-Linux-F6CB2F?style=for-the-badge&logo=linux&logoColor=black&labelColor=15120F" alt="Download for Linux" height="40" /></a>
 </p>
 
@@ -73,12 +69,6 @@
 ## ❓ FAQ
 
 <details>
-<summary><b>Windows says "Windows protected your PC"</b></summary>
-
-That's the `.exe` download, which isn't code-signed yet. Get VoxelPort from the **[Microsoft Store](https://apps.microsoft.com/detail/9NGRX9CFNBD6)** instead — it's verified by Microsoft and updates automatically. If you use the `.exe`, click **More info → Run anyway**; every release ships a `SHA256SUMS.txt` you can check with `Get-FileHash`.
-</details>
-
-<details>
 <summary><b>Do my friends need VoxelPort?</b></summary>
 
 No. They join with normal Minecraft: Java Edition using the address the app gives you.
@@ -87,7 +77,7 @@ No. They join with normal Minecraft: Java Edition using the address the app give
 <details>
 <summary><b>Does it update itself?</b></summary>
 
-The installed Windows version downloads updates in the background and asks before installing — it never restarts a running server without asking. The portable and Linux builds are updated by downloading the new release.
+Yes on Windows — the Microsoft Store keeps VoxelPort up to date for you. On Linux, download the new release when one comes out.
 </details>
 
 <details>
