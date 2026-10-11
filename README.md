@@ -69,7 +69,7 @@
 - 🌐 **Server list** — optionally show your server on [voxelport.in/servers](https://voxelport.in/#/servers).
 - ☕ **Automatic Java** — installs the correct Eclipse Temurin (Java 25 for Minecraft 26.1+) and fixes "needs a newer Java" errors on its own.
 - 📦 **Any server** — Vanilla, Paper, Fabric, modpacks, or any server jar you already have.
-- 🚀 **Low ping** — connects straight to the relay, with an automatic Cloudflare fallback if your network blocks it.
+- 🚀 **Low ping** — relays in India and North America; the app picks the closest (or you choose), with an automatic Cloudflare fallback if your network blocks the direct route.
 - 🔒 **No account** — a private device key is created on first run and encrypted on your PC.
 - 💚 **Free & open source** — MIT-licensed, like the [relay](https://github.com/VOXELPORT/relay).
 

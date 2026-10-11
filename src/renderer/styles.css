@@ -402,3 +402,11 @@ textarea:disabled { background: var(--paper-2); color: var(--muted); }
   .set-fields, .template-grid { grid-template-columns: 1fr; }
   .set-fields .span-2 { grid-column: auto; }
 }
+
+/* ─── Relay region ─────────────────────────────────────────────────────── */
+.public-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.public-row #makePublicBtn.hidden + .region-pick { display: none; }
+.region-pick { display: flex; align-items: center; gap: 8px; }
+.region-pick select { padding: 7px 10px; font-size: .88rem; }
+select:disabled { opacity: .6; cursor: not-allowed; }
+.stats .region-used { font-size: 1rem; }

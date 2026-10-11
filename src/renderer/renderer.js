@@ -150,6 +150,42 @@ updateInstallBtn.addEventListener('click', async () => {
   if (res && res.cancelled) return; // user declined the restart-now confirmation
 });
 
+// ─── Relay region (shared by the manual and server screens) ─────────────
+// One app-wide choice: Auto (fastest relay), India or North America. It
+// can't change while a tunnel is public — the port belongs to the relay.
+const regionSelects = [...document.querySelectorAll('.region-select')];
+
+async function loadRegions() {
+  const info = await window.vp.region.get();
+  const options = [['auto', 'Auto (fastest)'], ...info.regions.map((r) => [r.id, r.label])];
+  for (const sel of regionSelects) {
+    sel.innerHTML = '';
+    for (const [value, text] of options) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      sel.appendChild(o);
+    }
+    sel.value = info.preference;
+  }
+}
+
+for (const sel of regionSelects) {
+  sel.addEventListener('change', async () => {
+    const res = await window.vp.region.set(sel.value);
+    for (const other of regionSelects) other.value = res.preference;
+  });
+}
+
+window.onAppState.push((state) => {
+  const locked = Boolean(state.publicServerProfileId || state.manualTunnelActive);
+  for (const sel of regionSelects) sel.disabled = locked;
+});
+
+window.vp.on('tunnel:region', (r) => {
+  for (const el of document.querySelectorAll('.region-used')) el.textContent = r ? r.label : 'Own relay';
+});
+
 // ─── Library entry point ────────────────────────────────────────────────
 $('manualModeLink').addEventListener('click', () => showScreen('screen-manual'));
 
@@ -172,6 +208,7 @@ function whenDomReady() {
   tokenField.value = info.maskedToken;
   version.textContent = 'v' + info.version;
   log('Ready. Set your local port and click Start hosting.');
+  await loadRegions();
   applyAppState(state);
   showScreen('screen-library');
 })();

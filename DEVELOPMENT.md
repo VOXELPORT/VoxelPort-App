@@ -20,7 +20,7 @@ VoxelPort Installation
 └── ONE ACTIVE VOXELPORT TUNNEL
         │
         ▼
-play.voxelport.in:<assigned-port>
+play.voxelport.in:<port>  (India)  or  play-na.voxelport.in:<port>  (North America)
 ```
 
 Starting a different profile while one is already running, or making a
@@ -32,10 +32,18 @@ same single tunnel and device token; it doesn't require a saved profile.
 ## How it works
 
 The app implements the VoxelPort host protocol (see
-`../relay/README.md`): it connects to `wss://direct.voxelport.in:26499` (falling back to
-`wss://relay.voxelport.in` via Cloudflare after 5 s), registers with a
-device token generated on first run, receives a public port, and bridges each
-vanilla player connection to your local server.
+`../relay/README.md`) against one of two relay regions (`src/main/regions.js`):
+
+- **India**: `wss://direct.voxelport.in:26499`, falling back to
+  `wss://relay.voxelport.in` via Cloudflare after 5 s; players use `play.voxelport.in`.
+- **North America** (AWS us-east-1): `wss://na.voxelport.in`; players use `play-na.voxelport.in`.
+
+The region is a setting (Auto / India / North America, saved in
+`preferences.json`). Auto times each relay's `/api/status` and picks the
+fastest, unless you have a custom address: it lives on one relay only, so Auto
+stays on that region. The app registers with a device token generated on first
+run, receives a public port, and bridges each vanilla player connection to your
+local server.
 
 ```
 app/
