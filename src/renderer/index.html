@@ -43,6 +43,12 @@
         <span class="hint">The port your Minecraft server or LAN world runs on.</span>
       </label>
 
+      <label class="field">
+        <span class="label">Region</span>
+        <select class="region-select" id="region"></select>
+        <span class="hint">Auto uses the relay closest to you. Players anywhere can still join.</span>
+      </label>
+
       <button id="toggleBtn" class="primary">Start hosting</button>
 
       <section id="share" class="share hidden">
@@ -54,6 +60,7 @@
         <div class="stats">
           <div><strong id="players">0</strong><span>players</span></div>
           <div><strong id="ping">—</strong><span>relay ping</span></div>
+          <div><strong class="region-used">—</strong><span>region</span></div>
         </div>
       </section>
 
@@ -233,6 +240,7 @@
         <div class="stats">
           <div><strong id="srvTunnelPlayers">0</strong><span>players</span></div>
           <div><strong id="srvPing">—</strong><span>relay ping</span></div>
+          <div><strong class="region-used">—</strong><span>region</span></div>
         </div>
 
         <div class="name-box">
@@ -256,7 +264,10 @@
         <div class="listed-line hidden" id="srvListed">★ Listed on <a href="https://voxelport.in/servers" target="_blank" rel="noreferrer">voxelport.in/servers</a></div>
         <button id="stopPublicBtn" class="ghost">Stop public tunnel</button>
       </section>
-      <button id="makePublicBtn" class="ghost">Make public</button>
+      <div class="public-row">
+        <button id="makePublicBtn" class="ghost">Make public</button>
+        <label class="region-pick" id="srvRegionRow"><span class="label">Region</span><select class="region-select" id="srvRegion"></select></label>
+      </div>
 
       <div class="diagnosis hidden" id="diagnosis" role="alert"></div>
 

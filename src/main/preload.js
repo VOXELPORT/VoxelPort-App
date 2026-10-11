@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('vp', {
       'perf:sample',
       'server:diagnosis',
       'bedrock:progress',
+      'tunnel:region',
     ];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_evt, payload) => cb(payload));
@@ -81,6 +82,11 @@ contextBridge.exposeInMainWorld('vp', {
     get: () => ipcRenderer.invoke('name:get'),
     claim: (name) => ipcRenderer.invoke('name:claim', { name }),
     release: () => ipcRenderer.invoke('name:release'),
+  },
+
+  region: {
+    get: () => ipcRenderer.invoke('region:get'),
+    set: (preference) => ipcRenderer.invoke('region:set', { preference }),
   },
 
   update: {

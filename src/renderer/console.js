@@ -34,6 +34,7 @@ const nameMsg = $('nameMsg');
 const perfPanel = $('perfPanel');
 const perfWarn = $('perfWarn');
 const diagnosisBox = $('diagnosis');
+const srvRegionRow = $('srvRegionRow');
 
 let managingProfileId = null;
 let managingProfile = null;
@@ -78,6 +79,7 @@ function renderManagementScreen() {
 
   const isPublic = isThisProfilePublic();
   makePublicBtn.classList.toggle('hidden', isPublic || !(active && status === 'online'));
+  srvRegionRow.classList.toggle('hidden', makePublicBtn.classList.contains('hidden'));
   publicShare.classList.toggle('hidden', !isPublic);
   if (!isPublic) { srvTunnelPlayers.textContent = '0'; srvPing.textContent = '—'; }
 
@@ -106,6 +108,9 @@ function renderAddress() {
   nameView.classList.toggle('hidden', !hasName);
   nameEdit.classList.toggle('hidden', hasName);
   nameCurrent.textContent = customAddress.address || '—';
+  if (!editingName && customAddress.elsewhere) {
+    setNameMsg(`Your address ${customAddress.elsewhere.address} is on the ${customAddress.elsewhere.region} relay. Switch the region to use it.`);
+  }
 }
 
 function setNameMsg(text, isError) {
@@ -144,10 +149,16 @@ $('nameRemoveBtn').addEventListener('click', async () => {
   const res = await window.vp.name.release();
   if (!res || !res.ok) { srvLogLine((res && res.error) || 'Could not remove the address.'); return; }
   customAddress = { name: '', address: '' };
+  setNameMsg('Friends join without a port number. 3–20 letters, numbers or dashes.');
   renderAddress();
 });
 
-window.vp.on('tunnel:name', (n) => { customAddress = n; editingName = false; renderAddress(); });
+window.vp.on('tunnel:name', (n) => {
+  if (customAddress.elsewhere && !n.elsewhere) setNameMsg('Friends join without a port number. 3–20 letters, numbers or dashes.');
+  customAddress = n;
+  editingName = false;
+  renderAddress();
+});
 window.vp.name.get().then((n) => { if (n) { customAddress = n; renderAddress(); } });
 
 // ─── Performance panel ─────────────────────────────────────────────────────
@@ -331,6 +342,7 @@ window.vp.on('tunnel:assigned', ({ port, host }) => {
   if (!isThisProfilePublic()) return;
   publicShare.classList.remove('hidden');
   makePublicBtn.classList.add('hidden');
+  srvRegionRow.classList.add('hidden');
   renderAddress();
 });
 window.vp.on('tunnel:players', (n) => { if (isThisProfilePublic()) srvTunnelPlayers.textContent = String(n); });

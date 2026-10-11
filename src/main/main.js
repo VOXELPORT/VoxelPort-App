@@ -27,12 +27,12 @@ const {
 } = require('./perfMonitor');
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 
+const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
+
+// "Use VoxelPort's relay" — the region (India / North America) is picked per
+// tunnel by regions.js. Any other URL is a self-hosted relay used as-is.
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
-// Tried first when no custom relay is set: same relay, reached directly
-// instead of through Cloudflare (which routes some Indian ISPs via
-// Singapore, adding ~130 ms). Falls back to DEFAULT_RELAY_URL if blocked.
-const DIRECT_RELAY_URL = 'wss://direct.voxelport.in:26499';
-const PUBLIC_HOST = 'play.voxelport.in';
+const PUBLIC_HOST = REGIONS.in.publicHost;
 const STOP_WAIT_TIMEOUT_MS = 25000; // a little past ServerProcess's own 20s force-kill grace
 
 let mainWindow = null;
@@ -54,19 +54,55 @@ let manualTunnelActive = false;
 // token, not to one server: whichever server is public uses it. The relay
 // re-announces it on every connection; this copy just lets the UI show it
 // while nothing is public.
-let customAddress = { name: '', address: '' };
+// It also lives on one relay region only (addresses claimed before regions
+// existed are India's).
+let customAddress = { name: '', address: '', region: '' };
 function customAddressPath() {
   return path.join(userDataDir(), 'custom-address.json');
 }
 function loadCustomAddress() {
   try {
     const v = JSON.parse(fs.readFileSync(customAddressPath(), 'utf8'));
-    if (v && typeof v.name === 'string' && typeof v.address === 'string') customAddress = { name: v.name, address: v.address };
+    if (v && typeof v.name === 'string' && typeof v.address === 'string') {
+      customAddress = { name: v.name, address: v.address, region: v.name ? (isRegion(v.region) ? v.region : 'in') : '' };
+    }
   } catch { /* none yet */ }
 }
 function saveCustomAddress() {
   try { fs.writeFileSync(customAddressPath(), JSON.stringify(customAddress)); } catch { /* best-effort */ }
 }
+
+// The custom address as the UI should show it: hidden while the tunnel runs
+// in a region it doesn't belong to (players couldn't reach it there).
+function visibleCustomAddress() {
+  if (customAddress.name && tunnelRegion && customAddress.region !== tunnelRegion.id) {
+    return { name: '', address: '', elsewhere: { address: customAddress.address, region: REGIONS[customAddress.region].label } };
+  }
+  return customAddress;
+}
+
+// App-wide preferences (currently just the relay region: auto / in / na).
+let prefs = { region: 'auto' };
+function prefsPath() {
+  return path.join(userDataDir(), 'preferences.json');
+}
+function loadPrefs() {
+  try {
+    const v = JSON.parse(fs.readFileSync(prefsPath(), 'utf8'));
+    prefs = { region: normalizePreference(v && v.region) };
+  } catch { /* defaults */ }
+}
+function savePrefs() {
+  try { fs.writeFileSync(prefsPath(), JSON.stringify(prefs)); } catch { /* best-effort */ }
+}
+
+// Region of the running tunnel (null when stopped or on a self-hosted relay),
+// and the last automatic pick, reused for a while so restarting a tunnel
+// doesn't measure again.
+let tunnelRegion = null;
+let autoPick = null; // { regionId, latency, at }
+let tunnelStartSeq = 0;
+const AUTO_PICK_TTL_MS = 10 * 60 * 1000;
 function userDataDir() {
   return app.getPath('userData');
 }
@@ -133,17 +169,21 @@ function broadcastState() {
   });
 }
 
-function wireTunnel(t) {
+function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
-  t.on('assigned', (port) => send('tunnel:assigned', { port, host: PUBLIC_HOST }));
+  t.on('assigned', (port) => send('tunnel:assigned', { port, host: publicHost }));
   t.on('players', (n) => send('tunnel:players', n));
   t.on('ping', (ms) => send('tunnel:ping', ms));
   t.on('log', (line) => send('tunnel:log', line));
   t.on('error', (message) => send('tunnel:error', message));
   t.on('name', (n) => {
-    customAddress = { name: n.name, address: n.address };
+    // Only VoxelPort's own relays share the address list; ignore the rest.
+    if (!tunnelRegion) return;
+    customAddress = n.name
+      ? { name: n.name, address: n.address, region: tunnelRegion.id }
+      : { name: '', address: '', region: '' };
     saveCustomAddress();
-    send('tunnel:name', customAddress);
+    send('tunnel:name', visibleCustomAddress());
   });
   t.on('nameError', (message) => send('tunnel:nameError', message));
   t.on('listingError', (message) => send('server:log', `[VoxelPort] Server list: ${message}`));
@@ -152,6 +192,10 @@ function wireTunnel(t) {
     send('tunnel:status', 'stopped');
     publicServerProfileId = null;
     manualTunnelActive = false;
+    if (tunnel === t || !tunnel) {
+      tunnelRegion = null;
+      send('tunnel:name', visibleCustomAddress());
+    }
     broadcastState();
   });
 }
@@ -330,6 +374,7 @@ if (!gotLock) {
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
     loadCustomAddress();
+    loadPrefs();
     createWindow();
     updater.start({ isPackaged: app.isPackaged, platform: process.platform, windowsStore: Boolean(process.windowsStore) });
 
@@ -423,6 +468,26 @@ function scheduleListingUpdate() {
   }, 5000);
 }
 
+/** The VoxelPort region for a new tunnel, logged so the user sees why. */
+async function chooseRegion() {
+  const pref = prefs.region;
+  if (pref === 'auto' && !customAddress.name && autoPick && Date.now() - autoPick.at < AUTO_PICK_TTL_MS) {
+    return REGIONS[autoPick.regionId];
+  }
+  if (pref === 'auto' && !customAddress.name) send('tunnel:log', 'Finding the fastest VoxelPort region…');
+  const { region, reason, latency } = await pickRegion({ preference: pref, nameRegion: customAddress.region });
+  if (reason === 'fastest' || reason === 'fallback') autoPick = { regionId: region.id, latency, at: Date.now() };
+  const ms = Object.entries(latency).map(([id, v]) => `${REGIONS[id].label} ${v} ms`).join(', ');
+  const why = {
+    chosen: 'chosen in settings',
+    address: `your address ${customAddress.address} lives there`,
+    fastest: ms ? `fastest: ${ms}` : 'fastest',
+    fallback: 'couldn\'t measure, using the default',
+  }[reason];
+  send('tunnel:log', `Region: ${region.label} (${why})`);
+  return region;
+}
+
 async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = null }) {
   const port = Number(localPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -459,10 +524,22 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
     }
   }
 
-  tunnel = new Tunnel();
-  wireTunnel(tunnel);
   const usingDefault = resolvedRelayUrl.replace(/\/+$/, '') === DEFAULT_RELAY_URL;
-  const relayUrls = usingDefault ? [DIRECT_RELAY_URL, DEFAULT_RELAY_URL] : [resolvedRelayUrl];
+  let region = null;
+  if (usingDefault) {
+    const seq = ++tunnelStartSeq;
+    region = await chooseRegion();
+    if (seq !== tunnelStartSeq) return { ok: false, cancelled: true }; // stopped (or restarted) meanwhile
+    if (tunnel && tunnel.running) return { ok: true, alreadyRunning: true };
+  }
+  const relayUrls = region ? region.relayUrls : [resolvedRelayUrl];
+  const publicHost = region ? region.publicHost : new URL(resolvedRelayUrl).hostname;
+
+  tunnel = new Tunnel();
+  tunnelRegion = region;
+  wireTunnel(tunnel, publicHost);
+  send('tunnel:region', region ? { id: region.id, label: region.label } : null);
+  send('tunnel:name', visibleCustomAddress());
   if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
   tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort });
   publicServerProfileId = profileId || null;
@@ -486,6 +563,7 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
 }));
 
 ipcMain.handle('tunnel:stop', guarded(g, () => {
+  tunnelStartSeq++; // cancels a start that is still picking its region
   if (tunnel) {
     tunnel.stop();
     tunnel = null;
@@ -884,7 +962,22 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
 
 // ─── Custom address (steve.voxelport.in) ──────────────────────────────────
 
-ipcMain.handle('name:get', guarded(g, () => customAddress));
+ipcMain.handle('name:get', guarded(g, () => visibleCustomAddress()));
+
+// ─── Relay region ─────────────────────────────────────────────────────────
+
+ipcMain.handle('region:get', guarded(g, () => ({
+  preference: prefs.region,
+  regions: Object.values(REGIONS).map((r) => ({ id: r.id, label: r.label })),
+  active: tunnelRegion ? tunnelRegion.id : null,
+  addressRegion: customAddress.name ? customAddress.region : null,
+})));
+
+ipcMain.handle('region:set', guarded(g, (_evt, { preference }) => {
+  prefs.region = normalizePreference(preference);
+  savePrefs();
+  return { ok: true, preference: prefs.region };
+}));
 
 function awaitNameReply(t) {
   return new Promise((resolve) => {
@@ -905,6 +998,13 @@ function awaitNameReply(t) {
 ipcMain.handle('name:claim', guarded(g, async (_evt, { name }) => {
   if (typeof name !== 'string' || name.length > 40) return { ok: false, error: 'Invalid name.' };
   if (!tunnel || !tunnel.running) return { ok: false, error: 'Make a server public first, then pick your address.' };
+  if (!tunnelRegion) return { ok: false, error: 'Custom addresses only work on VoxelPort\'s own relays.' };
+  if (customAddress.name && customAddress.region !== tunnelRegion.id) {
+    return {
+      ok: false,
+      error: `You already have ${customAddress.address} on the ${REGIONS[customAddress.region].label} relay. Set the region to ${REGIONS[customAddress.region].label} or Auto to use or change it.`,
+    };
+  }
   const reply = awaitNameReply(tunnel);
   tunnel.claimName(name);
   return reply;
@@ -912,6 +1012,9 @@ ipcMain.handle('name:claim', guarded(g, async (_evt, { name }) => {
 
 ipcMain.handle('name:release', guarded(g, async () => {
   if (!tunnel || !tunnel.running) return { ok: false, error: 'Make a server public first, then remove your address.' };
+  if (!tunnelRegion || customAddress.region !== tunnelRegion.id) {
+    return { ok: false, error: 'Your address lives on another region — switch to it to remove it.' };
+  }
   const reply = awaitNameReply(tunnel);
   tunnel.releaseName();
   return reply;
