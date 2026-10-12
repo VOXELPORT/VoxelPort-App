@@ -5,6 +5,17 @@
 //
 // relayUrls are tried in order (see Tunnel.start). India is reached directly
 // first, then through Cloudflare if the direct port is blocked.
+//
+// The code supports several regions; the app currently ships only India. To
+// bring North America back, re-add its entry below — nothing else needs to
+// change:
+//   na: {
+//     id: 'na',
+//     label: 'North America',
+//     relayUrls: ['wss://na.voxelport.in'],
+//     statusUrls: ['https://na.voxelport.in/api/status'],
+//     publicHost: 'play-na.voxelport.in',
+//   },
 const REGIONS = {
   in: {
     id: 'in',
@@ -12,13 +23,6 @@ const REGIONS = {
     relayUrls: ['wss://direct.voxelport.in:26499', 'wss://relay.voxelport.in'],
     statusUrls: ['https://direct.voxelport.in:26499/api/status', 'https://relay.voxelport.in/api/status'],
     publicHost: 'play.voxelport.in',
-  },
-  na: {
-    id: 'na',
-    label: 'North America',
-    relayUrls: ['wss://na.voxelport.in'],
-    statusUrls: ['https://na.voxelport.in/api/status'],
-    publicHost: 'play-na.voxelport.in',
   },
 };
 const DEFAULT_REGION = 'in';
@@ -64,21 +68,25 @@ async function measureRegion(region, { fetchImpl = fetch, tries = 3, timeoutMs =
  *    can be measured.
  * Returns { region, reason, latency }.
  */
-async function pickRegion({ preference, nameRegion, measure = measureRegion }) {
-  const pref = normalizePreference(preference);
-  if (pref !== 'auto') return { region: REGIONS[pref], reason: 'chosen', latency: {} };
-  if (isRegion(nameRegion)) return { region: REGIONS[nameRegion], reason: 'address', latency: {} };
+// `regions` defaults to the shipped set; tests pass their own to exercise the
+// multi-region path even when the app ships a single region.
+async function pickRegion({ preference, nameRegion, measure = measureRegion, regions = REGIONS }) {
+  const pref = preference === 'auto' || regions[preference] ? preference : 'auto';
+  if (pref !== 'auto') return { region: regions[pref], reason: 'chosen', latency: {} };
+  if (regions[nameRegion]) return { region: regions[nameRegion], reason: 'address', latency: {} };
 
-  const ids = Object.keys(REGIONS);
-  const times = await Promise.all(ids.map((id) => measure(REGIONS[id]).catch(() => Infinity)));
+  const ids = Object.keys(regions);
+  // One region: no point measuring — just use it.
+  if (ids.length === 1) return { region: regions[ids[0]], reason: 'only', latency: {} };
+  const times = await Promise.all(ids.map((id) => measure(regions[id]).catch(() => Infinity)));
   const latency = {};
-  let bestId = DEFAULT_REGION;
+  let bestId = regions[DEFAULT_REGION] ? DEFAULT_REGION : ids[0];
   let bestMs = Infinity;
   ids.forEach((id, i) => {
     if (Number.isFinite(times[i])) latency[id] = times[i];
     if (times[i] < bestMs) { bestMs = times[i]; bestId = id; }
   });
-  return { region: REGIONS[bestId], reason: Number.isFinite(bestMs) ? 'fastest' : 'fallback', latency };
+  return { region: regions[bestId], reason: Number.isFinite(bestMs) ? 'fastest' : 'fallback', latency };
 }
 
 module.exports = { REGIONS, DEFAULT_REGION, PREFERENCES, isRegion, normalizePreference, measureRegion, pickRegion };

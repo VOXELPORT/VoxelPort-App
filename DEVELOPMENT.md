@@ -20,7 +20,7 @@ VoxelPort Installation
 └── ONE ACTIVE VOXELPORT TUNNEL
         │
         ▼
-play.voxelport.in:<port>  (India)  or  play-na.voxelport.in:<port>  (North America)
+play.voxelport.in:<port>
 ```
 
 Starting a different profile while one is already running, or making a
@@ -31,19 +31,17 @@ same single tunnel and device token; it doesn't require a saved profile.
 
 ## How it works
 
-The app implements the VoxelPort host protocol (see
-`../relay/README.md`) against one of two relay regions (`src/main/regions.js`):
+The app implements the VoxelPort host protocol (see `../relay/README.md`): it
+connects to `wss://direct.voxelport.in:26499`, falling back to
+`wss://relay.voxelport.in` via Cloudflare after 5 s if the direct port is
+blocked; players use `play.voxelport.in`. It registers with a device token
+generated on first run, receives a public port, and bridges each vanilla player
+connection to your local server.
 
-- **India**: `wss://direct.voxelport.in:26499`, falling back to
-  `wss://relay.voxelport.in` via Cloudflare after 5 s; players use `play.voxelport.in`.
-- **North America** (AWS us-east-1): `wss://na.voxelport.in`; players use `play-na.voxelport.in`.
-
-The region is a setting (Auto / India / North America, saved in
-`preferences.json`). Auto times each relay's `/api/status` and picks the
-fastest, unless you have a custom address: it lives on one relay only, so Auto
-stays on that region. The app registers with a device token generated on first
-run, receives a public port, and bridges each vanilla player connection to your
-local server.
+`src/main/regions.js` supports several relay regions and a Region setting
+(Auto / per-region, saved in `preferences.json`); the app currently ships a
+single region (India), so the Region picker stays hidden. Re-adding a region
+there brings the picker back automatically.
 
 ```
 app/

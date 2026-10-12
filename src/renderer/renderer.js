@@ -151,12 +151,28 @@ updateInstallBtn.addEventListener('click', async () => {
 });
 
 // ─── Relay region (shared by the manual and server screens) ─────────────
-// One app-wide choice: Auto (fastest relay), India or North America. It
-// can't change while a tunnel is public — the port belongs to the relay.
+// One app-wide choice: Auto (fastest relay) or a specific region. It can't
+// change while a tunnel is public — the port belongs to the relay. With only
+// one region there's nothing to choose, so the controls stay hidden.
 const regionSelects = [...document.querySelectorAll('.region-select')];
+let regionPickerShown = false;
 
 async function loadRegions() {
   const info = await window.vp.region.get();
+  regionPickerShown = info.regions.length > 1;
+  // One region: hide the dropdowns and the "region" stat entirely. Inline
+  // display wins over the stylesheet and over console.js's class toggles.
+  if (!regionPickerShown) {
+    for (const sel of regionSelects) {
+      const wrap = sel.closest('label');
+      if (wrap) wrap.style.display = 'none';
+    }
+    for (const el of document.querySelectorAll('.region-used')) {
+      const tile = el.closest('div');
+      if (tile) tile.style.display = 'none';
+    }
+    return;
+  }
   const options = [['auto', 'Auto (fastest)'], ...info.regions.map((r) => [r.id, r.label])];
   for (const sel of regionSelects) {
     sel.innerHTML = '';
