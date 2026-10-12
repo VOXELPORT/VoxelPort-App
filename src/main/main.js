@@ -474,7 +474,8 @@ async function chooseRegion() {
   if (pref === 'auto' && !customAddress.name && autoPick && Date.now() - autoPick.at < AUTO_PICK_TTL_MS) {
     return REGIONS[autoPick.regionId];
   }
-  if (pref === 'auto' && !customAddress.name) send('tunnel:log', 'Finding the fastest VoxelPort region…');
+  const measuring = pref === 'auto' && !customAddress.name && Object.keys(REGIONS).length > 1;
+  if (measuring) send('tunnel:log', 'Finding the fastest VoxelPort region…');
   const { region, reason, latency } = await pickRegion({ preference: pref, nameRegion: customAddress.region });
   if (reason === 'fastest' || reason === 'fallback') autoPick = { regionId: region.id, latency, at: Date.now() };
   const ms = Object.entries(latency).map(([id, v]) => `${REGIONS[id].label} ${v} ms`).join(', ');
@@ -484,7 +485,8 @@ async function chooseRegion() {
     fastest: ms ? `fastest: ${ms}` : 'fastest',
     fallback: 'couldn\'t measure, using the default',
   }[reason];
-  send('tunnel:log', `Region: ${region.label} (${why})`);
+  // With a single region (reason "only") the choice is implicit — don't log it.
+  if (why) send('tunnel:log', `Region: ${region.label} (${why})`);
   return region;
 }
 
