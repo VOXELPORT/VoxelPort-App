@@ -410,3 +410,7 @@ textarea:disabled { background: var(--paper-2); color: var(--muted); }
 .region-pick select { padding: 7px 10px; font-size: .88rem; }
 select:disabled { opacity: .6; cursor: not-allowed; }
 .stats .region-used { font-size: 1rem; }
+
+/* Player accounts (cracked mode) */
+.set-warn { border: 2.5px solid var(--ink); background: var(--gold); padding: 10px 12px; font-size: .85rem; line-height: 1.45; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.set-warn.hidden { display: none; }
