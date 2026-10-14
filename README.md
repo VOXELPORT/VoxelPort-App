@@ -64,6 +64,7 @@
 - 🎮 **Vanilla clients** — Java players need nothing but Minecraft.
 - 🧩 **Templates** — Survival SMP, Java + Bedrock, Creative Flat, Hardcore, Peaceful, Modded — pick one and go.
 - ⚙️ **Settings screen** — game mode, difficulty, max players, whitelist, MOTD, view distance and more, without editing files.
+- 🔓 **Cracked players** — optional switch (off by default) so friends without a paid Minecraft account can join, with a clear warning and one-click login protection (AuthMe).
 - 📊 **Performance panel** — live CPU, RAM and TPS, with a warning when the server can't keep up.
 - 🩺 **Crash explanations** — if the server stops, VoxelPort says why in plain words (port in use, missing mod, out of memory…) and offers the fix.
 - 🌐 **Server list** — optionally show your server on [voxelport.in/servers](https://voxelport.in/#/servers).
