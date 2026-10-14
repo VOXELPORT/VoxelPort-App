@@ -157,7 +157,7 @@ button:focus-visible, input[type="checkbox"]:focus-visible, summary:focus-visibl
 .share.hidden { display: none; }
 .share-label { color: var(--ink); }
 .address-row { display: flex; gap: 8px; align-items: stretch; }
-#address, #srvAddress {
+#address, #srvAddress, #supportUpi {
   flex: 1;
   font-family: var(--type); font-weight: 700; font-size: 1.08rem; letter-spacing: .02em;
   color: var(--gold); background: var(--ink);
@@ -414,3 +414,23 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 /* Player accounts (cracked mode) */
 .set-warn { border: 2.5px solid var(--ink); background: var(--gold); padding: 10px 12px; font-size: .85rem; line-height: 1.45; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .set-warn.hidden { display: none; }
+
+/* Support VoxelPort screen */
+.support-text { font-size: .9rem; line-height: 1.5; color: var(--ink-2); }
+.support-fine { font-size: .78rem; line-height: 1.45; color: var(--muted, #6B6052); }
+.support-optional { font-family: var(--type); font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; margin-left: 8px; padding: 2px 6px; border: 2px solid var(--ink); background: var(--paper-2); vertical-align: middle; }
+.support-pay { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.support-qr { display: block; border: 3px solid var(--ink); image-rendering: pixelated; background: #fff; }
+.support-pay-side { display: flex; flex-direction: column; gap: 10px; flex: 1 1 220px; min-width: 0; align-items: flex-start; }
+.support-pay-side .address-row { align-self: stretch; }
+.support-tiers { display: flex; flex-direction: column; gap: 10px; }
+.support-tier { border: 2.5px solid var(--ink); background: var(--paper); padding: 10px 12px; }
+.support-tier-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.support-tier-name { font-family: var(--display); font-size: 1.15rem; letter-spacing: .04em; }
+.support-tier-price { font-family: var(--type); font-size: .85rem; }
+.support-tier-perks { margin: 6px 0 0; padding-left: 18px; font-size: .85rem; line-height: 1.45; }
+.support-hosts { display: flex; flex-direction: column; gap: 10px; }
+.support-host { display: flex; gap: 12px; align-items: center; justify-content: space-between; border: 2.5px solid var(--ink); background: var(--paper); padding: 10px 12px; }
+.support-host-info { min-width: 0; }
+.support-host-name { font-weight: 700; }
+.support-host-blurb { font-size: .82rem; color: var(--ink-2); margin-top: 2px; }

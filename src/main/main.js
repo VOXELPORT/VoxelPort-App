@@ -27,6 +27,7 @@ const {
 } = require('./perfMonitor');
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 const accounts = require('./accounts');
+const support = require('./support');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
 
@@ -961,6 +962,33 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
   } finally {
     bedrockBusy = false;
   }
+}));
+
+// ─── Support VoxelPort: tips, supporter perks, paid-hosting suggestions ────
+// The donation target is fixed in support.js. Hosting links come from voxelport.in/support.json,
+// are validated there, and are opened here only by id from that validated list — the renderer
+// never supplies a URL.
+let supportCache = { hosts: new Map() };
+ipcMain.handle('support:get', guarded(g, async (_evt, { force } = {}) => {
+  const s = await support.getSupport({ dir: userDataDir(), device: 'desktop', force: Boolean(force) });
+  supportCache = { hosts: new Map(s.hosts.items.map((h) => [h.id, h.url])) };
+  return s;
+}));
+
+ipcMain.handle('support:open', guarded(g, (_evt, { what, id } = {}) => {
+  let url = null;
+  if (what === 'sponsors') url = support.DONATE.sponsorsUrl;
+  else if (what === 'page') url = support.DONATE.pageUrl;
+  else if (what === 'perks') url = support.DONATE.perksUrl;
+  else if (what === 'host') url = supportCache.hosts.get(String(id));
+  if (!url || !/^https:\/\//.test(url)) return { ok: false };
+  shell.openExternal(url);
+  return { ok: true };
+}));
+
+ipcMain.handle('support:copyUpi', guarded(g, () => {
+  clipboard.writeText(support.DONATE.upiId);
+  return { ok: true };
 }));
 
 // ─── Player accounts: "cracked" (offline-mode) servers ────────────────────
