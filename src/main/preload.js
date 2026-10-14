@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('vp', {
       'perf:sample',
       'server:diagnosis',
       'bedrock:progress',
+      'accounts:progress',
       'tunnel:region',
     ];
     if (!allowed.includes(channel)) return;
@@ -76,6 +77,12 @@ contextBridge.exposeInMainWorld('vp', {
     fix: (id, action) => ipcRenderer.invoke('server:fix', { id, action }),
 
     state: () => ipcRenderer.invoke('server:state'),
+  },
+
+  accounts: {
+    get: (id) => ipcRenderer.invoke('server:accounts:get', { id }),
+    set: (id, cracked, confirmed) => ipcRenderer.invoke('server:accounts:set', { id, cracked, confirmed }),
+    installLogin: (id) => ipcRenderer.invoke('server:accounts:installLogin', { id }),
   },
 
   name: {

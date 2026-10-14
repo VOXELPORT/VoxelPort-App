@@ -315,6 +315,19 @@
       </div>
 
       <div class="set-group">
+        <div class="set-group-title">Player accounts</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setCracked" />
+          <span><b>Allow cracked players</b><span class="hint" id="setCrackedHint">People without a paid Minecraft account can join.</span></span>
+        </label>
+        <div class="set-warn hidden" id="setCrackedWarn">
+          <span><b>Anyone can join under any name</b>, even an admin's. Turn on the whitelist above, or add a login plugin so players have to register a password.</span>
+          <button class="ghost small hidden" id="setLoginBtn" type="button">Add login protection (AuthMe)</button>
+        </div>
+        <div class="hint" id="setAccountsMsg"></div>
+      </div>
+
+      <div class="set-group">
         <div class="set-group-title">Public server list</div>
         <label class="toggle-row">
           <input type="checkbox" id="setListed" />

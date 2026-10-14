@@ -26,6 +26,7 @@ const {
   PerfMonitor, supportsTickQuery, isTickQueryLine, parseMspt, tpsFromMspt, LAG_RE,
 } = require('./perfMonitor');
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
+const accounts = require('./accounts');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
 
@@ -959,6 +960,52 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
     return { ok: false, error: err.message };
   } finally {
     bedrockBusy = false;
+  }
+}));
+
+// ─── Player accounts: "cracked" (offline-mode) servers ────────────────────
+// online-mode is never part of the ordinary Settings save (serverSettings.js); this is the
+// one dedicated, confirmed way to change it. See accounts.js.
+
+ipcMain.handle('server:accounts:get', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) throw new Error('Server profile not found.');
+  return {
+    cracked: accounts.isCracked(profile.serverDir),
+    loginPlugin: accounts.hasLoginPlugin(profile.serverDir),
+    canInstallLogin: profile.type === 'paper',
+    running: activeServerProfileId === id && Boolean(serverProc.child),
+  };
+}));
+
+ipcMain.handle('server:accounts:set', guarded(g, (_evt, { id, cracked, confirmed }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  try {
+    const on = accounts.validateAccountsChange({ cracked, confirmed });
+    accounts.setCracked(profile.serverDir, on);
+    return { ok: true, cracked: on, restartNeeded: activeServerProfileId === id && Boolean(serverProc.child) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}));
+
+let accountsBusy = false;
+ipcMain.handle('server:accounts:installLogin', guarded(g, async (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (accountsBusy) return { ok: false, error: 'Already installing — one moment.' };
+  accountsBusy = true;
+  try {
+    await accounts.installLoginPlugin({
+      serverDir: profile.serverDir, type: profile.type, version: profile.version,
+      onProgress: (p) => send('accounts:progress', p),
+    });
+    return { ok: true, restartNeeded: activeServerProfileId === id && Boolean(serverProc.child) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    accountsBusy = false;
   }
 }));
 

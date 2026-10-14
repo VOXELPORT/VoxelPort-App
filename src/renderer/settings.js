@@ -10,6 +10,10 @@ const setRamLabel = $('setRamLabel');
 const setFields = $('setFields');
 const setBedrock = $('setBedrock');
 const setBedrockMsg = $('setBedrockMsg');
+const setCracked = $('setCracked');
+const setCrackedWarn = $('setCrackedWarn');
+const setLoginBtn = $('setLoginBtn');
+const setAccountsMsg = $('setAccountsMsg');
 const setListed = $('setListed');
 const setListingDesc = $('setListingDesc');
 const setSaveBtn = $('setSaveBtn');
@@ -67,6 +71,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   settingsProfileId = id;
   showSetMsg('', 'hidden');
   setBedrockMsg.textContent = '';
+  setAccountsMsg.textContent = '';
   const data = await window.vp.server.getSettings(id);
   const { profile, fields, values, bedrock, listing, totalMemMb } = data;
   fieldDefs = fields;
@@ -87,6 +92,8 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   setBedrock.disabled = !bedrock.supported;
   if (!bedrock.supported) setBedrockMsg.textContent = 'Bedrock players need a Paper or Fabric server — Vanilla can\'t run Geyser.';
   else if (bedrock.enabled) setBedrockMsg.textContent = `On — Bedrock players join on the same port as Java (Geyser listens on ${bedrock.port}).`;
+
+  renderAccounts(await window.vp.accounts.get(id));
 
   setListed.checked = listing.enabled;
   setListingDesc.value = listing.description || '';
@@ -154,4 +161,55 @@ window.vp.on('bedrock:progress', (p) => {
   if (!p) return;
   if (p.stage === 'resolve') setBedrockMsg.textContent = 'Finding the right Geyser build…';
   else if (p.stage === 'download') setBedrockMsg.textContent = `Downloading ${p.file}…`;
+});
+
+// ─── Player accounts: cracked (offline-mode) servers ──────────────────────
+
+function renderAccounts(acc) {
+  setCracked.checked = acc.cracked;
+  setCrackedWarn.classList.toggle('hidden', !acc.cracked);
+  // The login plugin (AuthMe) is for Paper servers; hide the button once it's installed.
+  setLoginBtn.classList.toggle('hidden', !(acc.cracked && acc.canInstallLogin && !acc.loginPlugin));
+  if (acc.cracked && acc.loginPlugin) setAccountsMsg.textContent = 'Login plugin installed (AuthMe): players use /register and /login.';
+}
+
+setCracked.addEventListener('change', async () => {
+  const wantOn = setCracked.checked;
+  if (wantOn && !window.confirm(
+    'Allow cracked players?\n\n' +
+    'This turns off Minecraft\'s account check, so people without a paid account can join.\n\n' +
+    '• Anyone can join under any name, including yours or an admin\'s, unless you use the whitelist or a login plugin.\n' +
+    '• Switching changes every player\'s ID: inventories, ops and whitelist entries from the other mode won\'t match.\n' +
+    '• Skins may not show for cracked players.'
+  )) {
+    setCracked.checked = false;
+    return;
+  }
+  setCracked.disabled = true;
+  // Turning it on carries the confirmation the dialog above just collected; the main process insists on it.
+  const res = await window.vp.accounts.set(settingsProfileId, wantOn, wantOn);
+  setCracked.disabled = false;
+  if (!res || !res.ok) {
+    setCracked.checked = !wantOn;
+    setAccountsMsg.textContent = (res && res.error) || 'Couldn\'t change that.';
+    return;
+  }
+  renderAccounts(await window.vp.accounts.get(settingsProfileId));
+  setAccountsMsg.textContent = res.restartNeeded ? 'Saved. Restart the server to apply.' : 'Saved. Applies the next time you start the server.';
+});
+
+setLoginBtn.addEventListener('click', async () => {
+  setLoginBtn.disabled = true;
+  setAccountsMsg.textContent = 'Installing AuthMe…';
+  const res = await window.vp.accounts.installLogin(settingsProfileId);
+  setLoginBtn.disabled = false;
+  if (!res || !res.ok) { setAccountsMsg.textContent = `Couldn't install AuthMe: ${(res && res.error) || 'unknown error'}`; return; }
+  renderAccounts(await window.vp.accounts.get(settingsProfileId));
+  setAccountsMsg.textContent = res.restartNeeded ? 'AuthMe installed. Restart the server to load it.' : 'AuthMe installed. It loads when you start the server.';
+});
+
+window.vp.on('accounts:progress', (p) => {
+  if (!p) return;
+  if (p.stage === 'resolve') setAccountsMsg.textContent = 'Finding AuthMe for your Minecraft version…';
+  else if (p.stage === 'download') setAccountsMsg.textContent = `Downloading ${p.file}…`;
 });

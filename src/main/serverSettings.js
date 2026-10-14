@@ -8,7 +8,8 @@ const path = require('path');
  * with a validator. Anything not listed here is never written from the UI —
  * and security-sensitive keys (online-mode, enable-rcon, rcon.password,
  * enable-command-block, …) are deliberately absent, so they can't be
- * weakened from the renderer.
+ * weakened from the renderer. The one exception is the confirmed "cracked
+ * players" switch, which has its own narrow code path in accounts.js.
  */
 const SETTINGS = [
   { key: 'motd', label: 'Description (MOTD)', type: 'text', max: 59, def: 'A VoxelPort server' },
