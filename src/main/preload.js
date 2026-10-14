@@ -85,6 +85,13 @@ contextBridge.exposeInMainWorld('vp', {
     installLogin: (id) => ipcRenderer.invoke('server:accounts:installLogin', { id }),
   },
 
+  // The Support screen. Links are opened by id/kind: the renderer never passes a URL.
+  support: {
+    get: (force) => ipcRenderer.invoke('support:get', { force }),
+    open: (what, id) => ipcRenderer.invoke('support:open', { what, id }),
+    copyUpi: () => ipcRenderer.invoke('support:copyUpi'),
+  },
+
   name: {
     get: () => ipcRenderer.invoke('name:get'),
     claim: (name) => ipcRenderer.invoke('name:claim', { name }),

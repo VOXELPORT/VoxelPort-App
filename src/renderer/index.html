@@ -343,6 +343,44 @@
       <div class="set-msg hidden" id="setMsg"></div>
     </section>
 
+    <!-- SUPPORT VOXELPORT: tips, supporter perks, paid-hosting suggestions -->
+    <section class="screen panel" id="screen-support">
+      <button class="back-link" id="supportBackBtn" type="button">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Keep it free</div><h1>SUPPORT VOXELPORT</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">♥ Tip jar</div>
+        <p class="support-text">VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.</p>
+        <div class="support-pay">
+          <img class="support-qr" src="upi-qr.svg" width="170" height="170" alt="UPI QR code for trazhub@upi" />
+          <div class="support-pay-side">
+            <div class="label">Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)</div>
+            <div class="address-row">
+              <code id="supportUpi">trazhub@upi</code>
+              <button class="ghost small" id="supportCopyBtn" type="button">Copy</button>
+            </div>
+            <button class="ghost small" id="supportSponsorsBtn" type="button">Tip from outside India (GitHub Sponsors)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">★ Supporter perks <span class="support-optional">optional</span></div>
+        <p class="support-text" id="supportIntro"></p>
+        <div id="supportTiers" class="support-tiers"></div>
+        <p class="support-text" id="supportHow"></p>
+        <p class="support-fine" id="supportFine"></p>
+        <button class="ghost small" id="supportPerksBtn" type="button">More on voxelport.in</button>
+      </div>
+
+      <div class="set-group hidden" id="supportHostsGroup">
+        <div class="set-group-title">Need it online 24/7?</div>
+        <p class="support-text" id="supportHostsIntro"></p>
+        <div id="supportHosts" class="support-hosts"></div>
+        <p class="support-fine" id="supportDisclosure"></p>
+      </div>
+    </section>
+
   </main>
 
   <div id="updateBanner" class="update-banner hidden">
@@ -352,7 +390,7 @@
 
   <footer class="foot">
     <span id="version"></span>
-    <a href="https://voxelport.in/#support" target="_blank" rel="noreferrer">♥ Support VoxelPort</a>
+    <a href="#" id="supportLink">♥ Support VoxelPort</a>
     <a href="https://www.voxelport.in" target="_blank" rel="noreferrer">voxelport.in</a>
   </footer>
 
@@ -362,5 +400,6 @@
   <script src="import.js"></script>
   <script src="console.js"></script>
   <script src="settings.js"></script>
+  <script src="support.js"></script>
 </body>
 </html>
