@@ -5,13 +5,14 @@
 <p align="center">
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest"><img src="https://img.shields.io/github/v/release/VOXELPORT/VoxelPort-App?style=for-the-badge&label=Latest&color=5FAE3B&labelColor=15120F" alt="Latest release" /></a>
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases"><img src="https://img.shields.io/github/downloads/VOXELPORT/VoxelPort-App/total?style=for-the-badge&color=F6CB2F&labelColor=15120F" alt="Downloads" /></a>
-  <a href="https://voxelport.in/#/status"><img src="https://img.shields.io/badge/Relay-Status-43C8D8?style=for-the-badge&labelColor=15120F" alt="Relay status" /></a>
+  <a href="https://voxelport.in/status"><img src="https://img.shields.io/badge/Relay-Status-43C8D8?style=for-the-badge&labelColor=15120F" alt="Relay status" /></a>
+  <a href="https://discord.gg/2wJbCPwP4r"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=15120F" alt="Join the Discord" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-C8262B?style=for-the-badge&labelColor=15120F" alt="MIT license" /></a>
 </p>
 
 <h3 align="center">
   Host a Minecraft server from your PC. Friends join with plain Minecraft.<br />
-  No port forwarding · no signup · no Discord.
+  No port forwarding · no signup · a friendly [Discord](https://discord.gg/2wJbCPwP4r) if you want help.
 </h3>
 
 <p align="center">
@@ -68,7 +69,7 @@
 - ♥ **Support screen** — one-click tipping (UPI QR, GitHub Sponsors), the optional supporter perks, and suggestions for paid 24/7 hosting.
 - 📊 **Performance panel** — live CPU, RAM and TPS, with a warning when the server can't keep up.
 - 🩺 **Crash explanations** — if the server stops, VoxelPort says why in plain words (port in use, missing mod, out of memory…) and offers the fix.
-- 🌐 **Server list** — optionally show your server on [voxelport.in/servers](https://voxelport.in/#/servers).
+- 🌐 **Server list** — optionally show your server on [voxelport.in/servers](https://voxelport.in/servers).
 - ☕ **Automatic Java** — installs the correct Eclipse Temurin (Java 25 for Minecraft 26.1+) and fixes "needs a newer Java" errors on its own.
 - 📦 **Any server** — Vanilla, Paper, Fabric, modpacks, or any server jar you already have.
 - 🚀 **Low ping** — your server connects straight to the relay, with an automatic Cloudflare fallback if your network blocks the direct route.
