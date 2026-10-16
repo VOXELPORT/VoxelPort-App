@@ -66,11 +66,11 @@ function renderManagementScreen() {
   const running = status === 'starting' || status === 'online' || status === 'stopping';
 
   srvDot.className = 'dot';
-  if (status === 'online') { srvDot.classList.add('on'); srvStatusText.textContent = 'Online'; }
-  else if (status === 'starting') { srvDot.classList.add('warn'); srvStatusText.textContent = 'Starting…'; }
-  else if (status === 'stopping') { srvDot.classList.add('warn'); srvStatusText.textContent = 'Stopping…'; }
-  else if (status === 'crashed') { srvDot.classList.add('err'); srvStatusText.textContent = 'Crashed'; }
-  else { srvStatusText.textContent = 'Stopped'; }
+  if (status === 'online') { srvDot.classList.add('on'); srvStatusText.textContent = t('Online'); }
+  else if (status === 'starting') { srvDot.classList.add('warn'); srvStatusText.textContent = t('Starting…'); }
+  else if (status === 'stopping') { srvDot.classList.add('warn'); srvStatusText.textContent = t('Stopping…'); }
+  else if (status === 'crashed') { srvDot.classList.add('err'); srvStatusText.textContent = t('Crashed'); }
+  else { srvStatusText.textContent = t('Stopped'); }
 
   srvStartBtn.classList.toggle('hidden', running);
   srvStopBtn.classList.toggle('hidden', !running || !active);
@@ -96,7 +96,7 @@ function renderAddress() {
   if (isPublic && assigned) {
     const plain = `${assigned.host}:${assigned.port}`;
     srvAddress.textContent = customAddress.address || plain;
-    srvAltAddress.textContent = customAddress.address ? `Also works: ${plain}` : '';
+    srvAltAddress.textContent = customAddress.address ? t('Also works: {address}', { address: plain }) : '';
     srvAltAddress.classList.toggle('hidden', !customAddress.address);
     const bedrock = Boolean(managingProfile && managingProfile.bedrock);
     srvBedrock.classList.toggle('hidden', !bedrock);
@@ -109,7 +109,7 @@ function renderAddress() {
   nameEdit.classList.toggle('hidden', hasName);
   nameCurrent.textContent = customAddress.address || '—';
   if (!editingName && customAddress.elsewhere) {
-    setNameMsg(`Your address ${customAddress.elsewhere.address} is on the ${customAddress.elsewhere.region} relay. Switch the region to use it.`);
+    setNameMsg(t('Your address {address} is on the {region} relay. Switch the region to use it.', { address: customAddress.elsewhere.address, region: customAddress.elsewhere.region }));
   }
 }
 
@@ -121,18 +121,18 @@ function setNameMsg(text, isError) {
 nameClaimBtn.addEventListener('click', async () => {
   const name = nameInput.value.trim().toLowerCase();
   if (!/^[a-z0-9](?:[a-z0-9-]{1,18}[a-z0-9])$/.test(name) || name.includes('--')) {
-    setNameMsg('Use 3–20 lowercase letters, numbers or dashes (not at the start or end).', true);
+    setNameMsg(t('Use 3–20 lowercase letters, numbers or dashes (not at the start or end).'), true);
     return;
   }
   nameClaimBtn.disabled = true;
-  setNameMsg(`Setting up ${name}.voxelport.in…`);
+  setNameMsg(t('Setting up {name}.voxelport.in…', { name }));
   const res = await window.vp.name.claim(name);
   nameClaimBtn.disabled = false;
-  if (!res || !res.ok) { setNameMsg((res && res.error) || 'Could not set that address.', true); return; }
+  if (!res || !res.ok) { setNameMsg(t((res && res.error) || 'Could not set that address.'), true); return; }
   editingName = false;
   customAddress = { name: res.name, address: res.address };
-  setNameMsg('Friends join without a port number. 3–20 letters, numbers or dashes.');
-  srvLogLine(`Your address is now ${res.address} — it can take a minute to work everywhere.`);
+  setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  srvLogLine(t('Your address is now {address} — it can take a minute to work everywhere.', { address: res.address }));
   renderAddress();
 });
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameClaimBtn.click(); });
@@ -145,11 +145,11 @@ $('nameChangeBtn').addEventListener('click', () => {
 });
 
 $('nameRemoveBtn').addEventListener('click', async () => {
-  if (!window.confirm(`Remove ${customAddress.address}? Players will need the address with the port again.`)) return;
+  if (!window.confirm(t('Remove {address}? Players will need the address with the port again.', { address: customAddress.address }))) return;
   const res = await window.vp.name.release();
-  if (!res || !res.ok) { srvLogLine((res && res.error) || 'Could not remove the address.'); return; }
+  if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove the address.')); return; }
   customAddress = { name: '', address: '' };
-  setNameMsg('Friends join without a port number. 3–20 letters, numbers or dashes.');
+  setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
   renderAddress();
 });
 
@@ -168,7 +168,7 @@ wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), () => {
 });
 
 window.vp.on('tunnel:name', (n) => {
-  if (customAddress.elsewhere && !n.elsewhere) setNameMsg('Friends join without a port number. 3–20 letters, numbers or dashes.');
+  if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
   customAddress = n;
   editingName = false;
   renderAddress();
@@ -201,7 +201,9 @@ window.vp.on('perf:sample', (p) => {
     setBar('perfTpsBar', p.tps / 20, p.tps < 15 ? 'bad' : p.tps < 19 ? 'warn' : '');
   }
   if (p.lagWarnings > 0) {
-    perfWarn.textContent = `⚠ The server fell behind ${p.lagWarnings} time${p.lagWarnings === 1 ? '' : 's'}. Lower the view distance or give it more RAM in Settings.`;
+    perfWarn.textContent = p.lagWarnings === 1
+      ? t('⚠ The server fell behind 1 time. Lower the view distance or give it more RAM in Settings.')
+      : t('⚠ The server fell behind {n} times. Lower the view distance or give it more RAM in Settings.', { n: p.lagWarnings });
     perfWarn.classList.remove('hidden');
   }
 });
@@ -225,11 +227,11 @@ function renderDiagnosis(items) {
   const head = document.createElement('div');
   head.className = 'diag-head';
   const title = document.createElement('span');
-  title.textContent = 'Why it stopped';
+  title.textContent = t('Why it stopped');
   const close = document.createElement('button');
   close.className = 'link-btn';
   close.type = 'button';
-  close.textContent = 'Dismiss';
+  close.textContent = t('Dismiss');
   close.addEventListener('click', clearDiagnosis);
   head.append(title, close);
   diagnosisBox.appendChild(head);
@@ -263,7 +265,7 @@ async function runFix(action, btn) {
   else if (action === 'eula') {
     btn.disabled = true;
     const res = await window.vp.server.fix(managingProfileId, 'eula');
-    btn.textContent = res && res.ok ? 'Accepted — press Start' : 'Could not update eula.txt';
+    btn.textContent = res && res.ok ? t('Accepted — press Start') : t('Could not update eula.txt');
   }
 }
 
@@ -283,7 +285,7 @@ window.openManagementScreen = async function openManagementScreen(id) {
   if (!profile) { showScreen('screen-library'); return; }
   managingProfile = profile;
   mgName.textContent = profile.name;
-  mgMeta.textContent = `${{ vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type} • ${profile.version} • port ${profile.port}`;
+  mgMeta.textContent = t('{type} • {version} • port {port}', { type: { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type, version: profile.version, port: profile.port });
   renderManagementScreen();
 };
 
@@ -294,7 +296,7 @@ window.refreshManagedProfile = async function refreshManagedProfile() {
   if (!profile) return;
   managingProfile = profile;
   mgName.textContent = profile.name;
-  mgMeta.textContent = `${{ vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type} • ${profile.version} • port ${profile.port}`;
+  mgMeta.textContent = t('{type} • {version} • port {port}', { type: { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type, version: profile.version, port: profile.port });
   renderManagementScreen();
 };
 window.consoleProfileId = () => managingProfileId;
@@ -305,7 +307,7 @@ srvStartBtn.addEventListener('click', async () => {
   resetPerf();
   const res = await window.vp.server.start(managingProfileId);
   if (res && res.cancelled) return;
-  if (!res || !res.ok) srvLogLine(res && res.error ? res.error : 'Could not start server.');
+  if (!res || !res.ok) srvLogLine(t(res && res.error ? res.error : 'Could not start server.'));
 });
 
 srvStopBtn.addEventListener('click', () => window.vp.server.stop());
@@ -314,7 +316,7 @@ srvFolderBtn.addEventListener('click', () => window.vp.server.openFolder(managin
 srvRemoveBtn.addEventListener('click', async () => {
   if (!managingProfileId) return;
   const res = await window.vp.server.remove(managingProfileId);
-  if (!res || !res.ok) { srvLogLine((res && res.error) || 'Could not remove this server.'); return; }
+  if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove this server.')); return; }
   await window.refreshLibrary();
   showScreen('screen-library');
 });
@@ -324,7 +326,7 @@ makePublicBtn.addEventListener('click', async () => {
   makePublicBtn.disabled = true;
   const res = await window.vp.server.makePublic(managingProfileId);
   makePublicBtn.disabled = false;
-  if (res && !res.ok && res.error) srvLogLine(res.error);
+  if (res && !res.ok && res.error) srvLogLine(t(res.error));
 });
 
 stopPublicBtn.addEventListener('click', () => window.vp.stop());
@@ -332,8 +334,8 @@ stopPublicBtn.addEventListener('click', () => window.vp.stop());
 srvCopyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(srvAddress.textContent);
-    srvCopyBtn.textContent = 'Copied';
-    setTimeout(() => { srvCopyBtn.textContent = 'Copy'; }, 1400);
+    srvCopyBtn.textContent = t('Copied');
+    setTimeout(() => { srvCopyBtn.textContent = t('Copy'); }, 1400);
   } catch { /* ignore */ }
 });
 
@@ -349,7 +351,7 @@ cmdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCommand
 window.vp.on('server:status', () => renderManagementScreen());
 window.vp.on('server:log', (line) => { if (isThisProfileActive()) srvLogLine(line); });
 window.vp.on('server:players', (n) => { if (isThisProfileActive()) srvPlayers.textContent = String(n); });
-window.vp.on('server:exit', (code) => { if (isThisProfileActive()) srvLogLine(`Server process exited (code ${code}).`); });
+window.vp.on('server:exit', (code) => { if (isThisProfileActive()) srvLogLine(t('Server process exited (code {code}).', { code })); });
 
 // The relay tunnel is shared with the manual-hosting screen — reuse its events.
 window.vp.on('tunnel:assigned', ({ port, host }) => {
@@ -363,5 +365,5 @@ window.vp.on('tunnel:assigned', ({ port, host }) => {
 window.vp.on('tunnel:players', (n) => { if (isThisProfilePublic()) srvTunnelPlayers.textContent = String(n); });
 window.vp.on('tunnel:ping', (ms) => { if (isThisProfilePublic()) srvPing.textContent = `${ms}ms`; });
 window.vp.on('tunnel:error', (message) => {
-  if (isThisProfileActive() || isThisProfilePublic()) srvLogLine('Relay: ' + message);
+  if (isThisProfileActive() || isThisProfilePublic()) srvLogLine(t('Relay: {message}', { message }));
 });

@@ -32,22 +32,22 @@ let templates = [];
 async function loadTemplates() {
   templates = await window.vp.server.templates();
   templateGrid.innerHTML = '';
-  for (const t of templates) {
+  for (const t of templates) { // (inside this loop `t` is the template, so the translator is window.t)
     const btn = document.createElement('button');
     btn.className = 'mode-card template-card';
     btn.type = 'button';
     btn.dataset.template = t.id;
     const title = document.createElement('div');
     title.className = 'mode-title';
-    title.textContent = t.label;
+    title.textContent = window.t(t.label);
     const desc = document.createElement('div');
     desc.className = 'mode-desc';
-    desc.textContent = t.blurb;
+    desc.textContent = window.t(t.blurb);
     btn.append(title, desc);
     if (t.bedrock) {
       const pill = document.createElement('span');
       pill.className = 'pill';
-      pill.textContent = 'Bedrock';
+      pill.textContent = window.t('Bedrock');
       btn.appendChild(pill);
     }
     btn.addEventListener('click', () => selectTemplate(t, btn));
@@ -58,10 +58,10 @@ async function loadTemplates() {
 function selectTemplate(t, btn) {
   const wasSelected = btn.classList.contains('selected');
   templateGrid.querySelectorAll('.template-card').forEach((el) => el.classList.remove('selected'));
-  if (wasSelected) { wizardState.templateId = null; serverNameInput.placeholder = 'Survival SMP'; return; }
+  if (wasSelected) { wizardState.templateId = null; serverNameInput.placeholder = window.t('Survival SMP'); return; }
   btn.classList.add('selected');
   wizardState.templateId = t.id;
-  serverNameInput.placeholder = t.label;
+  serverNameInput.placeholder = window.t(t.label);
   const typeBtn = typeGrid.querySelector(`[data-type="${t.type}"]`);
   if (typeBtn && wizardState.type !== t.type) selectType(t.type, typeBtn, { keepTemplate: true });
 }
@@ -90,7 +90,7 @@ async function selectType(type, btn, { keepTemplate = false } = {}) {
     templateGrid.querySelectorAll('.template-card').forEach((el) => el.classList.remove('selected'));
   }
 
-  versionSelect.innerHTML = '<option>Loading…</option>';
+  versionSelect.innerHTML = '<option>' + window.t('Loading…') + '</option>';
   typeNextBtn.disabled = true;
   const versions = await window.vp.server.versions(type);
   versionSelect.innerHTML = '';
@@ -140,7 +140,7 @@ async function loadSpecs() {
   ramSlider.value = Math.min(recommendedRamMb, ramSlider.max);
   wizardState.ramMb = Number(ramSlider.value);
   ramValueLabel.textContent = ramSlider.value;
-  ramHint.textContent = `Recommended ${recommendedRamMb} MB for a system with ${(totalMemMb / 1024).toFixed(1)} GB RAM.`;
+  ramHint.textContent = window.t('Recommended {mb} MB for a system with {gb} GB RAM.', { mb: recommendedRamMb, gb: (totalMemMb / 1024).toFixed(1) });
 }
 
 ramSlider.addEventListener('input', () => {
@@ -149,7 +149,7 @@ ramSlider.addEventListener('input', () => {
 });
 
 async function runJavaCheck() {
-  javaStatusText.textContent = 'Checking for Java…';
+  javaStatusText.textContent = window.t('Checking for Java…');
   installJavaBtn.classList.add('hidden');
   recheckJavaBtn.classList.add('hidden');
 
@@ -158,13 +158,13 @@ async function runJavaCheck() {
 
   if (result.satisfied) {
     javaStatusText.textContent = result.managed
-      ? `Java ${result.major} (installed by VoxelPort) — ready.`
-      : `Java ${result.major} detected — ready.`;
+      ? window.t('Java {major} (installed by VoxelPort) — ready.', { major: result.major })
+      : window.t('Java {major} detected — ready.', { major: result.major });
   } else if (result.found) {
-    javaStatusText.textContent = `Found Java ${result.major ?? '?'}, but this version needs Java ${result.required}+.`;
+    javaStatusText.textContent = window.t('Found Java {major}, but this version needs Java {required}+.', { major: result.major ?? '?', required: result.required });
     installJavaBtn.classList.remove('hidden');
   } else {
-    javaStatusText.textContent = `Java not found. This version needs Java ${result.required}+.`;
+    javaStatusText.textContent = window.t('Java not found. This version needs Java {required}+.', { required: result.required });
     installJavaBtn.classList.remove('hidden');
   }
   recheckJavaBtn.classList.remove('hidden');
@@ -175,14 +175,14 @@ async function runJavaCheck() {
 installJavaBtn.addEventListener('click', async () => {
   installJavaBtn.disabled = true;
   recheckJavaBtn.disabled = true;
-  installJavaBtn.textContent = 'Installing Java…';
-  javaStatusText.textContent = 'Finding the right Java build…';
+  installJavaBtn.textContent = window.t('Installing Java…');
+  javaStatusText.textContent = window.t('Finding the right Java build…');
   const res = await window.vp.java.install(wizardState.version);
   installJavaBtn.disabled = false;
   recheckJavaBtn.disabled = false;
-  installJavaBtn.textContent = 'Install Java for me';
+  installJavaBtn.textContent = window.t('Install Java for me');
   if (!res || !res.ok) {
-    javaStatusText.textContent = `Couldn't install Java: ${(res && res.error) || 'unknown error'}. Check your connection and try again.`;
+    javaStatusText.textContent = window.t("Couldn't install Java: {why}. Check your connection and try again.", { why: (res && res.error) || window.t('unknown error') });
     return;
   }
   await runJavaCheck();
@@ -190,14 +190,14 @@ installJavaBtn.addEventListener('click', async () => {
 
 window.vp.on('java:progress', (p) => {
   if (!p) return;
-  if (p.stage === 'resolve') javaStatusText.textContent = 'Finding the right Java build…';
+  if (p.stage === 'resolve') javaStatusText.textContent = window.t('Finding the right Java build…');
   else if (p.stage === 'download') {
     const mb = (n) => (n / (1024 * 1024)).toFixed(1);
     javaStatusText.textContent = p.total
-      ? `Downloading Java… ${mb(p.received)} / ${mb(p.total)} MB (${Math.floor((p.received / p.total) * 100)}%)`
-      : `Downloading Java… ${mb(p.received)} MB`;
-  } else if (p.stage === 'extract') javaStatusText.textContent = 'Unpacking Java…';
-  else if (p.stage === 'done') javaStatusText.textContent = 'Java installed — checking…';
+      ? window.t('Downloading Java… {done} / {total} MB ({pct}%)', { done: mb(p.received), total: mb(p.total), pct: Math.floor((p.received / p.total) * 100) })
+      : window.t('Downloading Java… {done} MB', { done: mb(p.received) });
+  } else if (p.stage === 'extract') javaStatusText.textContent = window.t('Unpacking Java…');
+  else if (p.stage === 'done') javaStatusText.textContent = window.t('Java installed — checking…');
 });
 recheckJavaBtn.addEventListener('click', runJavaCheck);
 
@@ -209,7 +209,7 @@ eulaCheck.addEventListener('change', updateInstallEnabled);
 installBtn.addEventListener('click', async () => {
   showScreen('screen-install');
   installFill.style.width = '0%';
-  installText.textContent = 'Preparing…';
+  installText.textContent = window.t('Preparing…');
 
   let result;
   try {
@@ -224,7 +224,7 @@ installBtn.addEventListener('click', async () => {
       templateId: wizardState.templateId || undefined,
     });
   } catch (err) {
-    installText.textContent = 'Install failed: ' + (err && err.message ? err.message : err);
+    installText.textContent = window.t('Install failed: {why}', { why: err && err.message ? err.message : err });
     return;
   }
 
@@ -238,20 +238,20 @@ installBtn.addEventListener('click', async () => {
 
 window.vp.on('install:progress', (p) => {
   if (p.phase === 'resolving') {
-    installText.textContent = 'Finding download…';
+    installText.textContent = window.t('Finding download…');
   } else if (p.phase === 'downloading') {
     const pct = p.total ? Math.round((p.received / p.total) * 100) : 0;
     installFill.style.width = pct + '%';
     const mb = (n) => (n / (1024 * 1024)).toFixed(1);
     installText.textContent = p.total
-      ? `Downloading… ${pct}% (${mb(p.received)} / ${mb(p.total)} MB)`
-      : 'Downloading…';
+      ? window.t('Downloading… {pct}% ({done} / {total} MB)', { pct, done: mb(p.received), total: mb(p.total) })
+      : window.t('Downloading…');
   } else if (p.phase === 'bedrock') {
     installFill.style.width = '100%';
-    installText.textContent = 'Adding Bedrock support (Geyser + Floodgate)…';
+    installText.textContent = window.t('Adding Bedrock support (Geyser + Floodgate)…');
   } else if (p.phase === 'done') {
     installFill.style.width = '100%';
-    installText.textContent = 'Starting server…';
+    installText.textContent = window.t('Starting server…');
   }
 });
 

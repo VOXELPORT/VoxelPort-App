@@ -11,6 +11,8 @@
  * server folder) or 'eula' (accept the EULA for an imported server).
  */
 
+const HINGLISH = require('./crashExplain.hinglish');
+
 const RULES = [
   {
     id: 'port-in-use',
@@ -133,7 +135,7 @@ function context(lines, extra) {
 
 /**
  * @param {string[]} lines recent console lines (oldest first)
- * @param {{ port?: number, crashed?: boolean }} extra
+ * @param {{ port?: number, crashed?: boolean, lang?: 'en'|'hinglish' }} extra
  * @returns {Array} diagnoses, most relevant first (empty if nothing matched and it didn't crash)
  */
 function explainCrash(lines, extra = {}) {
@@ -153,7 +155,15 @@ function explainCrash(lines, extra = {}) {
 }
 
 function toDiagnosis(rule, ctx, evidence) {
-  return { id: rule.id, title: rule.title, detail: rule.detail(ctx), fix: rule.fix, evidence: String(evidence).slice(0, 300) };
+  const h = ctx.lang === 'hinglish' ? HINGLISH[rule.id] : null;
+  if (!h) return { id: rule.id, title: rule.title, detail: rule.detail(ctx), fix: rule.fix, evidence: String(evidence).slice(0, 300) };
+  return {
+    id: rule.id,
+    title: h.title,
+    detail: h.detail(ctx),
+    fix: rule.fix && h.fix ? { action: rule.fix.action, label: h.fix } : rule.fix,
+    evidence: String(evidence).slice(0, 300),
+  };
 }
 
-module.exports = { explainCrash };
+module.exports = { explainCrash, RULES, GENERIC };

@@ -342,7 +342,7 @@ function wireServerProcess(p) {
     const javaFix = code !== 0 && watch && watch.neededMajor && !watch.retried;
     if (!stopRequested && !javaFix && exitedProfileId) {
       const profile = serverProfiles.getProfile(userDataDir(), exitedProfileId);
-      const items = explainCrash(recentLines.slice(-200), { port: profile && profile.port, crashed: code !== 0 });
+      const items = explainCrash(recentLines.slice(-200), { port: profile && profile.port, crashed: code !== 0, lang: uiLang });
       if (items.length) send('server:diagnosis', { profileId: exitedProfileId, items });
     }
     if (code !== 0 && watch && watch.neededMajor) {
@@ -473,13 +473,13 @@ ipcMain.handle('update:install', guarded(g, async () => {
   if (serverProc.child || (tunnel && tunnel.running)) {
     const { response } = await dialog.showMessageBox(mainWindow, {
       type: 'question',
-      buttons: ['Cancel', 'Restart & Update'],
+      buttons: [say('Cancel', 'Cancel'), say('Restart & Update', 'Restart karo aur Update karo')],
       defaultId: 1,
       cancelId: 0,
       message: serverProc.child
-        ? 'A managed server is currently running.'
-        : 'The VoxelPort tunnel is currently public.',
-      detail: 'Restarting to install the update will stop it. Continue?',
+        ? say('A managed server is currently running.', 'Ek managed server abhi chal raha hai.')
+        : say('The VoxelPort tunnel is currently public.', 'VoxelPort tunnel abhi public hai.'),
+      detail: say('Restarting to install the update will stop it. Continue?', 'Update install karne ke liye restart karne se yeh band ho jayega. Aage badhein?'),
     });
     if (response !== 1) return { ok: false, cancelled: true };
   }
@@ -555,15 +555,15 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
     const targetProfile = profileId ? serverProfiles.getProfile(userDataDir(), profileId) : null;
     const sameTarget = (profileId && publicServerProfileId === profileId) || (!profileId && currentlyManual && !targetProfile);
     if (!sameTarget) {
-      const currentLabel = currentProfile ? currentProfile.name : (currentlyManual ? 'The manual tunnel' : 'The current tunnel');
-      const targetLabel = targetProfile ? targetProfile.name : 'the server you already run manually';
+      const currentLabel = currentProfile ? currentProfile.name : (currentlyManual ? say('The manual tunnel', 'Manual tunnel') : say('The current tunnel', 'Abhi wala tunnel'));
+      const targetLabel = targetProfile ? targetProfile.name : say('the server you already run manually', 'jo server tum manually chalate ho');
       const { response } = await dialog.showMessageBox(mainWindow, {
         type: 'question',
-        buttons: ['Cancel', 'Switch'],
+        buttons: [say('Cancel', 'Cancel'), say('Switch', 'Badlo')],
         defaultId: 1,
         cancelId: 0,
-        message: `${currentLabel} is currently public.`,
-        detail: `Switch the VoxelPort tunnel to ${targetLabel}?`,
+        message: say(currentLabel + ' is currently public.', currentLabel + ' abhi public hai.'),
+        detail: say('Switch the VoxelPort tunnel to ' + targetLabel + '?', 'VoxelPort tunnel ko ' + targetLabel + ' par badlein?'),
       });
       if (response !== 1) return { ok: false, cancelled: true };
       tunnel.stop();
@@ -762,7 +762,7 @@ ipcMain.handle('server:defaultDir', guarded(g, () => {
 
 ipcMain.handle('server:chooseFolder', guarded(g, async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Choose a folder for the server files',
+    title: say('Choose a folder for the server files', 'Server files ke liye ek folder chuno'),
     properties: ['openDirectory', 'createDirectory'],
   });
   if (result.canceled || !result.filePaths.length) return null;
@@ -845,11 +845,14 @@ async function startServerProfile(id, { retried = false } = {}) {
     const activeProfile = serverProfiles.getProfile(userDataDir(), activeServerProfileId);
     const { response } = await dialog.showMessageBox(mainWindow, {
       type: 'question',
-      buttons: ['Cancel', 'Switch Server'],
+      buttons: [say('Cancel', 'Cancel'), say('Switch Server', 'Server badlo')],
       defaultId: 1,
       cancelId: 0,
-      message: `${activeProfile ? activeProfile.name : 'Another server'} is currently running.`,
-      detail: `Stop it and start ${profile.name}?`,
+      message: say(
+        (activeProfile ? activeProfile.name : 'Another server') + ' is currently running.',
+        (activeProfile ? activeProfile.name : 'Doosra server') + ' abhi chal raha hai.',
+      ),
+      detail: say('Stop it and start ' + profile.name + '?', 'Use band karke ' + profile.name + ' start karein?'),
     });
     if (response !== 1) return { ok: false, cancelled: true };
 

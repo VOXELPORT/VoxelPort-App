@@ -27,7 +27,7 @@ importChooseFolderBtn.addEventListener('click', async () => {
 
   const info = await window.vp.server.detectExisting(dir);
   if (!info.looksLikeServer) {
-    importDetectText.textContent = 'This folder doesn\'t look like an existing Minecraft server yet — you can still add it, VoxelPort just won\'t detect any settings.';
+    importDetectText.textContent = t("This folder doesn't look like an existing Minecraft server yet — you can still add it, VoxelPort just won't detect any settings.");
   } else {
     const found = [];
     if (info.hasServerJar) found.push('server.jar');
@@ -35,7 +35,7 @@ importChooseFolderBtn.addEventListener('click', async () => {
     if (info.hasWorld) found.push('world/');
     if (info.hasMods) found.push('mods/');
     if (info.hasPlugins) found.push('plugins/');
-    importDetectText.textContent = `Found: ${found.join(', ')}. Nothing here will be overwritten.`;
+    importDetectText.textContent = t('Found: {files}. Nothing here will be overwritten.', { files: found.join(', ') });
   }
   if (info.guessedType) importType.value = info.guessedType;
   if (info.guessedPort) importPort.value = info.guessedPort;
@@ -53,7 +53,7 @@ importConfirmBtn.addEventListener('click', async () => {
       maxRamMb: Number(importRamSlider.value),
       serverDir: importDir,
     });
-    if (!result || !result.ok) throw new Error((result && result.error) || 'Import failed.');
+    if (!result || !result.ok) throw new Error((result && result.error) || t('Import failed.'));
     await window.refreshLibrary();
     window.openManagementScreen(result.profile.id);
     showScreen('screen-console');
@@ -63,7 +63,7 @@ importConfirmBtn.addEventListener('click', async () => {
     importName.value = '';
     importDetectText.textContent = '';
   } catch (err) {
-    importDetectText.textContent = 'Could not import: ' + (err && err.message ? err.message : err);
+    importDetectText.textContent = t('Could not import: {why}', { why: err && err.message ? err.message : err });
   } finally {
     importConfirmBtn.disabled = false;
   }

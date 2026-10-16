@@ -55,16 +55,16 @@ function log(line, isError) {
 
 function setStatus(state) {
   dot.className = 'dot';
-  if (state === 'online') { dot.classList.add('on'); statusText.textContent = 'Hosting'; }
-  else if (state === 'connecting') { dot.classList.add('warn'); statusText.textContent = 'Connecting…'; }
-  else if (state === 'reconnecting') { dot.classList.add('warn'); statusText.textContent = 'Reconnecting…'; }
-  else if (state === 'error') { dot.classList.add('err'); statusText.textContent = 'Error'; }
-  else { statusText.textContent = 'Idle'; }
+  if (state === 'online') { dot.classList.add('on'); statusText.textContent = t('Hosting'); }
+  else if (state === 'connecting') { dot.classList.add('warn'); statusText.textContent = t('Connecting…'); }
+  else if (state === 'reconnecting') { dot.classList.add('warn'); statusText.textContent = t('Reconnecting…'); }
+  else if (state === 'error') { dot.classList.add('err'); statusText.textContent = t('Error'); }
+  else { statusText.textContent = t('Idle'); }
 }
 
 function setRunningUI(on) {
   running = on;
-  toggleBtn.textContent = on ? 'Stop hosting' : 'Start hosting';
+  toggleBtn.textContent = on ? t('Stop hosting') : t('Start hosting');
   toggleBtn.classList.toggle('stop', on);
   localPort.disabled = on;
   relayUrl.disabled = on;
@@ -80,7 +80,7 @@ toggleBtn.addEventListener('click', async () => {
     await window.vp.stop();
     setRunningUI(false);
     setStatus('idle');
-    log('Stopped.');
+    log(t('Stopped.'));
   } else {
     setStatus('connecting');
     setRunningUI(true);
@@ -98,9 +98,9 @@ toggleBtn.addEventListener('click', async () => {
 copyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(address.textContent);
-    copyBtn.textContent = 'Copied';
+    copyBtn.textContent = t('Copied');
     copyBtn.classList.add('copied');
-    setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 1400);
+    setTimeout(() => { copyBtn.textContent = t('Copy'); copyBtn.classList.remove('copied'); }, 1400);
   } catch { /* ignore */ }
 });
 
@@ -108,8 +108,8 @@ copyTokenBtn.addEventListener('click', async () => {
   // The raw token never reaches the renderer — main.js writes it straight
   // to the OS clipboard (item 12).
   await window.vp.copyToken();
-  copyTokenBtn.textContent = 'Copied';
-  setTimeout(() => { copyTokenBtn.textContent = 'Copy'; }, 1400);
+  copyTokenBtn.textContent = t('Copied');
+  setTimeout(() => { copyTokenBtn.textContent = t('Copy'); }, 1400);
 });
 
 window.vp.on('tunnel:status', (s) => {
@@ -198,7 +198,7 @@ const updateBannerText = $('updateBannerText');
 const updateInstallBtn = $('updateInstallBtn');
 
 window.vp.on('update:downloaded', (version) => {
-  updateBannerText.textContent = `VoxelPort v${version} is ready to install.`;
+  updateBannerText.textContent = t('VoxelPort v{version} is ready to install.', { version });
   updateBanner.classList.remove('hidden');
 });
 window.vp.on('update:error', () => { /* background check failure — nothing actionable for the user */ });
@@ -233,7 +233,7 @@ async function loadRegions() {
     }
     return;
   }
-  const options = [['auto', 'Auto (fastest)'], ...info.regions.map((r) => [r.id, r.label])];
+  const options = [['auto', t('Auto (fastest)')], ...info.regions.map((r) => [r.id, r.label])];
   for (const sel of regionSelects) {
     sel.innerHTML = '';
     for (const [value, text] of options) {
@@ -259,7 +259,7 @@ window.onAppState.push((state) => {
 });
 
 window.vp.on('tunnel:region', (r) => {
-  for (const el of document.querySelectorAll('.region-used')) el.textContent = r ? r.label : 'Own relay';
+  for (const el of document.querySelectorAll('.region-used')) el.textContent = r ? r.label : t('Own relay');
 });
 
 // ─── Library entry point ────────────────────────────────────────────────
@@ -293,7 +293,7 @@ function whenDomReady() {
   relayUrl.placeholder = info.defaultRelayUrl;
   tokenField.value = info.maskedToken;
   version.textContent = 'v' + info.version;
-  log('Ready. Set your local port and click Start hosting.');
+  log(t('Ready. Set your local port and click Start hosting.'));
   await loadRegions();
   applyAppState(state);
   showScreen('screen-library');
