@@ -15,8 +15,8 @@ function statusForProfile(profile) {
 
 function statusLabel(status) {
   return {
-    stopped: 'Stopped', starting: 'Starting…', online: 'Online', stopping: 'Stopping…', crashed: 'Crashed',
-  }[status] || 'Stopped';
+    stopped: t('Stopped'), starting: t('Starting…'), online: t('Online'), stopping: t('Stopping…'), crashed: t('Crashed'),
+  }[status] || t('Stopped');
 }
 
 function renderCards() {
@@ -24,7 +24,7 @@ function renderCards() {
   if (!window.profiles || window.profiles.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'hint';
-    empty.textContent = 'No servers yet — add one to get started.';
+    empty.textContent = t('No servers yet — add one to get started.');
     serverList.appendChild(empty);
     return;
   }
@@ -43,7 +43,7 @@ function renderCards() {
       <div class="server-card-meta">${typeLabel(profile.type)} • ${escapeHtml(profile.version)}</div>
       <div class="server-card-status">
         <span class="dot ${status === 'online' ? 'on' : (status === 'starting' || status === 'stopping') ? 'warn' : status === 'crashed' ? 'err' : ''}"></span>
-        ${statusLabel(status)}${isPublic ? ' · <span class="public-badge">Public</span>' : ''}
+        ${statusLabel(status)}${isPublic ? ' · <span class="public-badge">' + t('Public') + '</span>' : ''}
       </div>`;
 
     const actions = document.createElement('div');
@@ -51,7 +51,7 @@ function renderCards() {
 
     const startBtn = document.createElement('button');
     startBtn.className = 'ghost small';
-    startBtn.textContent = status === 'online' || status === 'starting' ? 'Manage' : 'Start';
+    startBtn.textContent = status === 'online' || status === 'starting' ? t('Manage') : t('Start');
     startBtn.addEventListener('click', async () => {
       if (status === 'online' || status === 'starting') {
         openManagement(profile.id);
@@ -65,7 +65,7 @@ function renderCards() {
       startBtn.disabled = false;
       if (res && res.cancelled) { showScreen('screen-library'); return; } // user declined the switch
       if (!res || !res.ok) {
-        const msg = res && res.error ? res.error : 'Could not start server.';
+        const msg = res && res.error ? t(res.error) : t('Could not start server.');
         log(msg, true);
         if (window.consoleLogLine) window.consoleLogLine(msg);
       }
@@ -73,7 +73,7 @@ function renderCards() {
 
     const manageBtn = document.createElement('button');
     manageBtn.className = 'ghost small';
-    manageBtn.textContent = 'Manage';
+    manageBtn.textContent = t('Manage');
     manageBtn.addEventListener('click', () => openManagement(profile.id));
 
     // A running server's start button already reads "Manage" — don't show it twice.

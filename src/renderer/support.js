@@ -39,10 +39,10 @@
       const row = el('div', 'support-host');
       const info = el('div', 'support-host-info');
       const name = el('div', 'support-host-name', h.name);
-      if (h.affiliate) name.append(el('span', 'support-optional', 'affiliate link'));
+      if (h.affiliate) name.append(el('span', 'support-optional', t('affiliate link')));
       info.append(name);
       if (h.blurb) info.append(el('div', 'support-host-blurb', h.blurb));
-      const open = el('button', 'ghost small', 'Visit');
+      const open = el('button', 'ghost small', t('Visit'));
       open.type = 'button';
       open.addEventListener('click', () => window.vp.support.open('host', h.id));
       row.append(info, open);
@@ -76,7 +76,7 @@
   $('supportCopyBtn').addEventListener('click', async () => {
     const btn = $('supportCopyBtn');
     await window.vp.support.copyUpi();
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    btn.textContent = t('Copied!');
+    setTimeout(() => { btn.textContent = t('Copy'); }, 1500);
   });
 })();

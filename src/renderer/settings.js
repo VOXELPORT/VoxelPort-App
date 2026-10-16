@@ -37,19 +37,19 @@ function buildField(def, value) {
     input.checked = Boolean(value);
     const text = document.createElement('span');
     const b = document.createElement('b');
-    b.textContent = def.label;
+    b.textContent = t(def.label);
     text.appendChild(b);
     wrap.append(input, text);
   } else {
     const label = document.createElement('span');
     label.className = 'label';
-    label.textContent = def.label;
+    label.textContent = t(def.label);
     if (def.type === 'enum') {
       input = document.createElement('select');
       for (const opt of def.options) {
         const o = document.createElement('option');
         o.value = opt;
-        o.textContent = opt[0].toUpperCase() + opt.slice(1);
+        o.textContent = t(opt[0].toUpperCase() + opt.slice(1));
         input.appendChild(o);
       }
       input.value = value;
@@ -90,8 +90,8 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
 
   setBedrock.checked = bedrock.enabled;
   setBedrock.disabled = !bedrock.supported;
-  if (!bedrock.supported) setBedrockMsg.textContent = 'Bedrock players need a Paper or Fabric server — Vanilla can\'t run Geyser.';
-  else if (bedrock.enabled) setBedrockMsg.textContent = `On — Bedrock players join on the same port as Java (Geyser listens on ${bedrock.port}).`;
+  if (!bedrock.supported) setBedrockMsg.textContent = t("Bedrock players need a Paper or Fabric server — Vanilla can't run Geyser.");
+  else if (bedrock.enabled) setBedrockMsg.textContent = t('On — Bedrock players join on the same port as Java (Geyser listens on {port}).', { port: bedrock.port });
 
   renderAccounts(await window.vp.accounts.get(id));
 
@@ -99,7 +99,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   setListingDesc.value = listing.description || '';
   setListingDesc.disabled = !listing.enabled;
 
-  if (data.running) showSetMsg('This server is running — gameplay changes apply after a restart.', 'info');
+  if (data.running) showSetMsg(t('This server is running — gameplay changes apply after a restart.'), 'info');
   showScreen('screen-settings');
 };
 
@@ -130,11 +130,11 @@ setSaveBtn.addEventListener('click', async () => {
       listing: { enabled: setListed.checked, description: setListingDesc.value },
     });
     setSubtitle.textContent = res.profile.name;
-    showSetMsg(res.restartNeeded ? 'Saved! Restart the server to apply the changes.' : 'Saved!', 'ok');
+    showSetMsg(res.restartNeeded ? t('Saved! Restart the server to apply the changes.') : t('Saved!'), 'ok');
     if (window.refreshLibrary) window.refreshLibrary();
   } catch (err) {
     // ipcRenderer.invoke wraps the main-process error message.
-    showSetMsg(String(err && err.message ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'err');
+    showSetMsg(t(String(err && err.message ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')), 'err');
   } finally {
     setSaveBtn.disabled = false;
   }
@@ -143,24 +143,25 @@ setSaveBtn.addEventListener('click', async () => {
 setBedrock.addEventListener('change', async () => {
   const enabled = setBedrock.checked;
   setBedrock.disabled = true;
-  setBedrockMsg.textContent = enabled ? 'Downloading Geyser + Floodgate…' : 'Removing Geyser + Floodgate…';
+  setBedrockMsg.textContent = enabled ? t('Downloading Geyser + Floodgate…') : t('Removing Geyser + Floodgate…');
   const res = await window.vp.server.setBedrock(settingsProfileId, enabled);
   setBedrock.disabled = false;
   if (!res || !res.ok) {
     setBedrock.checked = !enabled;
-    setBedrockMsg.textContent = `Couldn't ${enabled ? 'add' : 'remove'} Bedrock support: ${(res && res.error) || 'unknown error'}`;
+    setBedrockMsg.textContent = enabled
+      ? t("Couldn't add Bedrock support: {why}", { why: t((res && res.error) || 'unknown error') })
+      : t("Couldn't remove Bedrock support: {why}", { why: t((res && res.error) || 'unknown error') });
     return;
   }
-  setBedrockMsg.textContent = enabled
-    ? `On — Bedrock players join on the same address and port as Java.${res.restartNeeded ? ' Restart the server to load Geyser.' : ''}`
-    : `Off.${res.restartNeeded ? ' Restart the server to apply.' : ''}`;
+  if (enabled) setBedrockMsg.textContent = res.restartNeeded ? t('On — Bedrock players join on the same address and port as Java. Restart the server to load Geyser.') : t('On — Bedrock players join on the same address and port as Java.');
+  else setBedrockMsg.textContent = res.restartNeeded ? t('Off. Restart the server to apply.') : t('Off.');
   if (window.refreshManagedProfile) window.refreshManagedProfile();
 });
 
 window.vp.on('bedrock:progress', (p) => {
   if (!p) return;
-  if (p.stage === 'resolve') setBedrockMsg.textContent = 'Finding the right Geyser build…';
-  else if (p.stage === 'download') setBedrockMsg.textContent = `Downloading ${p.file}…`;
+  if (p.stage === 'resolve') setBedrockMsg.textContent = t('Finding the right Geyser build…');
+  else if (p.stage === 'download') setBedrockMsg.textContent = t('Downloading {file}…', { file: p.file });
 });
 
 // ─── Player accounts: cracked (offline-mode) servers ──────────────────────
@@ -170,17 +171,17 @@ function renderAccounts(acc) {
   setCrackedWarn.classList.toggle('hidden', !acc.cracked);
   // The login plugin (AuthMe) is for Paper servers; hide the button once it's installed.
   setLoginBtn.classList.toggle('hidden', !(acc.cracked && acc.canInstallLogin && !acc.loginPlugin));
-  if (acc.cracked && acc.loginPlugin) setAccountsMsg.textContent = 'Login plugin installed (AuthMe): players use /register and /login.';
+  if (acc.cracked && acc.loginPlugin) setAccountsMsg.textContent = t('Login plugin installed (AuthMe): players use /register and /login.');
 }
 
 setCracked.addEventListener('change', async () => {
   const wantOn = setCracked.checked;
   if (wantOn && !window.confirm(
-    'Allow cracked players?\n\n' +
-    'This turns off Minecraft\'s account check, so people without a paid account can join.\n\n' +
-    '• Anyone can join under any name, including yours or an admin\'s, unless you use the whitelist or a login plugin.\n' +
-    '• Switching changes every player\'s ID: inventories, ops and whitelist entries from the other mode won\'t match.\n' +
-    '• Skins may not show for cracked players.'
+    t('Allow cracked players?') + '\n\n' +
+    t("This turns off Minecraft's account check, so people without a paid account can join.") + '\n\n' +
+    t("• Anyone can join under any name, including yours or an admin's, unless you use the whitelist or a login plugin.") + '\n' +
+    t("• Switching changes every player's ID: inventories, ops and whitelist entries from the other mode won't match.") + '\n' +
+    t('• Skins may not show for cracked players.')
   )) {
     setCracked.checked = false;
     return;
@@ -191,25 +192,25 @@ setCracked.addEventListener('change', async () => {
   setCracked.disabled = false;
   if (!res || !res.ok) {
     setCracked.checked = !wantOn;
-    setAccountsMsg.textContent = (res && res.error) || 'Couldn\'t change that.';
+    setAccountsMsg.textContent = t((res && res.error) || "Couldn't change that.");
     return;
   }
   renderAccounts(await window.vp.accounts.get(settingsProfileId));
-  setAccountsMsg.textContent = res.restartNeeded ? 'Saved. Restart the server to apply.' : 'Saved. Applies the next time you start the server.';
+  setAccountsMsg.textContent = res.restartNeeded ? t('Saved. Restart the server to apply.') : t('Saved. Applies the next time you start the server.');
 });
 
 setLoginBtn.addEventListener('click', async () => {
   setLoginBtn.disabled = true;
-  setAccountsMsg.textContent = 'Installing AuthMe…';
+  setAccountsMsg.textContent = t('Installing AuthMe…');
   const res = await window.vp.accounts.installLogin(settingsProfileId);
   setLoginBtn.disabled = false;
-  if (!res || !res.ok) { setAccountsMsg.textContent = `Couldn't install AuthMe: ${(res && res.error) || 'unknown error'}`; return; }
+  if (!res || !res.ok) { setAccountsMsg.textContent = t("Couldn't install AuthMe: {why}", { why: t((res && res.error) || 'unknown error') }); return; }
   renderAccounts(await window.vp.accounts.get(settingsProfileId));
-  setAccountsMsg.textContent = res.restartNeeded ? 'AuthMe installed. Restart the server to load it.' : 'AuthMe installed. It loads when you start the server.';
+  setAccountsMsg.textContent = res.restartNeeded ? t('AuthMe installed. Restart the server to load it.') : t('AuthMe installed. It loads when you start the server.');
 });
 
 window.vp.on('accounts:progress', (p) => {
   if (!p) return;
-  if (p.stage === 'resolve') setAccountsMsg.textContent = 'Finding AuthMe for your Minecraft version…';
-  else if (p.stage === 'download') setAccountsMsg.textContent = `Downloading ${p.file}…`;
+  if (p.stage === 'resolve') setAccountsMsg.textContent = t('Finding AuthMe for your Minecraft version…');
+  else if (p.stage === 'download') setAccountsMsg.textContent = t('Downloading {file}…', { file: p.file });
 });
