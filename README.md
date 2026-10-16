@@ -68,6 +68,10 @@
 - 🔓 **Cracked players** — optional switch (off by default) so friends without a paid Minecraft account can join, with a clear warning and one-click login protection (AuthMe).
 - ♥ **Support screen** — one-click tipping (UPI QR, GitHub Sponsors), the optional supporter perks, and suggestions for paid 24/7 hosting.
 - 📊 **Performance panel** — live CPU, RAM and TPS, with a warning when the server can't keep up.
+- 💾 **World backups** — automatic backups while the server runs (only if someone played) and when you stop it, with one-click restore. Restoring saves your current world first, so you can always undo it.
+- 📋 **Copy invite message** — a ready-to-send message with the address, Bedrock instructions and "hosted with VoxelPort", in English or Hinglish.
+- 🇮🇳 **Hinglish interface** — switch the whole app to Hinglish (Hindi in the English alphabet) from the footer.
+- 📣 **Relay announcements** — if the relay is about to restart, you see it in the app and your players see it in the game's chat.
 - 🩺 **Crash explanations** — if the server stops, VoxelPort says why in plain words (port in use, missing mod, out of memory…) and offers the fix.
 - 🌐 **Server list** — optionally show your server on [voxelport.in/servers](https://voxelport.in/servers).
 - ☕ **Automatic Java** — installs the correct Eclipse Temurin (Java 25 for Minecraft 26.1+) and fixes "needs a newer Java" errors on its own.
@@ -93,7 +97,7 @@ Yes on Windows — the Microsoft Store keeps VoxelPort up to date for you. On Li
 <details>
 <summary><b>Where are my worlds stored?</b></summary>
 
-On your PC, in the folder you choose for each server. The relay only forwards traffic — it never stores your world or player data.
+On your PC, in the folder you choose for each server. The relay only forwards traffic — it never stores your world or player data. Backups go in VoxelPort's own data folder ("Open backups folder" on the Backups screen). They hold your world(s) and player lists, not mods or plugins, and they stay on your PC.
 </details>
 
 ## 🛠️ For developers
