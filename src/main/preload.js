@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('vp', {
       'tunnel:region',
       'tunnel:notice',
       'tunnel:direct',
+      'tunnel:p2p',
+      'p2p:join:status',
       'backup:progress',
     ];
     if (!allowed.includes(channel)) return;
@@ -82,6 +84,11 @@ contextBridge.exposeInMainWorld('vp', {
     saveSettings: (input) => ipcRenderer.invoke('server:settings:save', input),
     setBedrock: (id, enabled) => ipcRenderer.invoke('server:bedrock:set', { id, enabled }),
     fix: (id, action) => ipcRenderer.invoke('server:fix', { id, action }),
+    p2p: {
+      get: (id) => ipcRenderer.invoke('server:p2p:get', { id }),
+      set: (id, enabled, confirmed) => ipcRenderer.invoke('server:p2p:set', { id, enabled, confirmed }),
+      rotate: (id) => ipcRenderer.invoke('server:p2p:rotate', { id }),
+    },
     direct: {
       get: (id) => ipcRenderer.invoke('server:direct:get', { id }),
       set: (id, enabled, confirmed) => ipcRenderer.invoke('server:direct:set', { id, enabled, confirmed }),
@@ -89,6 +96,13 @@ contextBridge.exposeInMainWorld('vp', {
     },
 
     state: () => ipcRenderer.invoke('server:state'),
+  },
+
+  // Joining a friend's server with a code (peer-to-peer).
+  join: {
+    start: (code) => ipcRenderer.invoke('p2p:join:start', { code }),
+    stop: () => ipcRenderer.invoke('p2p:join:stop'),
+    status: () => ipcRenderer.invoke('p2p:join:status'),
   },
 
   backups: {

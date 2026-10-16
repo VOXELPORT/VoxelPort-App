@@ -24,7 +24,36 @@
         <button class="primary" id="addServerBtn">+ Add Server</button>
         <button class="ghost" id="importServerBtn">Import Existing Server</button>
       </div>
+      <button class="back-link" id="joinCodeLink">Join a friend's server with a code ›</button>
       <button class="back-link" id="manualModeLink">Tunnel a server I already run elsewhere ›</button>
+    </section>
+
+    <!-- JOIN WITH A CODE (a player connects to a friend's server peer-to-peer) -->
+    <section class="screen panel" id="screen-join">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Play together</div><h1>JOIN WITH A CODE</h1></div></div>
+
+      <label class="field">
+        <span class="label">Code from your friend</span>
+        <input id="joinCodeInput" type="text" maxlength="24" placeholder="K7M2Q-9XH4T" spellcheck="false" autocomplete="off" />
+      </label>
+      <div class="hint">VoxelPort connects your PC straight to your friend's PC (peer-to-peer) for the lowest ping, with no port forwarding. Each of you can see the other's IP address while you play.</div>
+
+      <div class="actions">
+        <button id="joinStartBtn" class="primary" type="button">Join</button>
+        <button id="joinStopBtn" class="ghost hidden" type="button">Stop</button>
+      </div>
+
+      <div class="join-status hidden" id="joinStatus" data-tone="">
+        <span class="pill hidden" id="joinPath">Direct</span> <span id="joinStatusText"></span>
+      </div>
+      <div class="join-address hidden" id="joinAddressBox">
+        <div class="share-label">In Minecraft, add a server with this address</div>
+        <div class="address-row">
+          <code id="joinAddress">—</code>
+          <button id="joinCopyBtn" class="ghost" type="button">Copy</button>
+        </div>
+      </div>
     </section>
 
     <!-- MANUAL TUNNEL (existing flow, unchanged) -->
@@ -246,6 +275,12 @@
           <span class="pill">Direct</span> <span id="srvDirectText"></span>
           <button id="srvDirectRetryBtn" class="link-btn hidden" type="button">Try again</button>
         </div>
+        <div class="code-row hidden" id="srvJoinCode">
+          <span class="pill">Join code</span> <code id="srvJoinCodeText">—</code>
+          <button id="srvJoinCopyBtn" class="link-btn" type="button">Copy</button>
+          <button id="srvJoinNewBtn" class="link-btn" type="button">New code</button>
+          <div class="hint" id="srvJoinCodeHint"></div>
+        </div>
         <div class="invite-row">
           <button id="srvInviteBtn" class="ghost small" type="button">Copy invite message</button>
           <button id="srvInviteAltBtn" class="link-btn" type="button"></button>
@@ -337,6 +372,18 @@
           <span><b>Your home IP address becomes visible to your players</b>, and it is published in DNS for your custom address while this is on. Only turn it on for players you are comfortable sharing it with.</span>
         </div>
         <div class="hint" id="setDirectMsg"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Join codes</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setP2P" />
+          <span><b>Join codes: let friends connect peer-to-peer</b><span class="hint">Friends enter your code in VoxelPort and connect straight to your PC, with the lowest ping and no port forwarding. The relay only introduces you; the game never goes through it.</span></span>
+        </label>
+        <div class="set-warn hidden" id="setP2PWarn">
+          <span><b>Your friend's PC and yours can see each other's IP address</b> while they play. Only share the code with people you trust.</span>
+        </div>
+        <div class="hint" id="setP2PMsg"></div>
       </div>
 
       <div class="set-group">
@@ -462,6 +509,7 @@
   <script src="i18n.js"></script>
   <script src="invite.js"></script>
   <script src="directText.js"></script>
+  <script src="p2pText.js"></script>
   <script src="renderer.js"></script>
   <script src="library.js"></script>
   <script src="wizard.js"></script>
@@ -469,6 +517,7 @@
   <script src="console.js"></script>
   <script src="settings.js"></script>
   <script src="direct-ui.js"></script>
+  <script src="p2p-ui.js"></script>
   <script src="backups-ui.js"></script>
   <script src="support.js"></script>
 </body>

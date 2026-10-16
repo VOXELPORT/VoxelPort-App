@@ -28,6 +28,13 @@ dependencies, tested against a fake router in `test/helpers/fakeRouter.js`), `di
 ask the relay to verify it → report the state, and close the port when the tunnel stops), and the relay checks the port from the
 internet and points the host's custom address straight at it (see relay/README.md). Players use the same address as before.
 
+Join codes (optional, per server) are another side path, for players who are far from the relay. `p2pHost.js` (host) and
+`p2pJoin.js` (player) bridge real TCP sockets to WebRTC data channels, which live in a hidden window
+(`renderer/p2p-worker.js`, run by `p2pWorker.js`) because Electron's main process has no WebRTC. The relay only passes the
+connection-setup messages (`/join`, see relay/README.md); `joinSignaling.js` is the player's side of that. The logic is tested
+without a browser (`test/p2p.test.js` with `test/helpers/fakeRtc.js`); `npm run test:rtc` runs two real windows and
+`tools/join-e2e.js` runs the whole thing against a real relay (see the header of each).
+
 Starting a different profile while one is already running, or making a
 different profile public while another is already public, asks for
 confirmation before switching — VoxelPort never silently stops or replaces

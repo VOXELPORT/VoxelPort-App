@@ -9,6 +9,7 @@
     "start": "electron .",
     "dev": "electron .",
     "test": "node --test",
+    "test:rtc": "electron tools/rtc-check.js",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",

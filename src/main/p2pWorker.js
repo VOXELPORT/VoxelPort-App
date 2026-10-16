@@ -50,7 +50,18 @@ class ElectronRtcWorker extends EventEmitter {
     }).catch((err) => this.emit('error', err));
   }
 
-  /** Closes the hidden window (and with it every connection). */
+  /**
+   * Closes the hidden window after a moment, so connections it was told to close can hang up properly (the other side
+   * then notices at once instead of waiting for a network timeout). Use destroy() to close it immediately.
+   */
+  close(graceMs = 500) {
+    const win = this.win;
+    if (!win) return;
+    const timer = setTimeout(() => { if (this.win === win) this.destroy(); else if (!win.isDestroyed()) win.destroy(); }, graceMs);
+    if (timer.unref) timer.unref();
+  }
+
+  /** Closes the hidden window (and with it every connection) at once. */
   destroy() {
     if (this.onIpc) require('electron').ipcMain.removeListener('p2p:worker:evt', this.onIpc);
     this.onIpc = null;

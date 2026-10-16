@@ -24,7 +24,7 @@ const SAME_IN_BOTH = new Set([
   '{n} GB', '{n} MB', '{type} • {version} • port {port}', 'Advanced', 'Server folder', 'Description (MOTD)', 'Game mode', 'Difficulty',
   'Modded (Fabric)', 'Creative Flat', 'Peaceful Chill', 'View distance (chunks)', 'Simulation distance (chunks)', 'Spawn protection (blocks)',
   'Memory (RAM) —', 'affiliate link', 'Off.', 'Relay: {message}', 'Local server port',
-  'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar', 'Direct', 'Direct mode',
+  'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar', 'Direct', 'Direct mode', 'K7M2Q-9XH4T', 'Join codes', 'Join code', 'Relay',
 ]);
 
 // Messages the main process can send back; the screen runs them through t().
@@ -39,6 +39,7 @@ const MESSAGES_THE_APP_SENDS = [
   'A backup or restore is running; try again in a moment.', 'The server is starting or stopping. Try again in a moment.',
   'Stop the server first. A running server would write over the restored world.', 'The backup failed.', 'The restore failed.',
   'Direct mode needs your confirmation.', 'Make the server public with Direct mode on first.',
+  'Enter the code your friend gave you.', 'Join codes need your confirmation.', 'Make the server public with join codes on first.', 'That code isn\'t active. Check it, and ask the host to make sure their server is public and join codes are on.', 'Too many wrong codes. Try again in a few minutes.', 'Too many connections from this address.', 'Join codes aren\'t available on this relay.', 'The host went offline.', 'The host turned join codes off.', 'The host made a new code.', 'The host closed this connection.', 'This server has too many people connecting right now. Try again in a moment.', 'Could not reach the relay.', 'The relay refused the code.', 'Could not open a local port for Minecraft.', 'Turn join codes on first.',
   'That backup is gone.', "That is not one of VoxelPort's backups.", 'That file is not a VoxelPort backup.', 'That backup has no world in it.',
   'That backup is from a newer VoxelPort or is damaged.', 'The backup could not be verified.', 'That backup is too big to restore.',
   'That backup contains a file outside its folder, so it was not restored.',

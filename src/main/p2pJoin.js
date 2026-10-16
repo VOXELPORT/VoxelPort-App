@@ -18,9 +18,11 @@ const CHANNEL_OPEN_TIMEOUT_MS = 8000;
 const PREFERRED_PORT = 25565;
 
 /**
- * Status: { state, path, port, message }
- *   state: idle | signaling | connecting | p2p | relay | failed | stopped
- *   path:  '' | 'lan' | 'direct' | 'relay'
+ * Status: { state, path, port, reason, message }
+ *   state:  idle | signaling | connecting | p2p | relay | failed | stopped
+ *   path:   '' | 'lan' | 'direct' | 'relay'
+ *   reason: why the relay is used instead of a direct connection: timeout | failed | lost | stalled (the screen words it)
+ *   message: the relay's own words when joining failed (a wrong code, the host is offline…)
  * Events: 'status' (the status), 'log' (line).
  */
 class P2PJoin extends EventEmitter {
@@ -37,7 +39,7 @@ class P2PJoin extends EventEmitter {
     this.channelOpenTimeoutMs = channelOpenTimeoutMs;
     this.preferredPort = preferredPort;
     this.pipes = new PipeSet(worker);
-    this.status = { state: 'idle', path: '', port: 0, message: '' };
+    this.status = { state: 'idle', path: '', port: 0, reason: '', message: '' };
     this.fallback = null; // { address, port }: the host's ordinary relay address
     this.server = null;
     this.nextConn = 1;
@@ -57,7 +59,7 @@ class P2PJoin extends EventEmitter {
   start({ relayUrl, code, client }) {
     if (this.status.state !== 'idle' && this.status.state !== 'stopped' && this.status.state !== 'failed') return;
     this._cleanup();
-    this._set({ state: 'signaling', path: '', port: 0, message: '' });
+    this._set({ state: 'signaling', path: '', port: 0, reason: '', message: '' });
     const s = this.signaling;
     s.on('joined', (j) => this._onJoined(j));
     s.on('signal', (signal) => this.worker.send({ op: 'signal', peer: PEER, signal }));
@@ -71,7 +73,7 @@ class P2PJoin extends EventEmitter {
     this.fallback = { address, port };
     this._set({ state: 'connecting' });
     this.worker.send({ op: 'peer-new', peer: PEER, role: 'join' });
-    this.p2pTimer = setTimeout(() => this._useRelay('The direct connection did not open in time.'), this.p2pTimeoutMs);
+    this.p2pTimer = setTimeout(() => this._useRelay('timeout'), this.p2pTimeoutMs);
     if (this.p2pTimer.unref) this.p2pTimer.unref();
   }
 
@@ -83,11 +85,11 @@ class P2PJoin extends EventEmitter {
         clearTimeout(this.p2pTimer);
         this.viaP2P = true;
         this.signaling.leave(); // the relay has done its part
-        this._set({ state: 'p2p', path: evt.path === 'lan' ? 'lan' : 'direct', message: '' });
+        this._set({ state: 'p2p', path: evt.path === 'lan' ? 'lan' : 'direct', reason: '', message: '' });
         this._listen();
       } else if (evt.state === 'failed' || evt.state === 'closed') {
-        if (this.status.state === 'connecting') this._useRelay('A direct connection could not be made.');
-        else if (this.status.state === 'p2p') this._useRelay('The direct connection was lost.');
+        if (this.status.state === 'connecting') this._useRelay('failed');
+        else if (this.status.state === 'p2p') this._useRelay('lost');
       }
       return;
     }
@@ -105,15 +107,15 @@ class P2PJoin extends EventEmitter {
     this.worker.send({ op: 'peer-close', peer: PEER });
     this.pipes.closeAll();
     this.signaling.leave();
-    this.emit('log', reason + ' Using the relay instead.');
-    this._set({ state: 'relay', path: 'relay', message: reason });
+    this.emit('log', `No direct connection (${reason}). Using the relay instead.`);
+    this._set({ state: 'relay', path: 'relay', reason, message: '' });
     this._listen();
   }
 
   _failed(message) {
     if (this.status.state === 'stopped') return;
     clearTimeout(this.p2pTimer);
-    this._set({ state: 'failed', message: message || 'Could not join.' });
+    this._set({ state: 'failed', path: '', port: 0, reason: '', message: message || 'Could not join.' });
     this._cleanup();
   }
 
@@ -141,7 +143,7 @@ class P2PJoin extends EventEmitter {
       this.openTimers.set(conn, setTimeout(() => {
         if (!pipe.open) {
           pipe.close();
-          this._useRelay('The direct connection stopped answering.');
+          this._useRelay('stalled');
         }
       }, this.channelOpenTimeoutMs));
       if (this.openTimers.get(conn).unref) this.openTimers.get(conn).unref();
@@ -160,7 +162,7 @@ class P2PJoin extends EventEmitter {
   /** Stops listening and closes everything. */
   stop() {
     if (this.status.state === 'stopped') return;
-    this._set({ state: 'stopped', path: '', port: 0, message: '' });
+    this._set({ state: 'stopped', path: '', port: 0, reason: '', message: '' });
     this._cleanup();
   }
 

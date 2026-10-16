@@ -112,7 +112,7 @@ test('when no direct route can be made, the player is sent through the relay', a
     r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T' });
     await waitFor(() => r.join.status.state === 'relay', 'the fallback');
     assert.equal(r.join.status.path, 'relay');
-    assert.match(r.join.status.message, /direct connection/i);
+    assert.equal(r.join.status.reason, 'failed');
     const back = await roundTrip(r.join.status.port, Buffer.from('hi'), 'RELAY:hi'.length);
     assert.equal(back.toString(), 'RELAY:hi', 'it went to the host\'s relay address');
     assert.equal(r.mc.connections(), 0, 'and not through a direct connection');
@@ -124,7 +124,7 @@ test('a direct connection that never opens times out into the relay', async () =
   try {
     r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T' });
     await waitFor(() => r.join.status.state === 'relay', 'the timeout');
-    assert.match(r.join.status.message, /in time/);
+    assert.equal(r.join.status.reason, 'timeout');
     assert.equal((await roundTrip(r.join.status.port, Buffer.from('x'), 7)).toString(), 'RELAY:x');
   } finally { r.cleanup(); }
 });
@@ -138,7 +138,7 @@ test('if the direct connection is lost later, new connections use the relay', as
     assert.equal((await roundTrip(port, Buffer.from('a'), 4)).toString(), 'MC:a');
     r.joinWorker.dropLinks();
     await waitFor(() => r.join.status.state === 'relay', 'the switch to the relay');
-    assert.match(r.join.status.message, /lost/);
+    assert.equal(r.join.status.reason, 'lost');
     assert.equal(r.join.status.port, port, 'the same local port keeps working: Minecraft need not change anything');
     assert.equal((await roundTrip(port, Buffer.from('b'), 7)).toString(), 'RELAY:b');
   } finally { r.cleanup(); }
@@ -216,6 +216,18 @@ test('data sent before the channel is open is not lost', async () => {
 });
 
 // ─── The host's side ────────────────────────────────────────────────────────────
+
+test('attaching the same tunnel again keeps the players already connected', async () => {
+  const r = await rig();
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T' });
+    await waitFor(() => r.join.status.state === 'p2p', 'a direct connection');
+    assert.equal(r.host.connectedPeers, 1);
+    r.host.attach(r.relay.tunnel); // as happens on every tunnel reconnect
+    assert.equal(r.host.connectedPeers, 1);
+    assert.equal((await roundTrip(r.join.status.port, Buffer.from('k'), 4)).toString(), 'MC:k');
+  } finally { r.cleanup(); }
+});
 
 test('the host drops a player that never connects, and tells the relay', async () => {
   const r = await rig({ mode: 'silent' });

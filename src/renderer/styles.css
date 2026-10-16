@@ -364,6 +364,14 @@ button:focus-visible, input[type="checkbox"]:focus-visible, summary:focus-visibl
 .direct-line[data-tone="ok"] #srvDirectText { color: var(--grass-dark, #2f7d1f); font-weight: 700; }
 .direct-line[data-tone="warn"] #srvDirectText { font-weight: 700; }
 .direct-line[data-tone="err"] #srvDirectText { color: var(--red); font-weight: 700; }
+.code-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; }
+.code-row code { font-family: var(--type); font-weight: 700; font-size: 1.05rem; letter-spacing: .08em; user-select: text; }
+.code-row .hint { flex-basis: 100%; }
+.join-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .9rem; line-height: 1.45; }
+.join-status[data-tone="ok"] #joinStatusText { color: var(--grass-dark, #2f7d1f); font-weight: 700; }
+.join-status[data-tone="warn"] #joinStatusText { font-weight: 700; }
+.join-status[data-tone="err"] #joinStatusText { color: var(--red); font-weight: 700; }
+.join-address { background: var(--card); border: 2.5px solid var(--ink); padding: 10px 11px; display: flex; flex-direction: column; gap: 7px; }
 .name-box { background: var(--card); border: 2.5px solid var(--ink); padding: 10px 11px; display: flex; flex-direction: column; gap: 7px; }
 .name-view { display: flex; align-items: center; gap: 10px; font-size: .86rem; }
 .name-view b { font-family: var(--type); }

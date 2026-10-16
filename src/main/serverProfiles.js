@@ -38,6 +38,8 @@ function isValidProfile(p) {
     && (p.bedrock === undefined || typeof p.bedrock === 'boolean')
     // Optional: Direct mode (players connect straight to this PC); opt-in, off unless set.
     && (p.direct === undefined || typeof p.direct === 'boolean')
+    // Optional: join codes (players connect peer-to-peer with a code); opt-in, off unless set.
+    && (p.p2p === undefined || typeof p.p2p === 'boolean')
     && (p.listing === undefined || isValidListing(p.listing))
     && (p.backups === undefined || isValidBackups(p.backups))
     && (p.template === undefined || (typeof p.template === 'string' && /^[a-z0-9-]{1,32}$/.test(p.template)));

@@ -37,6 +37,7 @@ class P2PHost extends EventEmitter {
 
   /** Starts listening to the tunnel's join-code events. */
   attach(tunnel) {
+    if (this.tunnel === tunnel && this.handlers) return; // already listening (a tunnel reconnect must not drop the players)
     this.detach();
     this.tunnel = tunnel;
     this.handlers = {

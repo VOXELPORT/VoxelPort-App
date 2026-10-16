@@ -32,6 +32,9 @@ const support = require('./support');
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
 const { NoticeAnnouncer } = require('./notice');
 const { DirectMode, directAction, OFF: DIRECT_OFF } = require('./directMode');
+const { ElectronRtcWorker } = require('./p2pWorker');
+const { P2PHost } = require('./p2pHost');
+const { P2PJoin } = require('./p2pJoin');
 const { BackupService } = require('./backupService');
 const backupsLib = require('./backups');
 
@@ -217,11 +220,56 @@ function syncDirectMode() {
   }
 }
 
+// Join codes: players connect to this server peer-to-peer with a code (see p2pHost.js). The WebRTC connections live in a
+// hidden window; the host and the joining side each have their own.
+let p2pHost = null;
+let hostRtc = null;
+let joinCodeText = '';
+let p2pJoin = null;
+let joinRtc = null;
+
+function publishP2P() {
+  send('tunnel:p2p', { code: joinCodeText, peers: p2pHost ? p2pHost.connectedPeers : 0, players: p2pHost ? p2pHost.players : 0 });
+}
+
+function teardownP2PHost() {
+  if (p2pHost) { p2pHost.detach(); p2pHost = null; }
+  if (hostRtc) { hostRtc.close(); hostRtc = null; }
+  if (joinCodeText) { joinCodeText = ''; publishP2P(); }
+}
+
+/** Turns join codes on or off for the public server to match its setting and the tunnel's state. */
+function syncP2P() {
+  const profile = publicServerProfileId ? serverProfiles.getProfile(userDataDir(), publicServerProfileId) : null;
+  const want = Boolean(profile && profile.p2p && tunnel && tunnel.running && tunnelRegion); // only VoxelPort's own relays
+  if (!want) {
+    if (tunnel && tunnel.p2p) tunnel.setP2P(false);
+    teardownP2PHost();
+    return;
+  }
+  if (!hostRtc) hostRtc = new ElectronRtcWorker();
+  if (!p2pHost) {
+    p2pHost = new P2PHost({
+      worker: hostRtc,
+      getLocalPort: () => {
+        const p = publicServerProfileId ? serverProfiles.getProfile(userDataDir(), publicServerProfileId) : null;
+        return p ? p.port : 25565;
+      },
+    });
+    p2pHost.on('changed', publishP2P);
+    p2pHost.on('log', (line) => send('tunnel:log', '[Join code] ' + line));
+    hostRtc.on('error', (err) => send('tunnel:log', '[Join code] ' + err.message));
+  }
+  p2pHost.attach(tunnel); // keeps the players already connected if the tunnel reconnected
+  if (!tunnel.p2p) tunnel.setP2P(true);
+}
+
 function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
   t.on('assigned', (port) => {
     send('tunnel:assigned', { port, host: publicHost });
     syncDirectMode(); // a reconnect keeps a working Direct mode; a first connection starts it
+    syncP2P();
   });
   t.on('players', (n) => send('tunnel:players', n));
   t.on('ping', (ms) => send('tunnel:ping', ms));
@@ -245,9 +293,12 @@ function wireTunnel(t, publicHost) {
     if (publicServerProfileId && publicServerProfileId === activeServerProfileId) noticeAnnouncer.handle(n);
   });
   t.on('udpError', (message) => send('server:log', `[VoxelPort] ${message}`));
+  t.on('joinCode', (code) => { if (tunnelRegion) { joinCodeText = code; publishP2P(); } });
+  t.on('joinError', (message) => send('server:log', `[VoxelPort] Join code: ${message}`));
   t.on('stopped', () => {
     // The router's port is closed whenever its tunnel goes (an older tunnel's late "stopped" must not stop a newer one's).
     if (directMode.tunnel === t || !directMode.tunnel) directMode.stop({ tunnelAlive: false }).catch(() => {});
+    if (!tunnel || tunnel === t) teardownP2PHost();
     send('tunnel:status', 'stopped');
     send('tunnel:notice', { message: '', seconds: 0 });
     noticeAnnouncer.cancel();
@@ -459,6 +510,9 @@ app.on('window-all-closed', () => {
   if (tunnel) tunnel.stop();
   stopRequested = true;
   if (serverProc.child) serverProc.stop();
+  if (p2pJoin) p2pJoin.stop();
+  if (joinRtc) { joinRtc.destroy(); joinRtc = null; }
+  teardownP2PHost();
   const quit = () => { if (process.platform !== 'darwin') app.quit(); };
   // Give the router a moment to forget the forwarded port before the app exits (it expires by itself anyway).
   Promise.race([directMode.stop({ tunnelAlive: false }), new Promise((r) => setTimeout(r, 2500))]).then(quit, quit);
@@ -1245,6 +1299,68 @@ ipcMain.handle('server:direct:retry', guarded(g, async (_evt, { id }) => {
   syncDirectMode();
   return { ok: true };
 }));
+
+// ─── Join codes (peer-to-peer) ─────────────────────────────────────────────
+// A host turns them on per server (confirmed, because the player's PC and the host's then see each other's IP address).
+// A player enters the code on the Join screen; see p2pJoin.js for what happens then.
+
+ipcMain.handle('server:p2p:get', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) throw new Error('Server profile not found.');
+  const isPublic = publicServerProfileId === id;
+  return {
+    enabled: Boolean(profile.p2p),
+    public: isPublic,
+    supported: !isPublic || Boolean(tunnelRegion),
+    code: isPublic ? joinCodeText : '',
+    peers: isPublic && p2pHost ? p2pHost.connectedPeers : 0,
+    players: isPublic && p2pHost ? p2pHost.players : 0,
+  };
+}));
+
+ipcMain.handle('server:p2p:set', guarded(g, (_evt, { id, enabled, confirmed }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (enabled && confirmed !== true) return { ok: false, error: 'Join codes need your confirmation.' };
+  serverProfiles.updateProfile(userDataDir(), id, { p2p: Boolean(enabled) });
+  if (publicServerProfileId === id) syncP2P();
+  return { ok: true, enabled: Boolean(enabled) };
+}));
+
+ipcMain.handle('server:p2p:rotate', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (publicServerProfileId !== id || !profile.p2p || !tunnel || !tunnel.running) return { ok: false, error: 'Make the server public with join codes on first.' };
+  tunnel.rotateJoinCode();
+  return { ok: true };
+}));
+
+ipcMain.handle('p2p:join:start', guarded(g, (_evt, { code }) => {
+  if (typeof code !== 'string' || code.trim().length < 6 || code.length > 40) return { ok: false, error: 'Enter the code your friend gave you.' };
+  if (p2pJoin) { p2pJoin.stop(); p2pJoin = null; }
+  if (joinRtc) { joinRtc.close(); joinRtc = null; }
+  joinRtc = new ElectronRtcWorker();
+  joinRtc.on('error', (err) => send('p2p:join:status', { state: 'failed', path: '', port: 0, reason: '', message: err.message }));
+  p2pJoin = new P2PJoin({ worker: joinRtc });
+  const join = p2pJoin;
+  join.on('status', (s) => {
+    send('p2p:join:status', s);
+    if ((s.state === 'failed' || s.state === 'stopped') && p2pJoin === join) {
+      // Let go of the hidden window once it is over (after the message has been sent).
+      if (p2pJoin === join && joinRtc) { joinRtc.close(); joinRtc = null; }
+    }
+  });
+  join.start({ relayUrl: DEFAULT_RELAY_URL, code: code.trim(), client: `desktop/${app.getVersion()}` });
+  return { ok: true };
+}));
+
+ipcMain.handle('p2p:join:stop', guarded(g, () => {
+  if (p2pJoin) { p2pJoin.stop(); p2pJoin = null; }
+  if (joinRtc) { joinRtc.close(); joinRtc = null; }
+  return { ok: true };
+}));
+
+ipcMain.handle('p2p:join:status', guarded(g, () => (p2pJoin ? p2pJoin.status : { state: 'idle', path: '', port: 0, reason: '', message: '' })));
 
 // ─── Fixes offered by crash explanations ──────────────────────────────────
 
