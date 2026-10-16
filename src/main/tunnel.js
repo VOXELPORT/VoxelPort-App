@@ -80,6 +80,10 @@ function isValidRelayMessage(msg) {
     case 'name':
       return (msg.name === undefined || (typeof msg.name === 'string' && /^[a-z0-9-]{0,32}$/.test(msg.name)))
         && (msg.address === undefined || (typeof msg.address === 'string' && msg.address.length <= 253));
+    case 'notice':
+      // An announcement from the relay's operator. The text is shown, never acted on.
+      return (msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 300))
+        && (msg.seconds === undefined || (Number.isInteger(msg.seconds) && msg.seconds >= 0 && msg.seconds <= 172800));
     case 'pong':
       return true;
     default:
@@ -96,7 +100,8 @@ function isValidRelayMessage(msg) {
  * Events: 'status' (state), 'assigned' (port), 'players' (count), 'ping' (ms),
  *         'log' (line), 'error' (message), 'stopped',
  *         'name' ({ name, address } — empty when none), 'nameError' (message),
- *         'listingError' (message), 'udpError' (message).
+ *         'listingError' (message), 'udpError' (message),
+ *         'notice' ({ message, seconds } — an announcement from the relay's operator; empty message = withdrawn).
  *
  * With `udpPort`, Bedrock players are bridged too: the relay forwards UDP on
  * the same public port, and each remote player becomes a local UDP socket
@@ -123,13 +128,14 @@ class Tunnel extends EventEmitter {
    * after any drop of an established connection, the preferred one is tried
    * again first. `relayUrl` alone is the single-candidate form.
    */
-  start({ relayUrl, relayUrls, token, localPort, udpPort = null }) {
+  start({ relayUrl, relayUrls, token, localPort, udpPort = null, client = null }) {
     this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
     this.urlIndex = 0;
     this.relayUrl = this.relayUrls[0];
     this.token = token;
     this.localPort = localPort;
     this.udpPort = udpPort;
+    this.client = client; // "desktop/1.7.0": goes into the relay's log so a support question can be answered
     this.manualStop = false;
     this._connect();
   }
@@ -158,6 +164,7 @@ class Tunnel extends EventEmitter {
       opened = true;
       this.emit('log', 'Connected. Registering…');
       const reg = { type: 'register', token: this.token };
+      if (this.client) reg.client = this.client;
       if (this.udpPort) reg.udp = true;
       this._send(reg);
     });
@@ -233,6 +240,10 @@ class Tunnel extends EventEmitter {
 
       case 'listing_error':
         this.emit('listingError', msg.message || 'Could not list this server.');
+        break;
+
+      case 'notice':
+        this.emit('notice', { message: msg.message || '', seconds: msg.seconds || 0 });
         break;
 
       case 'udp_error':

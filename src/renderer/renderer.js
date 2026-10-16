@@ -132,6 +132,66 @@ window.vp.on('tunnel:error', (message) => {
 });
 window.vp.on('app:state', applyAppState);
 
+// ─── "Copy invite message": a ready-to-paste text for friends (invite.js builds it) ─────────
+// The main button copies it in the language the app is in; the small link beside it in the other one.
+function wireInviteButtons(mainBtn, altBtn, getData) {
+  const mine = VPI18N.lang;
+  const other = mine === 'en' ? 'hinglish' : 'en';
+  const mainLabel = mainBtn.textContent;
+  const altLabel = other === 'hinglish' ? t('Copy in Hinglish') : t('Copy in English');
+  altBtn.textContent = altLabel;
+  const copy = (lang, btn, label) => async () => {
+    const data = getData();
+    if (!data) return;
+    try {
+      await navigator.clipboard.writeText(VPInvite.buildInviteMessage({ lang, ...data }));
+      btn.textContent = t('Copied!');
+      setTimeout(() => { btn.textContent = label; }, 1600);
+    } catch { /* clipboard unavailable */ }
+  };
+  mainBtn.addEventListener('click', copy(mine, mainBtn, mainLabel));
+  altBtn.addEventListener('click', copy(other, altBtn, altLabel));
+}
+window.wireInviteButtons = wireInviteButtons;
+
+// The manual tunnel has no server name or version: just the address.
+wireInviteButtons($('inviteBtn'), $('inviteAltBtn'), () => (address.textContent && address.textContent !== '—'
+  ? { address: address.textContent }
+  : null));
+
+// ─── Announcements from the relay's operator ─────────────────────────────
+// "The VoxelPort relay will restart." The relay sends the text and how many seconds are left; this adds
+// the time ("in 4 minutes") and counts it down. A later message replaces it; an empty one removes it.
+const noticeBanner = $('noticeBanner');
+const noticeText = $('noticeText');
+let notice = null; // { message, endsAt (ms, or null for no time), dismissed }
+
+function timeLeftText(seconds) {
+  if (seconds <= 0) return t('now');
+  if (seconds < 60) return t('in less than a minute');
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes === 1) return t('in 1 minute');
+  if (minutes < 120) return t('in {n} minutes', { n: minutes });
+  return t('in about {n} hours', { n: Math.round(minutes / 60) });
+}
+
+function renderNotice() {
+  const over = notice && notice.endsAt && Date.now() - notice.endsAt > 10 * 60 * 1000;
+  if (!notice || notice.dismissed || over) { noticeBanner.classList.add('hidden'); return; }
+  const when = notice.endsAt ? ` — ${timeLeftText(Math.round((notice.endsAt - Date.now()) / 1000))}` : '';
+  noticeText.textContent = notice.message + when;
+  noticeBanner.classList.remove('hidden');
+}
+
+window.vp.on('tunnel:notice', (n) => {
+  if (!n || !n.message) { notice = null; renderNotice(); return; }
+  const same = notice && notice.message === n.message;
+  notice = { message: n.message, endsAt: n.seconds > 0 ? Date.now() + n.seconds * 1000 : null, dismissed: Boolean(same && notice.dismissed) };
+  renderNotice();
+});
+$('noticeCloseBtn').addEventListener('click', () => { if (notice) notice.dismissed = true; renderNotice(); });
+setInterval(renderNotice, 15000);
+
 // ─── Auto-update banner ─────────────────────────────────────────────────
 const updateBanner = $('updateBanner');
 const updateBannerText = $('updateBannerText');
@@ -216,6 +276,16 @@ function whenDomReady() {
   if (document.readyState !== 'loading') return Promise.resolve();
   return new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
 }
+
+// The footer link switches to the other language (the window reloads; see i18n.js).
+(function setupLanguageLink() {
+  const link = $('langLink');
+  const other = VPI18N.lang === 'en' ? 'hinglish' : 'en';
+  link.textContent = VPI18N.LANGUAGES[other];
+  link.title = VPI18N.lang === 'en' ? 'Switch the app to Hinglish' : 'Switch the app to English';
+  link.addEventListener('click', (e) => { e.preventDefault(); VPI18N.setLanguage(other); });
+  window.vp.setLanguage(VPI18N.lang);
+})();
 
 (async function init() {
   const [info, state] = await Promise.all([window.vp.info(), window.vp.server.state()]);

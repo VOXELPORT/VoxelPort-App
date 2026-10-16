@@ -30,6 +30,9 @@ const accounts = require('./accounts');
 const support = require('./support');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
+const { NoticeAnnouncer } = require('./notice');
+const { BackupService } = require('./backupService');
+const backupsLib = require('./backups');
 
 // "Use VoxelPort's relay" — the region (India / North America) is picked per
 // tunnel by regions.js. Any other URL is a self-hosted relay used as-is.
@@ -43,6 +46,28 @@ let deviceToken = '';
 let tokenEncryptedAtRest = false;
 const serverProc = new ServerProcess();
 const updater = new Updater();
+
+// The language the window shows ('en' or 'hinglish'); messages written here use it too.
+let uiLang = 'en';
+const say = (en, hinglish) => (uiLang === 'hinglish' ? hinglish : en);
+
+// Relay announcements ("the relay will restart") are also said in the game's chat, so players hear them.
+const noticeAnnouncer = new NoticeAnnouncer({
+  say: (line) => { if (serverProc.child && serverProc.status === 'online') serverProc.sendCommand(`say ${line}`); },
+  lang: () => uiLang,
+});
+
+// ─── World backups (see backups.js and backupService.js) ───────────────────────
+// activeServerProfileId is declared just below; the service only reads it later, when something happens.
+const backupService = new BackupService({
+  userDataDir: () => app.getPath('userData'),
+  getProfile: (id) => serverProfiles.getProfile(app.getPath('userData'), id),
+  updateProfile: (id, changes) => serverProfiles.updateProfile(app.getPath('userData'), id, changes),
+  serverProc,
+  isActive: (id) => id === activeServerProfileId && Boolean(serverProc.child),
+  send: (channel, payload) => send(channel, payload),
+  appVersion: app.getVersion(),
+});
 
 // ─── Explicit, always-accurate app state (item 8) ──────────────────────────
 // activeServerProfileId: which managed profile's child process is running (or null).
@@ -189,9 +214,17 @@ function wireTunnel(t, publicHost) {
   });
   t.on('nameError', (message) => send('tunnel:nameError', message));
   t.on('listingError', (message) => send('server:log', `[VoxelPort] Server list: ${message}`));
+  t.on('notice', (n) => {
+    // Only VoxelPort's own relays may announce things; a self-hosted relay is not trusted to talk to your players.
+    if (!tunnelRegion) return;
+    send('tunnel:notice', n);
+    if (publicServerProfileId && publicServerProfileId === activeServerProfileId) noticeAnnouncer.handle(n);
+  });
   t.on('udpError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('stopped', () => {
     send('tunnel:status', 'stopped');
+    send('tunnel:notice', { message: '', seconds: 0 });
+    noticeAnnouncer.cancel();
     publicServerProfileId = null;
     manualTunnelActive = false;
     if (tunnel === t || !tunnel) {
@@ -259,6 +292,7 @@ function wireServerProcess(p) {
     if (s === 'online') {
       const profile = activeServerProfileId ? serverProfiles.getProfile(userDataDir(), activeServerProfileId) : null;
       if (profile) startTickPolling(profile);
+      if (activeServerProfileId) backupService.onServerOnline(activeServerProfileId);
     }
   });
   p.on('log', (line) => {
@@ -282,6 +316,7 @@ function wireServerProcess(p) {
     }
   });
   p.on('players', (n) => {
+    if (activeServerProfileId) backupService.onPlayers(activeServerProfileId, n);
     send('server:players', n);
     scheduleListingUpdate();
   });
@@ -298,6 +333,9 @@ function wireServerProcess(p) {
     }
     activeServerProfileId = null;
     broadcastState();
+    // A normal shutdown gets one last backup, so the finished state is always saved (never when the app is closing).
+    if (exitedProfileId && !appClosing) backupService.onServerExit(exitedProfileId, { clean: code === 0 });
+    else backupService.stopSchedule();
 
     const watch = javaWatch;
     javaWatch = null;
@@ -386,7 +424,9 @@ if (!gotLock) {
   });
 }
 
+let appClosing = false;
 app.on('window-all-closed', () => {
+  appClosing = true;
   updater.stop();
   perf.stop();
   stopTickPolling();
@@ -416,6 +456,11 @@ ipcMain.handle('token:copy', guarded(g, () => {
 }));
 
 // ─── Auto-update ────────────────────────────────────────────────────────────
+
+ipcMain.handle('app:setLanguage', guarded(g, (_evt, { lang }) => {
+  uiLang = lang === 'hinglish' ? 'hinglish' : 'en';
+  return { ok: true };
+}));
 
 ipcMain.handle('update:state', guarded(g, () => ({ readyToInstall: updater.readyToInstall })));
 
@@ -545,7 +590,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   send('tunnel:region', region ? { id: region.id, label: region.label } : null);
   send('tunnel:name', visibleCustomAddress());
   if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
-  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort });
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, client: `desktop/${app.getVersion()}` });
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
   broadcastState();
@@ -794,6 +839,7 @@ async function startServerProfile(id, { retried = false } = {}) {
   if (preparingJava) return { ok: false, error: 'Already getting Java ready for a server — one moment.' };
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (backupService.isBusy(id)) return { ok: false, error: 'A backup or restore is running for this server. Try again in a moment.' };
 
   if (serverProc.child && activeServerProfileId !== id) {
     const activeProfile = serverProfiles.getProfile(userDataDir(), activeServerProfileId);
@@ -873,6 +919,44 @@ ipcMain.handle('server:openFolder', guarded(g, (_evt, { id }) => {
   const dir = (profile && profile.serverDir) || getServerDir(userDataDir());
   shell.openPath(dir);
   return { ok: true };
+}));
+
+// ─── Backups screen ────────────────────────────────────────────────────────
+
+ipcMain.handle('backup:info', guarded(g, (_evt, { id }) => backupService.describe(id)));
+ipcMain.handle('backup:create', guarded(g, (_evt, { id }) => backupService.create(id, 'manual')));
+ipcMain.handle('backup:settings:set', guarded(g, (_evt, { id, settings }) => backupService.setSettings(id, settings)));
+ipcMain.handle('backup:delete', guarded(g, (_evt, { id, name }) => backupService.delete(id, name)));
+
+ipcMain.handle('backup:openFolder', guarded(g, (_evt, { id }) => {
+  const dir = backupService.dirFor(id);
+  fs.mkdirSync(dir, { recursive: true });
+  shell.openPath(dir);
+  return { ok: true };
+}));
+
+// Putting a backup back replaces the world, so it always asks first (and saves the current world before it does).
+ipcMain.handle('backup:restore', guarded(g, async (_evt, { id, name }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  const parsed = backupsLib.parseBackupName(name);
+  if (!parsed) return { ok: false, error: 'That is not one of VoxelPort\'s backups.' };
+  const when = new Date(parsed.createdAt).toLocaleString();
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: [say('Cancel', 'Cancel'), say('Restore', 'Restore karo')],
+    defaultId: 0,
+    cancelId: 0,
+    message: say('Restore the backup from ' + when + '?', when + ' wala backup restore karein?'),
+    detail: say(
+      profile.name + ' goes back to how it was then. Anything built since is replaced. Your current world is saved first, so you can undo this.',
+      profile.name + ' waisi ho jayegi jaisi tab thi. Uske baad ka sab kuch badal jayega. Abhi wali world pehle save ho jati hai, to aap undo kar sakte ho.',
+    ),
+  });
+  if (response !== 1) return { ok: false, cancelled: true };
+  return backupService.restore(id, name, {
+    setLevelName: (serverDir, level) => updateServerPropertiesSafely(serverDir, { 'level-name': level }),
+  });
 }));
 
 // ─── Settings screen ───────────────────────────────────────────────────────

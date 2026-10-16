@@ -57,6 +57,10 @@
           <code id="address">—</code>
           <button id="copyBtn" class="ghost" title="Copy">Copy</button>
         </div>
+        <div class="invite-row">
+          <button id="inviteBtn" class="ghost small" type="button">Copy invite message</button>
+          <button id="inviteAltBtn" class="link-btn" type="button"></button>
+        </div>
         <div class="stats">
           <div><strong id="players">0</strong><span>players</span></div>
           <div><strong id="ping">—</strong><span>relay ping</span></div>
@@ -223,6 +227,7 @@
         <button id="srvStartBtn" class="primary">Start server</button>
         <button id="srvStopBtn" class="ghost hidden">Stop</button>
         <button id="srvSettingsBtn" class="ghost">Settings</button>
+        <button id="srvBackupsBtn" class="ghost">Backups</button>
         <button id="srvFolderBtn" class="ghost">Open folder</button>
         <button id="srvRemoveBtn" class="ghost">Remove from VoxelPort</button>
       </div>
@@ -236,6 +241,10 @@
         <div class="share-alt hidden" id="srvAltAddress"></div>
         <div class="bedrock-line hidden" id="srvBedrock">
           <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
+        </div>
+        <div class="invite-row">
+          <button id="srvInviteBtn" class="ghost small" type="button">Copy invite message</button>
+          <button id="srvInviteAltBtn" class="link-btn" type="button"></button>
         </div>
         <div class="stats">
           <div><strong id="srvTunnelPlayers">0</strong><span>players</span></div>
@@ -343,6 +352,39 @@
       <div class="set-msg hidden" id="setMsg"></div>
     </section>
 
+    <!-- BACKUPS -->
+    <section class="screen panel" id="screen-backups">
+      <button class="back-link" id="backupsBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="bkSubtitle">Server backups</div><h1>BACKUPS</h1></div></div>
+
+      <p class="hint">Your world is backed up automatically while the server runs, and once more when you stop it. If something goes wrong (a crash, a griefer, a mistake), put an earlier one back. A backup holds your world(s) and the player lists. Mods and plugins are not included: they can be downloaded again.</p>
+
+      <div class="bk-actions">
+        <button class="primary" id="bkNowBtn" type="button">Back up now</button>
+        <button class="ghost" id="bkFolderBtn" type="button">Open backups folder</button>
+      </div>
+      <div class="progress-track hidden" id="bkProgress"><div class="progress-fill" id="bkFill"></div></div>
+      <div class="hint" id="bkStatus" aria-live="polite"></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Automatic backups</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="bkAuto" />
+          <span><b>Back up automatically</b><span class="hint">While the server runs (only if someone played), and once more when you stop it.</span></span>
+        </label>
+        <div class="bk-fields">
+          <label class="field"><span class="label">Every</span><select id="bkInterval"></select></label>
+          <label class="field"><span class="label">Keep the latest</span><select id="bkKeep"></select></label>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Your backups</div>
+        <div class="hint hidden" id="bkRunningNote">Stop the server to restore a backup.</div>
+        <div class="bk-list" id="bkList"></div>
+      </div>
+    </section>
+
     <!-- SUPPORT VOXELPORT: tips, supporter perks, paid-hosting suggestions -->
     <section class="screen panel" id="screen-support">
       <button class="back-link" id="supportBackBtn" type="button">‹ Back</button>
@@ -383,6 +425,11 @@
 
   </main>
 
+  <div id="noticeBanner" class="notice-banner hidden" role="status" aria-live="polite">
+    <span id="noticeText"></span>
+    <button id="noticeCloseBtn" class="link-btn" type="button">Dismiss</button>
+  </div>
+
   <div id="updateBanner" class="update-banner hidden">
     <span id="updateBannerText">An update is ready.</span>
     <button id="updateInstallBtn" class="ghost small">Restart &amp; Update</button>
@@ -392,14 +439,19 @@
     <span id="version"></span>
     <a href="#" id="supportLink">♥ Support VoxelPort</a>
     <a href="https://www.voxelport.in" target="_blank" rel="noreferrer">voxelport.in</a>
+    <a href="#" id="langLink" data-no-i18n></a>
   </footer>
 
+  <script src="lang/hinglish.js"></script>
+  <script src="i18n.js"></script>
+  <script src="invite.js"></script>
   <script src="renderer.js"></script>
   <script src="library.js"></script>
   <script src="wizard.js"></script>
   <script src="import.js"></script>
   <script src="console.js"></script>
   <script src="settings.js"></script>
+  <script src="backups-ui.js"></script>
   <script src="support.js"></script>
 </body>
 </html>

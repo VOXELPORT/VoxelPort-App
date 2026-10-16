@@ -434,3 +434,55 @@ test('a listing set before going live is sent after registration, and withdrawn 
   tunnel.stop();
   wss.close();
 });
+
+// ─── Who is connecting, and announcements from the relay ───────────────────
+
+test('register tells the relay which app and version this is, when it was given one', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1, client: 'desktop/1.8.0' });
+  const reg = JSON.parse(await once(ws, 'message'));
+  tunnel.stop();
+  wss.close();
+  assert.equal(reg.type, 'register');
+  assert.equal(reg.client, 'desktop/1.8.0');
+});
+
+test('register leaves the client out when none was given (older callers keep working)', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  const reg = JSON.parse(await once(ws, 'message'));
+  tunnel.stop();
+  wss.close();
+  assert.equal('client' in reg, false);
+});
+
+test('a notice frame reaches the app as an event, and an empty one withdraws it', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message'); // register
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+
+  const got = once(tunnel, 'notice');
+  ws.send(JSON.stringify({ type: 'notice', message: 'The VoxelPort relay will restart.', seconds: 600 }));
+  assert.deepEqual(await got, { message: 'The VoxelPort relay will restart.', seconds: 600 });
+
+  const cleared = once(tunnel, 'notice');
+  ws.send(JSON.stringify({ type: 'notice' }));
+  assert.deepEqual(await cleared, { message: '', seconds: 0 });
+  tunnel.stop();
+  wss.close();
+});
+
+test('isValidRelayMessage checks notice frames', () => {
+  assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 60 }), true);
+  assert.equal(isValidRelayMessage({ type: 'notice' }), true);
+  assert.equal(isValidRelayMessage({ type: 'notice', message: 5 }), false);
+  assert.equal(isValidRelayMessage({ type: 'notice', message: 'x'.repeat(301) }), false);
+  assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: -1 }), false);
+  assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 1.5 }), false);
+  assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 999999999 }), false);
+});
