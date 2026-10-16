@@ -82,15 +82,20 @@ window.openSettingsScreen = async function openSettingsScreenWithP2P(id) {
   renderP2PSetting(await window.vp.server.p2p.get(id));
 };
 
-setP2P.addEventListener('change', async () => {
-  const wantOn = setP2P.checked;
-  if (wantOn && !window.confirm(
+/** Asks the host to confirm turning join codes on (their PC and the friend's can then see each other's IP address). */
+function confirmJoinCodes() {
+  return window.confirm(
     t('Turn on join codes?') + '\n\n' +
     t('Friends who have your code can connect straight to your PC from VoxelPort, with the lowest ping and no port forwarding.') + '\n\n' +
     t("• Their PC and yours can see each other's IP address while they play.") + '\n' +
     t('• Anyone you give the code to can join, so only share it with people you trust. You can make a new code at any time.') + '\n' +
     t("• If a direct connection can't be made, they are connected through the relay instead.")
-  )) {
+  );
+}
+
+setP2P.addEventListener('change', async () => {
+  const wantOn = setP2P.checked;
+  if (wantOn && !confirmJoinCodes()) {
     setP2P.checked = false;
     return;
   }
@@ -112,6 +117,8 @@ setP2P.addEventListener('change', async () => {
 const srvJoinCode = $('srvJoinCode');
 const srvJoinCodeText = $('srvJoinCodeText');
 const srvJoinCodeHint = $('srvJoinCodeHint');
+const srvJoinOffer = $('srvJoinOffer');
+const srvJoinOnBtn = $('srvJoinOnBtn');
 const srvJoinCopyBtn = $('srvJoinCopyBtn');
 const srvJoinNewBtn = $('srvJoinNewBtn');
 
@@ -120,6 +127,7 @@ let p2pInfoFor = null;
 
 function paintJoinCodeRow() {
   const d = window.VPP2P.describeHost(p2pInfo, t);
+  srvJoinOffer.classList.toggle('hidden', !d.showOffer);
   srvJoinCode.classList.toggle('hidden', !d.showRow);
   if (!d.showRow) return;
   srvJoinCodeText.textContent = d.code || '—';
@@ -147,6 +155,17 @@ window.vp.on('tunnel:p2p', (s) => {
 });
 
 window.joinCodeSettingChanged = function joinCodeSettingChanged() { p2pInfoFor = null; window.renderJoinCodeRow(); };
+
+// The same switch as in Settings, one click from where the address is shown.
+srvJoinOnBtn.addEventListener('click', async () => {
+  if (!confirmJoinCodes()) return;
+  srvJoinOnBtn.disabled = true;
+  const res = await window.vp.server.p2p.set(managingProfileId, true, true);
+  srvJoinOnBtn.disabled = false;
+  if (!res || !res.ok) { srvLogLine(t((res && res.error) || "Couldn't change that.")); return; }
+  p2pInfoFor = null;
+  window.renderJoinCodeRow();
+});
 
 srvJoinCopyBtn.addEventListener('click', async () => {
   try {

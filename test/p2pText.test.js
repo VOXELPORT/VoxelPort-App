@@ -63,9 +63,17 @@ test('the host row only shows for a public server with join codes on', () => {
 
 test('the host sees the code, or that it is on its way, and who has connected', () => {
   const base = { enabled: true, public: true, supported: true };
-  assert.deepEqual(describeHost({ ...base, code: '' }, t), { showRow: true, code: '', line: 'Getting your code…' });
+  assert.deepEqual(describeHost({ ...base, code: '' }, t), { showRow: true, showOffer: false, code: '', line: 'Getting your code…' });
   assert.equal(describeHost({ ...base, code: 'K7M2Q-9XH4T', peers: 0 }, t).line, 'Nobody has joined with the code yet.');
   assert.equal(describeHost({ ...base, code: 'K7M2Q-9XH4T', peers: 1 }, t).line, '1 friend connected directly.');
   assert.equal(describeHost({ ...base, code: 'K7M2Q-9XH4T', peers: 3 }, t).line, '3 friends connected directly.');
   assert.equal(describeHost({ ...base, code: 'K7M2Q-9XH4T' }, t).code, 'K7M2Q-9XH4T');
+});
+
+test('a public server with join codes off is offered a button to turn them on', () => {
+  assert.equal(describeHost({ enabled: false, public: true, supported: true }, t).showOffer, true);
+  assert.equal(describeHost({ enabled: true, public: true, supported: true, code: 'K7M2Q-9XH4T' }, t).showOffer, false, 'already on');
+  assert.equal(describeHost({ enabled: false, public: false, supported: true }, t).showOffer, false, 'not public yet');
+  assert.equal(describeHost({ enabled: false, public: true, supported: false }, t).showOffer, false, 'a relay that does not support it');
+  assert.equal(describeHost(null, t).showOffer, false);
 });

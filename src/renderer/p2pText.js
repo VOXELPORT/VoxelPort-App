@@ -47,16 +47,19 @@
 
   /**
    * The host's side. @param info { enabled, public, supported, code, peers, players }
-   * @returns {{ showRow: boolean, code: string, line: string }}
+   * @returns {{ showRow: boolean, showOffer: boolean, code: string, line: string }}
+   *   showOffer = join codes are off for a public server: the page offers a button to turn them on
    */
   function describeHost(info, t) {
     const i = info || {};
     const showRow = Boolean(i.enabled && i.public && i.supported);
-    if (!showRow) return { showRow: false, code: '', line: '' };
-    if (!i.code) return { showRow: true, code: '', line: t('Getting your code…') };
+    const showOffer = Boolean(!i.enabled && i.public && i.supported);
+    if (!showRow) return { showRow: false, showOffer, code: '', line: '' };
+    if (!i.code) return { showRow: true, showOffer: false, code: '', line: t('Getting your code…') };
     const peers = i.peers || 0;
     return {
       showRow: true,
+      showOffer: false,
       code: i.code,
       line: peers > 0
         ? (peers === 1 ? t('1 friend connected directly.') : t('{n} friends connected directly.', { n: peers }))

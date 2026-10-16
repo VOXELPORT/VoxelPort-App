@@ -367,6 +367,8 @@ button:focus-visible, input[type="checkbox"]:focus-visible, summary:focus-visibl
 .code-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; }
 .code-row code { font-family: var(--type); font-weight: 700; font-size: 1.05rem; letter-spacing: .08em; user-select: text; }
 .code-row .hint { flex-basis: 100%; }
+.code-offer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.code-offer .hint { color: var(--ink-2); flex: 1; min-width: 200px; }
 .join-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .9rem; line-height: 1.45; }
 .join-status[data-tone="ok"] #joinStatusText { color: var(--grass-dark, #2f7d1f); font-weight: 700; }
 .join-status[data-tone="warn"] #joinStatusText { font-weight: 700; }

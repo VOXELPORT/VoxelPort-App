@@ -352,4 +352,6 @@
   'The relay refused the code.': 'Relay ne code mana kar diya.',
   'Could not open a local port for Minecraft.': 'Minecraft ke liye local port nahi khul paya.',
   'Turn join codes on first.': 'Pehle join codes on karo.',
+  'Let friends join with a code': 'Doston ko code se join karne do',
+  'Peer-to-peer: they connect straight to your PC. Best for friends far from the relay.': 'Peer-to-peer: woh seedha tumhare PC se connect hote hain. Un doston ke liye best jo relay se door hain.',
 };
