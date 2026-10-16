@@ -45,6 +45,12 @@ const MAX_UDP_DATAGRAM = 2048;
 const MAX_UDP_B64_CHARS = Math.ceil((MAX_UDP_DATAGRAM * 4) / 3) + 4;
 const UDP_SESSION_IDLE_MS = 60000;
 
+// Peer-to-peer join codes: a player's setup messages (WebRTC offer, answer and network candidates) arrive through the relay.
+const MAX_SIGNAL_CHARS = 8 * 1024;
+function isValidPeerId(id) {
+  return typeof id === 'string' && /^[0-9a-f]{1,64}$/.test(id);
+}
+
 function isValidConnId(id) {
   return typeof id === 'string' && id.length > 0 && id.length <= MAX_CONN_ID_LEN;
 }
@@ -72,6 +78,7 @@ function isValidRelayMessage(msg) {
     case 'listing_error':
     case 'udp_error':
     case 'direct_error':
+    case 'join_error':
       return msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 500);
     case 'udp':
       return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_UDP_B64_CHARS
@@ -81,6 +88,16 @@ function isValidRelayMessage(msg) {
     case 'name':
       return (msg.name === undefined || (typeof msg.name === 'string' && /^[a-z0-9-]{0,32}$/.test(msg.name)))
         && (msg.address === undefined || (typeof msg.address === 'string' && msg.address.length <= 253));
+    case 'join_code':
+      // The host's join code (empty = join codes are off).
+      return msg.code === undefined || (typeof msg.code === 'string' && /^[0-9A-Za-z-]{0,16}$/.test(msg.code));
+    case 'peer':
+      // A player has presented the code and is waiting to connect peer-to-peer.
+      return isValidPeerId(msg.peer) && (msg.client === undefined || (typeof msg.client === 'string' && msg.client.length <= 64));
+    case 'peer_signal':
+      return isValidPeerId(msg.peer) && typeof msg.signal === 'string' && msg.signal.length > 0 && msg.signal.length <= MAX_SIGNAL_CHARS;
+    case 'peer_gone':
+      return isValidPeerId(msg.peer);
     case 'direct':
       // Direct mode: the relay reached this PC at ip:port (port 0 = players use the relay again). IPv4 only.
       return Number.isInteger(msg.port) && msg.port >= 0 && msg.port <= 65535
@@ -109,7 +126,10 @@ function isValidRelayMessage(msg) {
  *         'listingError' (message), 'udpError' (message),
  *         'notice' ({ message, seconds } — an announcement from the relay's operator; empty message = withdrawn),
  *         'direct' ({ ip, port, address } — players now connect straight to this PC; port 0 = they use the relay again),
- *         'directError' (message — Direct mode was refused or stopped working).
+ *         'directError' (message — Direct mode was refused or stopped working),
+ *         'joinCode' (code — the host's join code; empty = off), 'joinError' (message),
+ *         'peer' ({ peer, client } — a player with the code is waiting to connect peer-to-peer),
+ *         'peerSignal' ({ peer, signal } — a WebRTC setup message from that player), 'peerGone' (peer).
  *
  * With `udpPort`, Bedrock players are bridged too: the relay forwards UDP on
  * the same public port, and each remote player becomes a local UDP socket
@@ -129,6 +149,7 @@ class Tunnel extends EventEmitter {
     this.udpSessions = new Map(); // connID -> { sock, idleTimer }
     this.listing = null; // re-sent after every (re)registration
     this.directPort = null; // Direct mode: the port forwarded on the router; re-sent after every (re)registration
+    this.p2p = false; // join codes on: re-sent after every (re)registration
   }
 
   /**
@@ -239,6 +260,7 @@ class Tunnel extends EventEmitter {
         if (this.listing) this._send({ type: 'listing', listing: this.listing });
         // A new connection starts without Direct mode on the relay's side: ask again.
         if (this.directPort) this._send({ type: 'direct', port: this.directPort });
+        if (this.p2p) this._send({ type: 'p2p', p2p: true });
         break;
 
       case 'name':
@@ -259,6 +281,26 @@ class Tunnel extends EventEmitter {
 
       case 'direct_error':
         this.emit('directError', msg.message || 'Direct mode is not available.');
+        break;
+
+      case 'join_code':
+        this.emit('joinCode', msg.code || '');
+        break;
+
+      case 'join_error':
+        this.emit('joinError', msg.message || 'Join codes are not available.');
+        break;
+
+      case 'peer':
+        this.emit('peer', { peer: msg.peer, client: msg.client || '' });
+        break;
+
+      case 'peer_signal':
+        this.emit('peerSignal', { peer: msg.peer, signal: msg.signal });
+        break;
+
+      case 'peer_gone':
+        this.emit('peerGone', msg.peer);
         break;
 
       case 'notice':
@@ -489,6 +531,31 @@ class Tunnel extends EventEmitter {
     if (this.running) this._send({ type: 'direct', port: this.directPort || 0 });
   }
 
+  /**
+   * Join codes: lets players connect to this server peer-to-peer with a code. Answered by 'joinCode' (the code, or ''
+   * when turned off). Asked for again after every reconnect.
+   */
+  setP2P(on) {
+    this.p2p = Boolean(on);
+    if (this.running) this._send({ type: 'p2p', p2p: this.p2p });
+  }
+
+  /** Gives the host a new join code; the old one stops working. Answered by 'joinCode'. */
+  rotateJoinCode() {
+    if (this.running) this._send({ type: 'p2p_rotate' });
+  }
+
+  /** Sends a WebRTC setup message to the player 'peer' (through the relay). */
+  sendPeerSignal(peer, signal) {
+    if (typeof signal !== 'string' || !signal || signal.length > MAX_SIGNAL_CHARS) return;
+    this._send({ type: 'peer_signal', peer, signal });
+  }
+
+  /** Tells the relay to drop a player that is still waiting to connect. */
+  closePeer(peer) {
+    this._send({ type: 'peer_close', peer });
+  }
+
   /** Publishes (or, with null, withdraws) this server's public-list entry. */
   setListing(listing) {
     this.listing = listing || null;
@@ -547,4 +614,4 @@ class Tunnel extends EventEmitter {
   }
 }
 
-module.exports = { Tunnel, isValidRelayMessage, MAX_LOCAL_PLAYERS };
+module.exports = { Tunnel, isValidRelayMessage, MAX_LOCAL_PLAYERS, MAX_SIGNAL_CHARS };

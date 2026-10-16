@@ -576,3 +576,110 @@ test('a tunnel that never asked for Direct mode never sends a direct frame', asy
   wss.close();
   assert.equal(frames.includes('direct'), false);
 });
+
+// ─── Join codes (peer-to-peer) ───────────────────────────────────────────────
+
+test('isValidRelayMessage checks the join-code frames', () => {
+  assert.equal(isValidRelayMessage({ type: 'join_code', code: 'K7M2Q-9XH4T' }), true);
+  assert.equal(isValidRelayMessage({ type: 'join_code' }), true);
+  assert.equal(isValidRelayMessage({ type: 'join_code', code: 'x'.repeat(17) }), false);
+  assert.equal(isValidRelayMessage({ type: 'join_code', code: 'bad code!' }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer', peer: 'ab12cd34', client: 'desktop/1.9.0' }), true);
+  assert.equal(isValidRelayMessage({ type: 'peer', peer: '' }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer', peer: 'NOT HEX' }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer', peer: 'ab12', client: 'x'.repeat(65) }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer_signal', peer: 'ab12', signal: '{"type":"offer"}' }), true);
+  assert.equal(isValidRelayMessage({ type: 'peer_signal', peer: 'ab12', signal: '' }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer_signal', peer: 'ab12', signal: 5 }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer_signal', peer: 'ab12', signal: 'x'.repeat(8193) }), false);
+  assert.equal(isValidRelayMessage({ type: 'peer_gone', peer: 'ab12' }), true);
+  assert.equal(isValidRelayMessage({ type: 'peer_gone', peer: '../../etc' }), false);
+  assert.equal(isValidRelayMessage({ type: 'join_error', message: 'x' }), true);
+  assert.equal(isValidRelayMessage({ type: 'join_error', message: 'x'.repeat(501) }), false);
+});
+
+test('join-code frames reach the app as events', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+
+  let p = once(tunnel, 'joinCode');
+  ws.send(JSON.stringify({ type: 'join_code', code: 'K7M2Q-9XH4T' }));
+  assert.equal(await p, 'K7M2Q-9XH4T');
+  p = once(tunnel, 'joinCode');
+  ws.send(JSON.stringify({ type: 'join_code' }));
+  assert.equal(await p, '');
+
+  p = once(tunnel, 'peer');
+  ws.send(JSON.stringify({ type: 'peer', peer: 'ab12cd34', client: 'desktop/1.9.0' }));
+  assert.deepEqual(await p, { peer: 'ab12cd34', client: 'desktop/1.9.0' });
+
+  p = once(tunnel, 'peerSignal');
+  ws.send(JSON.stringify({ type: 'peer_signal', peer: 'ab12cd34', signal: '{"type":"offer"}' }));
+  assert.deepEqual(await p, { peer: 'ab12cd34', signal: '{"type":"offer"}' });
+
+  p = once(tunnel, 'peerGone');
+  ws.send(JSON.stringify({ type: 'peer_gone', peer: 'ab12cd34' }));
+  assert.equal(await p, 'ab12cd34');
+
+  p = once(tunnel, 'joinError');
+  ws.send(JSON.stringify({ type: 'join_error', message: 'Join codes are not available on this relay.' }));
+  assert.equal(await p, 'Join codes are not available on this relay.');
+  tunnel.stop();
+  wss.close();
+});
+
+test('the app sends join-code requests: on, rotate, signals, close, off', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+  const next = () => once(ws, 'message').then((m) => JSON.parse(m));
+
+  let f = next(); tunnel.setP2P(true);
+  assert.deepEqual(await f, { type: 'p2p', p2p: true });
+  f = next(); tunnel.rotateJoinCode();
+  assert.deepEqual(await f, { type: 'p2p_rotate' });
+  f = next(); tunnel.sendPeerSignal('ab12', '{"type":"answer"}');
+  assert.deepEqual(await f, { type: 'peer_signal', peer: 'ab12', signal: '{"type":"answer"}' });
+  f = next(); tunnel.closePeer('ab12');
+  assert.deepEqual(await f, { type: 'peer_close', peer: 'ab12' });
+  f = next(); tunnel.setP2P(false);
+  assert.deepEqual(await f, { type: 'p2p', p2p: false });
+
+  // Nonsense signals are never sent.
+  const frames = [];
+  ws.on('message', (m) => frames.push(JSON.parse(m).type));
+  tunnel.sendPeerSignal('ab12', '');
+  tunnel.sendPeerSignal('ab12', 'x'.repeat(9000));
+  tunnel.sendPeerSignal('ab12', 5);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(frames.includes('peer_signal'), false);
+  tunnel.stop();
+  wss.close();
+});
+
+test('join codes are asked for again after the tunnel reconnects', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  tunnel.reconnectDelay = 10;
+  let ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message');
+  tunnel.setP2P(true); // before it is online
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  assert.deepEqual(JSON.parse(await once(ws, 'message')), { type: 'p2p', p2p: true });
+
+  const again = new Promise((resolve) => wss.once('connection', resolve));
+  ws.close();
+  ws = await again;
+  await once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  assert.deepEqual(JSON.parse(await once(ws, 'message')), { type: 'p2p', p2p: true });
+  tunnel.stop();
+  wss.close();
+});
