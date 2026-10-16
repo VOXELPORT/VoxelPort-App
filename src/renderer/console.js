@@ -153,6 +153,20 @@ $('nameRemoveBtn').addEventListener('click', async () => {
   renderAddress();
 });
 
+// "Copy invite message": the address as the screen shows it, with the name, version and Bedrock details.
+wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), () => {
+  if (!assigned) return null;
+  const plain = `${assigned.host}:${assigned.port}`;
+  const bedrockOn = Boolean(managingProfile && managingProfile.bedrock);
+  return {
+    name: managingProfile && managingProfile.name,
+    version: managingProfile && managingProfile.version,
+    address: customAddress.address || plain,
+    plainAddress: customAddress.address ? plain : '',
+    bedrock: bedrockOn ? { host: customAddress.address || assigned.host, port: assigned.port } : null,
+  };
+});
+
 window.vp.on('tunnel:name', (n) => {
   if (customAddress.elsewhere && !n.elsewhere) setNameMsg('Friends join without a port number. 3–20 letters, numbers or dashes.');
   customAddress = n;
@@ -258,6 +272,7 @@ window.vp.on('server:diagnosis', ({ profileId, items }) => {
 });
 
 srvSettingsBtn.addEventListener('click', () => { if (managingProfileId) window.openSettingsScreen(managingProfileId); });
+$('srvBackupsBtn').addEventListener('click', () => { if (managingProfileId) window.openBackupsScreen(managingProfileId); });
 window.onAppState.push(() => { if ($('screen-console').classList.contains('active')) renderManagementScreen(); });
 
 window.openManagementScreen = async function openManagementScreen(id) {

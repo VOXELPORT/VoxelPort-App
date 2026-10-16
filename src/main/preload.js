@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('vp', {
       'bedrock:progress',
       'accounts:progress',
       'tunnel:region',
+      'tunnel:notice',
+      'backup:progress',
     ];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_evt, payload) => cb(payload));
@@ -44,6 +46,10 @@ contextBridge.exposeInMainWorld('vp', {
   system: {
     specs: () => ipcRenderer.invoke('system:specs'),
   },
+
+  // The language the screen is showing, so messages the main process writes (crash explanations,
+  // in-game chat lines) use it too.
+  setLanguage: (lang) => ipcRenderer.invoke('app:setLanguage', { lang }),
 
   java: {
     check: (version) => ipcRenderer.invoke('java:check', { version }),
@@ -77,6 +83,15 @@ contextBridge.exposeInMainWorld('vp', {
     fix: (id, action) => ipcRenderer.invoke('server:fix', { id, action }),
 
     state: () => ipcRenderer.invoke('server:state'),
+  },
+
+  backups: {
+    info: (id) => ipcRenderer.invoke('backup:info', { id }),
+    create: (id) => ipcRenderer.invoke('backup:create', { id }),
+    restore: (id, name) => ipcRenderer.invoke('backup:restore', { id, name }),
+    remove: (id, name) => ipcRenderer.invoke('backup:delete', { id, name }),
+    setSettings: (id, settings) => ipcRenderer.invoke('backup:settings:set', { id, settings }),
+    openFolder: (id) => ipcRenderer.invoke('backup:openFolder', { id }),
   },
 
   accounts: {

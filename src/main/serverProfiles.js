@@ -37,7 +37,16 @@ function isValidProfile(p) {
     // and the template the server was created from.
     && (p.bedrock === undefined || typeof p.bedrock === 'boolean')
     && (p.listing === undefined || isValidListing(p.listing))
+    && (p.backups === undefined || isValidBackups(p.backups))
     && (p.template === undefined || (typeof p.template === 'string' && /^[a-z0-9-]{1,32}$/.test(p.template)));
+}
+
+// Optional per-server backup settings: { auto, intervalMin, keep }, each optional (see backups.js).
+function isValidBackups(b) {
+  const inRange = (v, lo, hi) => v === undefined || (Number.isInteger(v) && v >= lo && v <= hi);
+  return !!b && typeof b === 'object' && !Array.isArray(b)
+    && (b.auto === undefined || typeof b.auto === 'boolean')
+    && inRange(b.intervalMin, 5, 720) && inRange(b.keep, 1, 30);
 }
 
 function isValidListing(l) {
