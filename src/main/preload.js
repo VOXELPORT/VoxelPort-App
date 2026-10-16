@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('vp', {
       'accounts:progress',
       'tunnel:region',
       'tunnel:notice',
+      'tunnel:direct',
       'backup:progress',
     ];
     if (!allowed.includes(channel)) return;
@@ -81,6 +82,11 @@ contextBridge.exposeInMainWorld('vp', {
     saveSettings: (input) => ipcRenderer.invoke('server:settings:save', input),
     setBedrock: (id, enabled) => ipcRenderer.invoke('server:bedrock:set', { id, enabled }),
     fix: (id, action) => ipcRenderer.invoke('server:fix', { id, action }),
+    direct: {
+      get: (id) => ipcRenderer.invoke('server:direct:get', { id }),
+      set: (id, enabled, confirmed) => ipcRenderer.invoke('server:direct:set', { id, enabled, confirmed }),
+      retry: (id) => ipcRenderer.invoke('server:direct:retry', { id }),
+    },
 
     state: () => ipcRenderer.invoke('server:state'),
   },

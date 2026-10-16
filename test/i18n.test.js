@@ -24,7 +24,7 @@ const SAME_IN_BOTH = new Set([
   '{n} GB', '{n} MB', '{type} • {version} • port {port}', 'Advanced', 'Server folder', 'Description (MOTD)', 'Game mode', 'Difficulty',
   'Modded (Fabric)', 'Creative Flat', 'Peaceful Chill', 'View distance (chunks)', 'Simulation distance (chunks)', 'Spawn protection (blocks)',
   'Memory (RAM) —', 'affiliate link', 'Off.', 'Relay: {message}', 'Local server port',
-  'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar',
+  'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar', 'Direct', 'Direct mode',
 ]);
 
 // Messages the main process can send back; the screen runs them through t().
@@ -38,6 +38,7 @@ const MESSAGES_THE_APP_SENDS = [
   'A backup or restore is already running for this server.', 'A backup or restore is running for this server. Try again in a moment.',
   'A backup or restore is running; try again in a moment.', 'The server is starting or stopping. Try again in a moment.',
   'Stop the server first. A running server would write over the restored world.', 'The backup failed.', 'The restore failed.',
+  'Direct mode needs your confirmation.', 'Make the server public with Direct mode on first.',
   'That backup is gone.', "That is not one of VoxelPort's backups.", 'That file is not a VoxelPort backup.', 'That backup has no world in it.',
   'That backup is from a newer VoxelPort or is damaged.', 'The backup could not be verified.', 'That backup is too big to restore.',
   'That backup contains a file outside its folder, so it was not restored.',

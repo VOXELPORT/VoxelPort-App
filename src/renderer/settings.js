@@ -10,6 +10,9 @@ const setRamLabel = $('setRamLabel');
 const setFields = $('setFields');
 const setBedrock = $('setBedrock');
 const setBedrockMsg = $('setBedrockMsg');
+const setDirect = $('setDirect');
+const setDirectWarn = $('setDirectWarn');
+const setDirectMsg = $('setDirectMsg');
 const setCracked = $('setCracked');
 const setCrackedWarn = $('setCrackedWarn');
 const setLoginBtn = $('setLoginBtn');
@@ -71,6 +74,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   settingsProfileId = id;
   showSetMsg('', 'hidden');
   setBedrockMsg.textContent = '';
+  setDirectMsg.textContent = '';
   setAccountsMsg.textContent = '';
   const data = await window.vp.server.getSettings(id);
   const { profile, fields, values, bedrock, listing, totalMemMb } = data;
@@ -93,6 +97,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   if (!bedrock.supported) setBedrockMsg.textContent = t("Bedrock players need a Paper or Fabric server — Vanilla can't run Geyser.");
   else if (bedrock.enabled) setBedrockMsg.textContent = t('On — Bedrock players join on the same port as Java (Geyser listens on {port}).', { port: bedrock.port });
 
+  renderDirect(await window.vp.server.direct.get(id));
   renderAccounts(await window.vp.accounts.get(id));
 
   setListed.checked = listing.enabled;
@@ -162,6 +167,49 @@ window.vp.on('bedrock:progress', (p) => {
   if (!p) return;
   if (p.stage === 'resolve') setBedrockMsg.textContent = t('Finding the right Geyser build…');
   else if (p.stage === 'download') setBedrockMsg.textContent = t('Downloading {file}…', { file: p.file });
+});
+
+// ─── Direct mode: players connect straight to this PC ─────────────────────
+
+function renderDirect(d) {
+  setDirect.checked = d.enabled;
+  setDirect.disabled = !d.supported;
+  setDirectWarn.classList.toggle('hidden', !d.enabled);
+  if (!d.supported) setDirectMsg.textContent = t("Direct mode only works on VoxelPort's own relays.");
+  else if (d.enabled && d.public) setDirectMsg.textContent = window.VPDirect.describeDirect(d.status, t).text;
+  else if (d.enabled) setDirectMsg.textContent = t('On. It starts when your server is public.');
+}
+
+setDirect.addEventListener('change', async () => {
+  const wantOn = setDirect.checked;
+  if (wantOn && !window.confirm(
+    t('Turn on Direct mode?') + '\n\n' +
+    t('Players will connect straight to your PC, so they get a lower ping if they live near you.') + '\n\n' +
+    t('• Your home IP address becomes visible to anyone who joins, and it is published in DNS for your custom address while Direct mode is on.') + '\n' +
+    t('• VoxelPort opens a port on your router (UPnP) while your server is public, and closes it when you stop.') + '\n' +
+    t('• It only works if your router allows it and your internet provider gives you your own public address. If not, nothing changes: players keep using the relay.') + '\n' +
+    t('• If your server stops answering, players are sent back to the relay by themselves.')
+  )) {
+    setDirect.checked = false;
+    return;
+  }
+  setDirect.disabled = true;
+  const res = await window.vp.server.direct.set(settingsProfileId, wantOn, wantOn);
+  setDirect.disabled = false;
+  if (!res || !res.ok) {
+    setDirect.checked = !wantOn;
+    setDirectMsg.textContent = t((res && res.error) || "Couldn't change that.");
+    return;
+  }
+  renderDirect(await window.vp.server.direct.get(settingsProfileId));
+  if (!wantOn) setDirectMsg.textContent = t('Off.');
+  if (window.directSettingChanged) window.directSettingChanged();
+});
+
+window.vp.on('tunnel:direct', async () => {
+  // While this screen is open for the public server, keep its message in step with what the main process reports.
+  if (!settingsProfileId || !document.getElementById('screen-settings').classList.contains('active')) return;
+  renderDirect(await window.vp.server.direct.get(settingsProfileId));
 });
 
 // ─── Player accounts: cracked (offline-mode) servers ──────────────────────

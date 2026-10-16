@@ -36,6 +36,8 @@ function isValidProfile(p) {
     // Optional: Bedrock players via Geyser, the public server-list opt-in,
     // and the template the server was created from.
     && (p.bedrock === undefined || typeof p.bedrock === 'boolean')
+    // Optional: Direct mode (players connect straight to this PC); opt-in, off unless set.
+    && (p.direct === undefined || typeof p.direct === 'boolean')
     && (p.listing === undefined || isValidListing(p.listing))
     && (p.backups === undefined || isValidBackups(p.backups))
     && (p.template === undefined || (typeof p.template === 'string' && /^[a-z0-9-]{1,32}$/.test(p.template)));

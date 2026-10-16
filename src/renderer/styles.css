@@ -360,6 +360,10 @@ button:focus-visible, input[type="checkbox"]:focus-visible, summary:focus-visibl
 .share-alt { font-family: var(--type); font-size: .76rem; font-weight: 700; color: var(--ink-2); margin-top: -4px; user-select: text; }
 .bedrock-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .84rem; user-select: text; }
 .bedrock-line b { font-family: var(--type); }
+.direct-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .84rem; line-height: 1.4; user-select: text; }
+.direct-line[data-tone="ok"] #srvDirectText { color: var(--grass-dark, #2f7d1f); font-weight: 700; }
+.direct-line[data-tone="warn"] #srvDirectText { font-weight: 700; }
+.direct-line[data-tone="err"] #srvDirectText { color: var(--red); font-weight: 700; }
 .name-box { background: var(--card); border: 2.5px solid var(--ink); padding: 10px 11px; display: flex; flex-direction: column; gap: 7px; }
 .name-view { display: flex; align-items: center; gap: 10px; font-size: .86rem; }
 .name-view b { font-family: var(--type); }

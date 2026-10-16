@@ -31,6 +31,7 @@ const support = require('./support');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
 const { NoticeAnnouncer } = require('./notice');
+const { DirectMode, directAction, OFF: DIRECT_OFF } = require('./directMode');
 const { BackupService } = require('./backupService');
 const backupsLib = require('./backups');
 
@@ -196,9 +197,32 @@ function broadcastState() {
   });
 }
 
+// Direct mode: players connect straight to this PC through a port the router forwards (see directMode.js).
+const directMode = new DirectMode({ log: (line) => send('tunnel:log', '[Direct] ' + line) });
+directMode.on('status', (s) => send('tunnel:direct', s));
+
+/** Starts or stops Direct mode to match the public server's setting and the tunnel's state. */
+function syncDirectMode() {
+  const profile = publicServerProfileId ? serverProfiles.getProfile(userDataDir(), publicServerProfileId) : null;
+  const action = directAction({
+    enabled: Boolean(profile && profile.direct),
+    online: Boolean(tunnel && tunnel.running),
+    official: Boolean(tunnelRegion), // only VoxelPort's own relays know about Direct mode
+    state: directMode.status.state,
+  });
+  if (action === 'start') {
+    directMode.start(tunnel, { localPort: profile.port }).catch((err) => send('tunnel:log', '[Direct] ' + err.message));
+  } else if (action === 'stop') {
+    directMode.stop().catch(() => {});
+  }
+}
+
 function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
-  t.on('assigned', (port) => send('tunnel:assigned', { port, host: publicHost }));
+  t.on('assigned', (port) => {
+    send('tunnel:assigned', { port, host: publicHost });
+    syncDirectMode(); // a reconnect keeps a working Direct mode; a first connection starts it
+  });
   t.on('players', (n) => send('tunnel:players', n));
   t.on('ping', (ms) => send('tunnel:ping', ms));
   t.on('log', (line) => send('tunnel:log', line));
@@ -222,6 +246,8 @@ function wireTunnel(t, publicHost) {
   });
   t.on('udpError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('stopped', () => {
+    // The router's port is closed whenever its tunnel goes (an older tunnel's late "stopped" must not stop a newer one's).
+    if (directMode.tunnel === t || !directMode.tunnel) directMode.stop({ tunnelAlive: false }).catch(() => {});
     send('tunnel:status', 'stopped');
     send('tunnel:notice', { message: '', seconds: 0 });
     noticeAnnouncer.cancel();
@@ -433,7 +459,9 @@ app.on('window-all-closed', () => {
   if (tunnel) tunnel.stop();
   stopRequested = true;
   if (serverProc.child) serverProc.stop();
-  if (process.platform !== 'darwin') app.quit();
+  const quit = () => { if (process.platform !== 'darwin') app.quit(); };
+  // Give the router a moment to forget the forwarded port before the app exits (it expires by itself anyway).
+  Promise.race([directMode.stop({ tunnelAlive: false }), new Promise((r) => setTimeout(r, 2500))]).then(quit, quit);
 });
 
 const g = () => mainWindow;
@@ -1182,6 +1210,40 @@ ipcMain.handle('name:release', guarded(g, async () => {
   const reply = awaitNameReply(tunnel);
   tunnel.releaseName();
   return reply;
+}));
+
+// ─── Direct mode ───────────────────────────────────────────────────────────
+// Opt-in per server. Turning it on needs the host's confirmation (the screen asks), because players then
+// connect to this PC's own IP address, which is published in DNS for the host's custom address.
+
+ipcMain.handle('server:direct:get', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) throw new Error('Server profile not found.');
+  const isPublic = publicServerProfileId === id;
+  return {
+    enabled: Boolean(profile.direct),
+    public: isPublic,
+    supported: !isPublic || Boolean(tunnelRegion),
+    status: isPublic ? directMode.status : DIRECT_OFF,
+  };
+}));
+
+ipcMain.handle('server:direct:set', guarded(g, (_evt, { id, enabled, confirmed }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (enabled && confirmed !== true) return { ok: false, error: 'Direct mode needs your confirmation.' };
+  serverProfiles.updateProfile(userDataDir(), id, { direct: Boolean(enabled) });
+  if (publicServerProfileId === id) syncDirectMode();
+  return { ok: true, enabled: Boolean(enabled) };
+}));
+
+ipcMain.handle('server:direct:retry', guarded(g, async (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (publicServerProfileId !== id || !profile.direct) return { ok: false, error: 'Make the server public with Direct mode on first.' };
+  await directMode.stop();
+  syncDirectMode();
+  return { ok: true };
 }));
 
 // ─── Fixes offered by crash explanations ──────────────────────────────────

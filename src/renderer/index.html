@@ -242,6 +242,10 @@
         <div class="bedrock-line hidden" id="srvBedrock">
           <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
         </div>
+        <div class="direct-line hidden" id="srvDirect" data-tone="">
+          <span class="pill">Direct</span> <span id="srvDirectText"></span>
+          <button id="srvDirectRetryBtn" class="link-btn hidden" type="button">Try again</button>
+        </div>
         <div class="invite-row">
           <button id="srvInviteBtn" class="ghost small" type="button">Copy invite message</button>
           <button id="srvInviteAltBtn" class="link-btn" type="button"></button>
@@ -321,6 +325,18 @@
           <span><b>Let Bedrock players join</b><span class="hint">Phones, consoles and Minecraft for Windows. Installs Geyser + Floodgate (free, open source).</span></span>
         </label>
         <div class="hint" id="setBedrockMsg"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Direct mode</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setDirect" />
+          <span><b>Direct mode: lower ping for nearby players</b><span class="hint">Players connect straight to your PC instead of through the relay. VoxelPort opens a port on your router (UPnP) while your server is public, and closes it when you stop. Java players only: Bedrock players still use the relay.</span></span>
+        </label>
+        <div class="set-warn hidden" id="setDirectWarn">
+          <span><b>Your home IP address becomes visible to your players</b>, and it is published in DNS for your custom address while this is on. Only turn it on for players you are comfortable sharing it with.</span>
+        </div>
+        <div class="hint" id="setDirectMsg"></div>
       </div>
 
       <div class="set-group">
@@ -445,12 +461,14 @@
   <script src="lang/hinglish.js"></script>
   <script src="i18n.js"></script>
   <script src="invite.js"></script>
+  <script src="directText.js"></script>
   <script src="renderer.js"></script>
   <script src="library.js"></script>
   <script src="wizard.js"></script>
   <script src="import.js"></script>
   <script src="console.js"></script>
   <script src="settings.js"></script>
+  <script src="direct-ui.js"></script>
   <script src="backups-ui.js"></script>
   <script src="support.js"></script>
 </body>

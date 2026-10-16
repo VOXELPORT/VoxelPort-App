@@ -486,3 +486,93 @@ test('isValidRelayMessage checks notice frames', () => {
   assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 1.5 }), false);
   assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 999999999 }), false);
 });
+
+// ─── Direct mode ─────────────────────────────────────────────────────────────
+
+test('isValidRelayMessage checks direct frames', () => {
+  assert.equal(isValidRelayMessage({ type: 'direct', ip: '83.45.12.9', port: 25565, address: 'steve.voxelport.in' }), true);
+  assert.equal(isValidRelayMessage({ type: 'direct', port: 0 }), true);
+  assert.equal(isValidRelayMessage({ type: 'direct', ip: '1.2.3.4', port: 70000 }), false);
+  assert.equal(isValidRelayMessage({ type: 'direct', port: -1 }), false);
+  assert.equal(isValidRelayMessage({ type: 'direct', port: 1.5 }), false);
+  assert.equal(isValidRelayMessage({ type: 'direct', port: 25565, ip: 7 }), false);
+  assert.equal(isValidRelayMessage({ type: 'direct', port: 25565, address: 'x'.repeat(254) }), false);
+  assert.equal(isValidRelayMessage({ type: 'direct_error', message: 'nope' }), true);
+  assert.equal(isValidRelayMessage({ type: 'direct_error', message: 'x'.repeat(501) }), false);
+  assert.equal(isValidRelayMessage({ type: 'direct_error', message: 4 }), false);
+});
+
+test('direct and directError frames reach the app as events', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+
+  const on = once(tunnel, 'direct');
+  ws.send(JSON.stringify({ type: 'direct', ip: '83.45.12.9', port: 25565, address: 'steve.voxelport.in' }));
+  assert.deepEqual(await on, { ip: '83.45.12.9', port: 25565, address: 'steve.voxelport.in' });
+
+  const off = once(tunnel, 'direct');
+  ws.send(JSON.stringify({ type: 'direct', port: 0 }));
+  assert.deepEqual(await off, { ip: '', port: 0, address: '' });
+
+  const err = once(tunnel, 'directError');
+  ws.send(JSON.stringify({ type: 'direct_error', message: 'Nothing answered.' }));
+  assert.equal(await err, 'Nothing answered.');
+  tunnel.stop();
+  wss.close();
+});
+
+test('setDirect asks the relay at once while connected, and turns it off with port 0', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+
+  const ask = once(ws, 'message');
+  tunnel.setDirect(25565);
+  assert.deepEqual(JSON.parse(await ask), { type: 'direct', port: 25565 });
+  const off = once(ws, 'message');
+  tunnel.setDirect(null);
+  assert.deepEqual(JSON.parse(await off), { type: 'direct', port: 0 });
+  tunnel.stop();
+  wss.close();
+});
+
+test('Direct mode is asked for again after the tunnel reconnects, because the relay forgets it', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  tunnel.reconnectDelay = 10;
+  let ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  await once(ws, 'message');
+  tunnel.setDirect(25570); // before it is online: nothing is sent yet
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  assert.deepEqual(JSON.parse(await once(ws, 'message')), { type: 'direct', port: 25570 });
+
+  const again = new Promise((resolve) => wss.once('connection', resolve));
+  ws.close(); // the connection drops
+  ws = await again;
+  await once(ws, 'message'); // register
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  assert.deepEqual(JSON.parse(await once(ws, 'message')), { type: 'direct', port: 25570 });
+  tunnel.stop();
+  wss.close();
+});
+
+test('a tunnel that never asked for Direct mode never sends a direct frame', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_test', localPort: 1 });
+  const frames = [];
+  ws.on('message', (m) => frames.push(JSON.parse(m).type));
+  ws.send(JSON.stringify({ type: 'port', port: 26137 }));
+  await once(tunnel, 'assigned');
+  await new Promise((r) => setTimeout(r, 100));
+  tunnel.stop();
+  wss.close();
+  assert.equal(frames.includes('direct'), false);
+});

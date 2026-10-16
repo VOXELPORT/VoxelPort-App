@@ -103,6 +103,7 @@ function renderAddress() {
     srvBedrockHost.textContent = customAddress.address || assigned.host;
     srvBedrockPort.textContent = String(assigned.port);
   }
+  if (window.renderDirectLine) window.renderDirectLine();
   srvListed.classList.toggle('hidden', !(managingProfile && managingProfile.listing && managingProfile.listing.enabled));
   const hasName = Boolean(customAddress.name) && !editingName;
   nameView.classList.toggle('hidden', !hasName);

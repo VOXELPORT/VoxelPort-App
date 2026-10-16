@@ -71,6 +71,7 @@ function isValidRelayMessage(msg) {
     case 'name_error':
     case 'listing_error':
     case 'udp_error':
+    case 'direct_error':
       return msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 500);
     case 'udp':
       return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_UDP_B64_CHARS
@@ -79,6 +80,11 @@ function isValidRelayMessage(msg) {
       return isValidConnId(msg.conn);
     case 'name':
       return (msg.name === undefined || (typeof msg.name === 'string' && /^[a-z0-9-]{0,32}$/.test(msg.name)))
+        && (msg.address === undefined || (typeof msg.address === 'string' && msg.address.length <= 253));
+    case 'direct':
+      // Direct mode: the relay reached this PC at ip:port (port 0 = players use the relay again). IPv4 only.
+      return Number.isInteger(msg.port) && msg.port >= 0 && msg.port <= 65535
+        && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64))
         && (msg.address === undefined || (typeof msg.address === 'string' && msg.address.length <= 253));
     case 'notice':
       // An announcement from the relay's operator. The text is shown, never acted on.
@@ -101,7 +107,9 @@ function isValidRelayMessage(msg) {
  *         'log' (line), 'error' (message), 'stopped',
  *         'name' ({ name, address } — empty when none), 'nameError' (message),
  *         'listingError' (message), 'udpError' (message),
- *         'notice' ({ message, seconds } — an announcement from the relay's operator; empty message = withdrawn).
+ *         'notice' ({ message, seconds } — an announcement from the relay's operator; empty message = withdrawn),
+ *         'direct' ({ ip, port, address } — players now connect straight to this PC; port 0 = they use the relay again),
+ *         'directError' (message — Direct mode was refused or stopped working).
  *
  * With `udpPort`, Bedrock players are bridged too: the relay forwards UDP on
  * the same public port, and each remote player becomes a local UDP socket
@@ -120,6 +128,7 @@ class Tunnel extends EventEmitter {
     this.wsStallTimer = null;
     this.udpSessions = new Map(); // connID -> { sock, idleTimer }
     this.listing = null; // re-sent after every (re)registration
+    this.directPort = null; // Direct mode: the port forwarded on the router; re-sent after every (re)registration
   }
 
   /**
@@ -228,6 +237,8 @@ class Tunnel extends EventEmitter {
         this.emit('log', `Tunnel is live on public port ${msg.port}.`);
         this._startPing();
         if (this.listing) this._send({ type: 'listing', listing: this.listing });
+        // A new connection starts without Direct mode on the relay's side: ask again.
+        if (this.directPort) this._send({ type: 'direct', port: this.directPort });
         break;
 
       case 'name':
@@ -240,6 +251,14 @@ class Tunnel extends EventEmitter {
 
       case 'listing_error':
         this.emit('listingError', msg.message || 'Could not list this server.');
+        break;
+
+      case 'direct':
+        this.emit('direct', { ip: msg.ip || '', port: msg.port, address: msg.address || '' });
+        break;
+
+      case 'direct_error':
+        this.emit('directError', msg.message || 'Direct mode is not available.');
         break;
 
       case 'notice':
@@ -459,6 +478,15 @@ class Tunnel extends EventEmitter {
 
   releaseName() {
     this._send({ type: 'release_name' });
+  }
+
+  /**
+   * Direct mode: asks the relay to check that the given port (forwarded on the router) reaches this PC and, if so,
+   * send players straight to it. Answered by 'direct' or 'directError'. With null, turns it off.
+   */
+  setDirect(port) {
+    this.directPort = port || null;
+    if (this.running) this._send({ type: 'direct', port: this.directPort || 0 });
   }
 
   /** Publishes (or, with null, withdraws) this server's public-list entry. */

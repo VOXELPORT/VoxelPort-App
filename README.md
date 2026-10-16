@@ -59,8 +59,9 @@
 
 ## ✨ What you get
 
-- 🌍 **No port forwarding** — the app dials out to the relay; your router and home IP stay private.
+- 🌍 **No port forwarding** — the app dials out to the relay; your router and home IP stay private (unless you turn on Direct mode, below).
 - 🏷️ **Your own address** — claim `yourname.voxelport.in` for free. Friends join without a port number.
+- ⚡ **Direct mode** (optional, off by default) — players connect straight to your PC through a port your router forwards (UPnP), skipping the relay, for a lower ping when they live near you. VoxelPort checks from the internet that it works, and if it stops working players are sent back to the relay by themselves. Turning it on shows your home IP address to players, so it asks first. Java players only; Bedrock still uses the relay.
 - 📱 **Bedrock players too** — one switch installs Geyser + Floodgate so phone, console and Windows players join the same server.
 - 🎮 **Vanilla clients** — Java players need nothing but Minecraft.
 - 🧩 **Templates** — Survival SMP, Java + Bedrock, Creative Flat, Hardcore, Peaceful, Modded — pick one and go.

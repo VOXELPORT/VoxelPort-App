@@ -23,6 +23,11 @@ VoxelPort Installation
 play.voxelport.in:<port>
 ```
 
+Direct mode (optional, per server) is a side path: `upnp.js` asks the router to forward a port (a small UPnP client with no
+dependencies, tested against a fake router in `test/helpers/fakeRouter.js`), `directMode.js` runs the flow (open the port →
+ask the relay to verify it → report the state, and close the port when the tunnel stops), and the relay checks the port from the
+internet and points the host's custom address straight at it (see relay/README.md). Players use the same address as before.
+
 Starting a different profile while one is already running, or making a
 different profile public while another is already public, asks for
 confirmation before switching — VoxelPort never silently stops or replaces
