@@ -39,6 +39,11 @@
       </label>
       <div class="hint">VoxelPort connects your PC straight to your friend's PC (peer-to-peer) for the lowest ping, with no port forwarding. Each of you can see the other's IP address while you play.</div>
 
+      <label class="toggle-row">
+        <input type="checkbox" id="joinAllowRelay" />
+        <span><b>If a direct connection can't be made, use the relay (slower)</b><span class="hint">The relay is in India. Far from there it adds a lot of delay, so it is off unless you tick this.</span></span>
+      </label>
+
       <div class="actions">
         <button id="joinStartBtn" class="primary" type="button">Join</button>
         <button id="joinStopBtn" class="ghost hidden" type="button">Stop</button>

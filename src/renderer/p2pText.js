@@ -26,10 +26,24 @@
       case 'relay':
         return { text: relayText(s.reason, t), tone: 'warn', pill: t('Relay'), address, running: true };
       case 'failed':
-        return { text: s.message ? t(s.message) : t('Could not join.'), tone: 'err', pill: '', address: '', running: false };
+        return { text: s.message ? t(s.message) : (s.reason ? directOnlyText(s.reason, t) : t('Could not join.')), tone: 'err', pill: '', address: '', running: false };
       default:
         return { text: '', tone: '', pill: '', address: '', running: false };
     }
+  }
+
+  /** Joining failed because no direct connection could be made and the relay is off (it would add a lot of delay). */
+  function directOnlyText(reason, t) {
+    if (reason === 'lost' || reason === 'stalled') return t('The direct connection was lost. Join again to reconnect.');
+    return t("A direct connection couldn't be made (a router or firewall is in the way). The relay is off for you because it would add a lot of delay: tick the box below to use it anyway, or try another network.");
+  }
+
+  /**
+   * Whether the relay is allowed by default: only where it is close (India). Anywhere else its delay is large, so players
+   * there only use direct connections unless they choose otherwise. Time zone is what the PC says; both spellings of Kolkata exist.
+   */
+  function defaultAllowRelay(timeZone) {
+    return /^Asia\/(Kolkata|Calcutta)$/.test(String(timeZone || ''));
   }
 
   function relayText(reason, t) {
@@ -67,7 +81,7 @@
     };
   }
 
-  const api = { describeJoin, describeHost };
+  const api = { describeJoin, describeHost, defaultAllowRelay };
   root.VPP2P = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

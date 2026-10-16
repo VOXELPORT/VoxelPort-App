@@ -100,7 +100,7 @@ contextBridge.exposeInMainWorld('vp', {
 
   // Joining a friend's server with a code (peer-to-peer).
   join: {
-    start: (code) => ipcRenderer.invoke('p2p:join:start', { code }),
+    start: (code, allowRelay) => ipcRenderer.invoke('p2p:join:start', { code, allowRelay }),
     stop: () => ipcRenderer.invoke('p2p:join:stop'),
     status: () => ipcRenderer.invoke('p2p:join:status'),
   },

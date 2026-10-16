@@ -1335,7 +1335,7 @@ ipcMain.handle('server:p2p:rotate', guarded(g, (_evt, { id }) => {
   return { ok: true };
 }));
 
-ipcMain.handle('p2p:join:start', guarded(g, (_evt, { code }) => {
+ipcMain.handle('p2p:join:start', guarded(g, (_evt, { code, allowRelay }) => {
   if (typeof code !== 'string' || code.trim().length < 6 || code.length > 40) return { ok: false, error: 'Enter the code your friend gave you.' };
   if (p2pJoin) { p2pJoin.stop(); p2pJoin = null; }
   if (joinRtc) { joinRtc.close(); joinRtc = null; }
@@ -1350,7 +1350,8 @@ ipcMain.handle('p2p:join:start', guarded(g, (_evt, { code }) => {
       if (p2pJoin === join && joinRtc) { joinRtc.close(); joinRtc = null; }
     }
   });
-  join.start({ relayUrl: DEFAULT_RELAY_URL, code: code.trim(), client: `desktop/${app.getVersion()}` });
+  // "Direct only" (allowRelay false): the relay is in India, so far from there it would only add delay.
+  join.start({ relayUrl: DEFAULT_RELAY_URL, code: code.trim(), client: `desktop/${app.getVersion()}`, allowRelay: allowRelay !== false });
   return { ok: true };
 }));
 

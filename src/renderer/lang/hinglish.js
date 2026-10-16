@@ -352,6 +352,10 @@
   'The relay refused the code.': 'Relay ne code mana kar diya.',
   'Could not open a local port for Minecraft.': 'Minecraft ke liye local port nahi khul paya.',
   'Turn join codes on first.': 'Pehle join codes on karo.',
+  'If a direct connection can\'t be made, use the relay (slower)': 'Agar seedha connection nahi ban paye, to relay use karo (dheema)',
+  'The relay is in India. Far from there it adds a lot of delay, so it is off unless you tick this.': 'Relay India mein hai. Wahan se door yeh bahut delay badha deta hai, isliye jab tak tum yeh tick na karo yeh off rehta hai.',
+  'The direct connection was lost. Join again to reconnect.': 'Seedha connection toot gaya. Dobara connect karne ke liye phir se join karo.',
+  'A direct connection couldn\'t be made (a router or firewall is in the way). The relay is off for you because it would add a lot of delay: tick the box below to use it anyway, or try another network.': 'Seedha connection nahi ban paya (beech mein router ya firewall hai). Tumhare liye relay off hai kyunki yeh bahut delay badhata: phir bhi use karna ho to neeche wala box tick karo, ya doosra network try karo.',
   'Let friends join with a code': 'Doston ko code se join karne do',
   'Peer-to-peer: they connect straight to your PC. Best for friends far from the relay.': 'Peer-to-peer: woh seedha tumhare PC se connect hote hain. Un doston ke liye best jo relay se door hain.',
 };

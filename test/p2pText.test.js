@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { describeJoin, describeHost } = require('../src/renderer/p2pText');
+const { describeJoin, describeHost, defaultAllowRelay } = require('../src/renderer/p2pText');
 
 const t = (text, vars = {}) => text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
@@ -76,4 +76,25 @@ test('a public server with join codes off is offered a button to turn them on', 
   assert.equal(describeHost({ enabled: false, public: false, supported: true }, t).showOffer, false, 'not public yet');
   assert.equal(describeHost({ enabled: false, public: true, supported: false }, t).showOffer, false, 'a relay that does not support it');
   assert.equal(describeHost(null, t).showOffer, false);
+});
+
+test('direct only: failing to connect directly says the relay is off, and why, and what to do', () => {
+  const failed = describeJoin({ state: 'failed', reason: 'failed', message: '' }, t);
+  assert.match(failed.text, /relay is off for you/);
+  assert.match(failed.text, /tick the box/);
+  assert.equal(failed.tone, 'err');
+  assert.equal(failed.running, false);
+  assert.equal(failed.address, '');
+  assert.equal(describeJoin({ state: 'failed', reason: 'timeout', message: '' }, t).text, failed.text);
+  assert.match(describeJoin({ state: 'failed', reason: 'lost', message: '' }, t).text, /Join again/);
+  assert.match(describeJoin({ state: 'failed', reason: 'stalled', message: '' }, t).text, /Join again/);
+  // The relay's own refusal still wins over a reason.
+  assert.equal(describeJoin({ state: 'failed', reason: 'failed', message: "That code isn't active." }, t).text, "That code isn't active.");
+});
+
+test('the relay is only allowed by default for players in India', () => {
+  for (const tz of ['Asia/Kolkata', 'Asia/Calcutta']) assert.equal(defaultAllowRelay(tz), true, tz);
+  for (const tz of ['Europe/Berlin', 'America/New_York', 'Asia/Dubai', 'Asia/Karachi', 'Asia/Dhaka', 'Asia/Colombo', 'UTC', '', undefined, null, 'Asia/Kolkata2', 'xAsia/Kolkata']) {
+    assert.equal(defaultAllowRelay(tz), false, String(tz));
+  }
 });

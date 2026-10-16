@@ -14,6 +14,9 @@ const joinPath = $('joinPath');
 const joinAddressBox = $('joinAddressBox');
 const joinAddress = $('joinAddress');
 const joinCopyBtn = $('joinCopyBtn');
+const joinAllowRelay = $('joinAllowRelay');
+// The relay is in India: it is only allowed by default for players there (anywhere else it would mean a high ping).
+joinAllowRelay.checked = window.VPP2P.defaultAllowRelay(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 function paintJoin(status) {
   const d = window.VPP2P.describeJoin(status, t);
@@ -27,6 +30,7 @@ function paintJoin(status) {
   joinStartBtn.classList.toggle('hidden', d.running);
   joinStopBtn.classList.toggle('hidden', !d.running);
   joinCodeInput.disabled = d.running;
+  joinAllowRelay.disabled = d.running;
 }
 
 $('joinCodeLink').addEventListener('click', async () => {
@@ -42,7 +46,7 @@ joinStartBtn.addEventListener('click', async () => {
     return;
   }
   joinStartBtn.disabled = true;
-  const res = await window.vp.join.start(code);
+  const res = await window.vp.join.start(code, joinAllowRelay.checked);
   joinStartBtn.disabled = false;
   if (!res || !res.ok) paintJoin({ state: 'failed', message: (res && res.error) || 'Could not join.' });
 });

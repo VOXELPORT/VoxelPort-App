@@ -319,3 +319,69 @@ test('the host reports how many players are playing and connected', async () => 
     await waitFor(() => r.host.players === 0, 'the game to end');
   } finally { r.cleanup(); }
 });
+
+// ─── Direct only (no relay), for players far from the relay ───────────────────────
+
+test('direct only: with no direct route the join fails, opens no port and never touches the relay', async () => {
+  const r = await rig({ mode: 'fail' });
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T', allowRelay: false });
+    await waitFor(() => r.join.status.state === 'failed', 'the failure');
+    assert.equal(r.join.status.reason, 'failed');
+    assert.equal(r.join.status.port, 0);
+    assert.equal(r.join.server, null, 'nothing is listening for Minecraft');
+    assert.equal(r.relayPort.connections(), 0);
+  } finally { r.cleanup(); }
+});
+
+test('direct only: a direct connection that never opens fails after the timeout', async () => {
+  const r = await rig({ mode: 'silent', p2pTimeoutMs: 150 });
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T', allowRelay: false });
+    await waitFor(() => r.join.status.state === 'failed', 'the timeout');
+    assert.equal(r.join.status.reason, 'timeout');
+    assert.equal(r.join.server, null);
+  } finally { r.cleanup(); }
+});
+
+test('direct only: a direct connection that works is used exactly as before', async () => {
+  const r = await rig();
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T', allowRelay: false });
+    await waitFor(() => r.join.status.state === 'p2p', 'a direct connection');
+    assert.equal((await roundTrip(r.join.status.port, Buffer.from('a'), 4)).toString(), 'MC:a');
+  } finally { r.cleanup(); }
+});
+
+test('direct only: if the direct connection is lost later the join ends (it does not slip onto the relay)', async () => {
+  const r = await rig();
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T', allowRelay: false });
+    await waitFor(() => r.join.status.state === 'p2p', 'a direct connection');
+    const port = r.join.status.port;
+    r.joinWorker.dropLinks();
+    await waitFor(() => r.join.status.state === 'failed', 'the end');
+    assert.equal(r.join.status.reason, 'lost');
+    await assert.rejects(roundTrip(port, Buffer.from('b'), 1), 'the local port is closed');
+    assert.equal(r.relayPort.connections(), 0);
+  } finally { r.cleanup(); }
+});
+
+test('with the relay allowed (the default) a failed direct route still falls back, as before', async () => {
+  const r = await rig({ mode: 'fail' });
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T', allowRelay: true });
+    await waitFor(() => r.join.status.state === 'relay', 'the fallback');
+  } finally { r.cleanup(); }
+});
+
+test('the choice of the last join does not stick to the next one', async () => {
+  const r = await rig({ mode: 'fail' });
+  try {
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T', allowRelay: false });
+    await waitFor(() => r.join.status.state === 'failed', 'the failure');
+    r.join.signaling = r.relay.signaling();
+    r.join.start({ relayUrl: 'wss://relay.example', code: 'K7M2Q-9XH4T' }); // allowRelay defaults to true again
+    await waitFor(() => r.join.status.state === 'relay', 'the fallback this time');
+  } finally { r.cleanup(); }
+});

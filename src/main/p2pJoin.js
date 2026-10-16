@@ -21,7 +21,8 @@ const PREFERRED_PORT = 25565;
  * Status: { state, path, port, reason, message }
  *   state:  idle | signaling | connecting | p2p | relay | failed | stopped
  *   path:   '' | 'lan' | 'direct' | 'relay'
- *   reason: why the relay is used instead of a direct connection: timeout | failed | lost | stalled (the screen words it)
+ *   reason: why there is no direct connection (the relay is used instead, or joining failed if the relay is off): timeout |
+ *           failed | lost | stalled (the screen words it)
  *   message: the relay's own words when joining failed (a wrong code, the host is offline…)
  * Events: 'status' (the status), 'log' (line).
  */
@@ -48,6 +49,7 @@ class P2PJoin extends EventEmitter {
     this.onWorker = (evt) => this._onWorker(evt);
     this.relayPipes = new Set();
     this.openTimers = new Map(); // conn -> timer: a connection waiting for its channel to open
+    this.allowRelay = true;
   }
 
   _set(patch) {
@@ -55,10 +57,15 @@ class P2PJoin extends EventEmitter {
     this.emit('status', this.status);
   }
 
-  /** Joins the host with this code through this relay. Resolves when it has either failed or started listening. */
-  start({ relayUrl, code, client }) {
+  /**
+   * Joins the host with this code through this relay. With allowRelay false ("direct only") the host's relay address is never
+   * used: if no direct connection can be made, joining fails instead. The relay is in India, so for a player far from
+   * there it would only mean a high ping.
+   */
+  start({ relayUrl, code, client, allowRelay = true }) {
     if (this.status.state !== 'idle' && this.status.state !== 'stopped' && this.status.state !== 'failed') return;
     this._cleanup();
+    this.allowRelay = allowRelay !== false;
     this._set({ state: 'signaling', path: '', port: 0, reason: '', message: '' });
     const s = this.signaling;
     s.on('joined', (j) => this._onJoined(j));
@@ -103,6 +110,7 @@ class P2PJoin extends EventEmitter {
   _useRelay(reason) {
     if (this.status.state === 'relay' || this.status.state === 'failed' || this.status.state === 'stopped') return;
     clearTimeout(this.p2pTimer);
+    if (!this.allowRelay) { this._failedDirectOnly(reason); return; }
     this.viaP2P = false;
     this.worker.send({ op: 'peer-close', peer: PEER });
     this.pipes.closeAll();
@@ -110,6 +118,13 @@ class P2PJoin extends EventEmitter {
     this.emit('log', `No direct connection (${reason}). Using the relay instead.`);
     this._set({ state: 'relay', path: 'relay', reason, message: '' });
     this._listen();
+  }
+
+  /** "Direct only" and no direct connection: say why (a reason code the screen words) and let go of everything. */
+  _failedDirectOnly(reason) {
+    this.emit('log', `No direct connection (${reason}), and the relay is switched off for this join.`);
+    this._set({ state: 'failed', path: '', port: 0, reason, message: '' });
+    this._cleanup();
   }
 
   _failed(message) {
