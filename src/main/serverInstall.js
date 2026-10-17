@@ -244,6 +244,13 @@ function updateServerPropertiesSafely(serverDir, changes) {
  * populate the "Import Existing Server" UI and to make a best-effort type
  * guess (mods/ → fabric-flavored, plugins/ → paper/spigot-flavored).
  */
+/** Installing writes server.jar and a fresh server.properties, so it must never be pointed at a folder that already holds a server. */
+function assertFolderEmptyForInstall(dir) {
+  if (detectExistingServer(dir).looksLikeServer) {
+    throw new Error('That folder already has a Minecraft server in it. Use Import Existing Server instead.');
+  }
+}
+
 function detectExistingServer(dir) {
   const has = (name) => {
     try {
@@ -289,6 +296,7 @@ module.exports = {
   writeServerProperties,
   updateServerPropertiesSafely,
   detectExistingServer,
+  assertFolderEmptyForInstall,
   isOfficialDownloadHost,
   isAllowedDownloadUrl,
 };

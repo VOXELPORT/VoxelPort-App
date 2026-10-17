@@ -306,4 +306,5 @@
   'Couldn\'t install that.': 'Yeh install nahi ho paya.',
   'Couldn\'t remove that.': 'Yeh hata nahi paya.',
   'Couldn\'t read your saved VoxelPort ID (is your system keyring locked?). Using a temporary one — restart after unlocking it.': 'Tumhari saved VoxelPort ID padh nahi paye (kya system keyring locked hai?). Abhi ek temporary ID use ho rahi hai — unlock karke app dobara kholo.',
+  'That folder already has a Minecraft server in it. Use Import Existing Server instead.': 'Is folder mein pehle se ek Minecraft server hai. Uski jagah "Purana server import karo" use karo.',
 };

@@ -33,6 +33,7 @@ const KEEP_BEFORE_RESTORE = 3;
 const MAX_RESTORE_BYTES = 200 * GB;
 // A real world is a few thousand files; a backup with millions of entries is a trap, not a world.
 const LIMITS = { entries: 1_000_000 };
+const MAX_LEVEL_NAMES = 8; // a before-restore copy can hold the worlds of a few level names, never a crowd
 const SPARE_BYTES = 200 * MB; // never fill the disk to the last byte
 
 class BackupError extends Error {
@@ -119,12 +120,20 @@ function isPlainName(s) {
   return typeof s === 'string' && s.length > 0 && s.length <= 100 && !/[\\/:*?"<>|\x00-\x1f]/.test(s) && s !== '.' && s !== '..' && !s.startsWith('.');
 }
 
+// Folders a server keeps for other things: a world may never be called one of these, whatever a file says.
+const RESERVED_FOLDERS = new Set(['plugins', 'mods', 'config', 'logs', 'libraries', 'versions', 'cache', 'crash-reports']);
+
+/** A name a world folder may have: a plain name that is not one of the server's own folders. */
+function isWorldName(s) {
+  return isPlainName(s) && !RESERVED_FOLDERS.has(s.toLowerCase());
+}
+
 /** The level-name from server.properties ("world" when it is missing or not a plain name). */
 function levelNameOf(serverDir) {
   try {
     const props = parseProperties(fs.readFileSync(path.join(serverDir, 'server.properties'), 'utf8'));
     const name = props.get('level-name');
-    if (isPlainName(name)) return name;
+    if (isWorldName(name)) return name;
   } catch { /* no server.properties yet */ }
   return 'world';
 }
@@ -171,11 +180,24 @@ function freeBytes(dir) {
  * written and checked, so a half-finished backup can never be mistaken for a good one.
  *
  * `info`: { serverType, version, appVersion } is written into the backup for later reference.
+ * `worlds` / `levelNames` (only for "before-restore"): the exact folders to save, which can belong to two level names,
+ * because a restore moves both the current world and the one it brings back.
  */
-async function createBackup({ backupDir, serverDir, reason, info = {}, onProgress = () => {}, now = new Date() }) {
+async function createBackup({ backupDir, serverDir, reason, info = {}, onProgress = () => {}, now = new Date(), worlds: onlyWorlds = null, levelNames = null }) {
   if (!REASONS.includes(reason)) throw new Error('Unknown backup reason.');
-  const level = levelNameOf(serverDir);
-  const worlds = existingWorlds(serverDir, level);
+  if ((onlyWorlds || levelNames) && reason !== 'before-restore') throw new Error('A list of folders is only for the copy made before a restore.');
+  let level = levelNameOf(serverDir);
+  let levels = null;
+  let worlds;
+  if (onlyWorlds) {
+    worlds = [...new Set(onlyWorlds)].filter((w) => isWorldName(w) && isRealDirectory(path.join(serverDir, w)));
+    // Every folder belongs to a level name: those given, plus whatever the folders themselves are called.
+    const baseOf = (w) => w.replace(/_(?:nether|the_end)$/, '');
+    levels = [...new Set([level, ...(levelNames || []), ...worlds.map(baseOf)])].filter(isWorldName).slice(0, MAX_LEVEL_NAMES);
+    level = levels.find((l) => worlds.includes(l)) || level; // the one the backup is "of": it must be in the zip
+  } else {
+    worlds = existingWorlds(serverDir, level);
+  }
   if (!worlds.length) throw new BackupError('no-world', 'There is no world to back up yet. Start the server once so it creates one.');
 
   const files = [];
@@ -203,6 +225,7 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
     reason,
     levelName: level,
     worlds,
+    ...(levels ? { levelNames: levels } : {}),
     serverType: info.serverType || null,
     version: info.version || null,
     appVersion: info.appVersion || null,
@@ -259,6 +282,13 @@ function openZip(file) {
   });
 }
 
+/** The folders a backup's metadata may name: its own world's three, plus (before-restore copies only) those of the other worlds it lists. */
+function allowedFolders(meta) {
+  const levels = [meta.levelName];
+  if (meta.reason === 'before-restore' && Array.isArray(meta.levelNames)) levels.push(...meta.levelNames.slice(0, MAX_LEVEL_NAMES));
+  return new Set(levels.filter(isWorldName).flatMap(worldNamesFor));
+}
+
 /**
  * Opens a backup and reads its contents list and voxelport-backup.json, without extracting anything.
  * Throws when it is not a readable VoxelPort backup.
@@ -298,9 +328,10 @@ async function readBackupInfo(file) {
     zip.on('end', () => {
       zip.close();
       if (!meta) { reject(new BackupError('not-voxelport', 'That file is not a VoxelPort backup.')); return; }
-      // A backup may only ever put back the folders of its own world, whatever its metadata claims.
-      const ownFolders = isPlainName(meta.levelName) ? worldNamesFor(meta.levelName) : [];
-      if (meta.format !== FORMAT || !Array.isArray(meta.worlds) || !meta.worlds.length || !meta.worlds.every((w) => ownFolders.includes(w))) {
+      // A backup may only ever put back the folders of its own world, whatever its metadata claims. The copy made before a
+      // restore may also hold the folders of the other world the restore moved (named in levelNames).
+      const ownFolders = allowedFolders(meta);
+      if (meta.format !== FORMAT || !isWorldName(meta.levelName) || !Array.isArray(meta.worlds) || !meta.worlds.length || !meta.worlds.every((w) => ownFolders.has(w))) {
         reject(new BackupError('bad-backup', 'That backup is from a newer VoxelPort or is damaged.'));
         return;
       }
@@ -375,10 +406,14 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
   }
 
   const previousLevel = levelNameOf(serverDir);
+  // Every folder the swap below moves out of the way (and deletes) must be in the copy made first: the current world's, and
+  // the ones the backup is about to replace, which can be another world's.
+  const touched = new Set([...worldNamesFor(previousLevel), ...worldNamesFor(meta.levelName), ...meta.worlds]);
+  const toSave = [...touched].filter((w) => isRealDirectory(path.join(serverDir, w)));
   let safety = null;
-  if (existingWorlds(serverDir, previousLevel).length) {
+  if (toSave.length) {
     onProgress({ phase: 'saving-current' });
-    safety = await createBackup({ backupDir, serverDir, reason: 'before-restore', info });
+    safety = await createBackup({ backupDir, serverDir, reason: 'before-restore', info, worlds: toSave, levelNames: [previousLevel, meta.levelName] });
   }
 
   const id = Date.now();
@@ -386,6 +421,8 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
   const old = path.join(serverDir, `.vp-old-${id}`);
   const moved = [];
   const placed = [];
+  const listsKept = []; // player lists that were replaced: their old copies are in `old`
+  const listsAdded = []; // player lists that did not exist before
   try {
     fs.mkdirSync(tmp, { recursive: true });
     let done = 0;
@@ -395,7 +432,6 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
 
     onProgress({ phase: 'swapping' });
     fs.mkdirSync(old, { recursive: true });
-    const touched = new Set([...worldNamesFor(previousLevel), ...worldNamesFor(meta.levelName)]);
     for (const w of touched) {
       if (!isRealDirectory(path.join(serverDir, w))) continue;
       renameWithRetry(path.join(serverDir, w), path.join(old, w));
@@ -408,12 +444,17 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
     }
     for (const f of CONFIG_FILES) {
       const from = path.join(tmp, f);
-      if (fs.existsSync(from)) fs.copyFileSync(from, path.join(serverDir, f));
+      if (!fs.existsSync(from)) continue;
+      const to = path.join(serverDir, f);
+      if (fs.existsSync(to)) { fs.copyFileSync(to, path.join(old, f)); listsKept.push(f); } else listsAdded.push(f);
+      fs.copyFileSync(from, to);
     }
   } catch (err) {
     // Put everything back the way it was.
     for (const w of placed) rmQuiet(path.join(serverDir, w));
     for (const w of moved) { try { renameWithRetry(path.join(old, w), path.join(serverDir, w)); } catch { /* keep going: the rest still matters */ } }
+    for (const f of listsKept) { try { fs.copyFileSync(path.join(old, f), path.join(serverDir, f)); } catch { /* keep going */ } }
+    for (const f of listsAdded) rmQuiet(path.join(serverDir, f));
     rmQuiet(tmp);
     rmQuiet(old);
     if (err instanceof BackupError) throw err;

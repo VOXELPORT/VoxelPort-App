@@ -93,3 +93,80 @@ test('bedrockPort reads Geyser\'s generated config', () => {
     '# Geyser config\nbedrock:\n  # The IP address\n  address: 0.0.0.0\n  port: 19200\n  clone-remote-port: false\nremote:\n  port: 25565\n');
   assert.equal(bedrockPort(dir), 19200);
 });
+
+// ─── Only VoxelPort's own jars are touched ───────────────────────────────────
+
+const LOOKALIKES = ['GeyserSkinManager-Spigot.jar', 'GeyserExtras.jar', 'FloodgateTools.jar', 'geyser-notes.jar'];
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'vp-bedrock-'));
+const fakeDownload = async (url, dest) => { fs.writeFileSync(dest, url); };
+
+test('D2: installing and removing never touch plugins that only look like Geyser or Floodgate', async () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  for (const f of LOOKALIKES) fs.writeFileSync(path.join(dir, 'plugins', f), 'the owner\'s plugin');
+  await installBedrockSupport({ serverDir: dir, type: 'paper', version: '26.2', fetchImpl: fakeFetch(GEYSER_ROUTES), download: fakeDownload });
+  for (const f of LOOKALIKES) assert.equal(fs.readFileSync(path.join(dir, 'plugins', f), 'utf8'), 'the owner\'s plugin', `${f} after install`);
+  assert.ok(fs.existsSync(path.join(dir, 'plugins', 'Geyser-Spigot.jar')));
+  removeBedrockSupport(dir);
+  for (const f of LOOKALIKES) assert.equal(fs.readFileSync(path.join(dir, 'plugins', f), 'utf8'), 'the owner\'s plugin', `${f} after remove`);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'plugins')).sort(), [...LOOKALIKES].sort());
+  assert.ok(!fs.existsSync(path.join(dir, 'voxelport-bedrock.json')), 'the list goes with the jars');
+});
+
+test('D2: an older install with no list is recognised by the exact Geyser and Floodgate names, and only those', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  for (const f of ['Geyser-Spigot.jar', 'floodgate-spigot.jar', ...LOOKALIKES]) fs.writeFileSync(path.join(dir, 'plugins', f), 'x');
+  removeBedrockSupport(dir);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'plugins')).sort(), [...LOOKALIKES].sort());
+});
+
+test('D2: the legacy names match what Geyser and Floodgate really call their files, and nothing else', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'mods'));
+  const ours = ['Geyser-Fabric-2.11.3-b1251.jar', 'Floodgate-Fabric-2.2.6-b67.jar', 'Geyser-Spigot.jar', 'floodgate-spigot.jar', 'geyser_spigot.jar'];
+  for (const f of [...ours, ...LOOKALIKES, 'sodium.jar', 'fabric-api-0.150.0.jar']) fs.writeFileSync(path.join(dir, 'mods', f), 'x');
+  removeBedrockSupport(dir);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'mods')).sort(), [...LOOKALIKES, 'sodium.jar', 'fabric-api-0.150.0.jar'].sort());
+});
+
+test('D2: an install writes the exact names to a list, and from then on only those are replaced or removed', async () => {
+  const dir = tmp();
+  await installBedrockSupport({ serverDir: dir, type: 'fabric', version: '26.2', fetchImpl: fakeFetch(MODRINTH_ROUTES), download: fakeDownload });
+  const list = JSON.parse(fs.readFileSync(path.join(dir, 'voxelport-bedrock.json'), 'utf8'));
+  assert.deepEqual(list.files.map((f) => `${f.dir}/${f.name}`).sort(), ['mods/Floodgate-Fabric-2.2.6-b67.jar', 'mods/Geyser-Fabric-2.11.3-b1251.jar']);
+
+  // A mod the owner added whose name happens to fit the Geyser pattern is not VoxelPort's, so it is left alone.
+  fs.writeFileSync(path.join(dir, 'mods', 'Geyser-Fabric-addon-1.0.jar'), 'the owner\'s own mod');
+  removeBedrockSupport(dir);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'mods')).sort(), ['Geyser-Fabric-addon-1.0.jar', 'fabric-api-0.161.0+26.2.jar'], 'Fabric API stays too');
+});
+
+test('D2: reinstalling replaces VoxelPort\'s older Geyser, and leaves the owner\'s files and Fabric API alone', async () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'mods'));
+  fs.writeFileSync(path.join(dir, 'mods', 'fabric-api-0.150.0.jar'), 'api');
+  fs.writeFileSync(path.join(dir, 'voxelport-bedrock.json'), JSON.stringify({ files: [{ dir: 'mods', name: 'Geyser-Fabric-2.0.0-b1.jar' }, { dir: 'mods', name: 'Floodgate-Fabric-1.0.jar' }] }));
+  fs.writeFileSync(path.join(dir, 'mods', 'Geyser-Fabric-2.0.0-b1.jar'), 'ours, old');
+  fs.writeFileSync(path.join(dir, 'mods', 'Floodgate-Fabric-1.0.jar'), 'ours, old');
+  fs.writeFileSync(path.join(dir, 'mods', 'Geyser-Fabric-addon-1.0.jar'), 'the owner\'s');
+  await installBedrockSupport({ serverDir: dir, type: 'fabric', version: '26.2', fetchImpl: fakeFetch(MODRINTH_ROUTES), download: fakeDownload });
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'mods')).sort(), [
+    'Floodgate-Fabric-2.2.6-b67.jar', 'Geyser-Fabric-2.11.3-b1251.jar', 'Geyser-Fabric-addon-1.0.jar', 'fabric-api-0.150.0.jar',
+  ]);
+  const list = JSON.parse(fs.readFileSync(path.join(dir, 'voxelport-bedrock.json'), 'utf8'));
+  assert.deepEqual(list.files.map((f) => f.name).sort(), ['Floodgate-Fabric-2.2.6-b67.jar', 'Geyser-Fabric-2.11.3-b1251.jar']);
+});
+
+test('D2: a damaged or hostile list cannot make a remove reach outside plugins/ and mods/', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  fs.writeFileSync(path.join(dir, 'server.properties'), 'keep me');
+  fs.writeFileSync(path.join(dir, 'plugins', 'Essentials.jar'), 'keep me too');
+  fs.writeFileSync(path.join(dir, 'voxelport-bedrock.json'), JSON.stringify({ files: [
+    { dir: '..', name: 'server.properties' }, { dir: 'plugins', name: '../server.properties' }, { dir: 'plugins', name: '..\server.properties' }, { dir: 'plugins', name: 5 }, null,
+  ] }));
+  removeBedrockSupport(dir);
+  assert.equal(fs.readFileSync(path.join(dir, 'server.properties'), 'utf8'), 'keep me');
+  assert.equal(fs.readFileSync(path.join(dir, 'plugins', 'Essentials.jar'), 'utf8'), 'keep me too', 'not on the list, so not touched');
+});

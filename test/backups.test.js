@@ -425,3 +425,94 @@ test('a backup with more entries than any world has is refused', async (t) => {
 test('the entry limit is high enough for any real world and low enough to stop a trap', () => {
   assert.ok(backups.LIMITS.entries >= 100_000 && backups.LIMITS.entries <= 5_000_000);
 });
+
+// ─── A restore saves everything it is about to move ──────────────────────────
+
+test('D1: restoring a backup of one world while the server points at another saves the current world of both names', async (t) => {
+  const s = fakeServer(t, { withNether: false });
+  const b = await make(s, 'manual', { now: new Date(2026, 9, 1, 8, 0, 0) });
+  // The player keeps building in `world`, then the server is switched to `world2`.
+  fs.writeFileSync(path.join(s.serverDir, 'world', 'two-hours-of-work.txt'), 'the changed world');
+  fs.writeFileSync(path.join(s.serverDir, 'server.properties'), 'level-name=world2\n');
+
+  const res = await backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: b.name });
+  assert.match(res.safetyBackup, /_before-restore\.zip$/);
+  assert.ok(!fs.existsSync(path.join(s.serverDir, 'world', 'two-hours-of-work.txt')), 'the restore replaced it');
+
+  // The copy made first holds the world that was replaced, so the restore can be undone.
+  const names = await listZipNames(path.join(s.backupDir, res.safetyBackup));
+  assert.ok(names.includes('world/two-hours-of-work.txt'));
+  fs.writeFileSync(path.join(s.serverDir, 'server.properties'), 'level-name=world\n');
+  await backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: res.safetyBackup });
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'world', 'two-hours-of-work.txt'), 'utf8'), 'the changed world');
+});
+
+test('D1: both worlds are in the copy when both exist, and each comes back from it', async (t) => {
+  const s = fakeServer(t, { withNether: false });
+  const b = await make(s, 'manual', { now: new Date(2026, 9, 1, 8, 0, 0) });
+  fs.mkdirSync(path.join(s.serverDir, 'creative'));
+  fs.writeFileSync(path.join(s.serverDir, 'creative', 'level.dat'), 'creative world');
+  fs.writeFileSync(path.join(s.serverDir, 'creative', 'castle.txt'), 'a castle');
+  fs.writeFileSync(path.join(s.serverDir, 'world', 'house.txt'), 'a house');
+  fs.writeFileSync(path.join(s.serverDir, 'server.properties'), 'level-name=creative\n');
+
+  const res = await backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: b.name });
+  const names = await listZipNames(path.join(s.backupDir, res.safetyBackup));
+  assert.ok(names.includes('creative/castle.txt'));
+  assert.ok(names.includes('world/house.txt'));
+  assert.ok(!fs.existsSync(path.join(s.serverDir, 'creative')), 'the other world was moved out of the way');
+
+  await backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: res.safetyBackup });
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'world', 'house.txt'), 'utf8'), 'a house');
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'creative', 'castle.txt'), 'utf8'), 'a castle', 'the second world comes back too');
+});
+
+test('D1b: if a restore fails after the player lists were replaced, they are put back as they were', async (t) => {
+  const s = fakeServer(t);
+  fs.writeFileSync(path.join(s.serverDir, 'whitelist.json'), '["from the backup"]');
+  const b = await make(s);
+  fs.writeFileSync(path.join(s.serverDir, 'whitelist.json'), '["current whitelist"]');
+  fs.writeFileSync(path.join(s.serverDir, 'ops.json'), '["current ops"]');
+  fs.writeFileSync(path.join(s.serverDir, 'banned-ips.json'), '["current bans"]');
+
+  const real = fs.copyFileSync;
+  fs.copyFileSync = (from, to, ...rest) => {
+    if (String(to) === path.join(s.serverDir, 'ops.json')) { const e = new Error('simulated failure'); e.code = 'EIO'; throw e; } // after whitelist.json was replaced
+    return real(from, to, ...rest);
+  };
+  t.after(() => { fs.copyFileSync = real; });
+  await assert.rejects(backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: b.name }), (e) => e.code === 'failed');
+  fs.copyFileSync = real;
+
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'whitelist.json'), 'utf8'), '["current whitelist"]');
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'ops.json'), 'utf8'), '["current ops"]');
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'banned-ips.json'), 'utf8'), '["current bans"]');
+  assert.deepEqual(fs.readdirSync(s.serverDir).filter((n) => n.startsWith('.vp-')), []);
+});
+
+test('D1: a backup cannot name the server\'s own folders as worlds, even in a copy that claims to be a before-restore one', async (t) => {
+  const s = fakeServer(t);
+  fs.mkdirSync(s.backupDir, { recursive: true });
+  const claims = [
+    ['2026-06-01_01-01-01_manual.zip', { reason: 'manual', levelName: 'plugins', worlds: ['plugins'] }, 'plugins/level.dat'],
+    ['2026-06-02_01-01-01_manual.zip', { reason: 'manual', levelName: 'world', levelNames: ['plugins'], worlds: ['world', 'plugins'] }, 'world/level.dat'],
+    ['2026-06-03_01-01-01_before-restore.zip', { reason: 'before-restore', levelName: 'world', levelNames: ['plugins', 'mods'], worlds: ['world', 'plugins'] }, 'world/level.dat'],
+  ];
+  for (const [name, extra, entry] of claims) {
+    const zip = new yazl.ZipFile();
+    zip.addBuffer(Buffer.from(JSON.stringify({ format: 1, createdAt: 'x', ...extra })), backups.META_NAME);
+    zip.addBuffer(Buffer.from('x'), entry);
+    zip.addBuffer(Buffer.from('evil'), 'plugins/evil.jar');
+    zip.end();
+    await new Promise((resolve) => zip.outputStream.pipe(fs.createWriteStream(path.join(s.backupDir, name))).on('close', resolve));
+    await assert.rejects(backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name }), (e) => e.code === 'bad-backup', name);
+  }
+  assert.equal(fs.readFileSync(path.join(s.serverDir, 'plugins', 'keep.yml'), 'utf8'), 'a plugin file');
+  assert.ok(!fs.existsSync(path.join(s.serverDir, 'plugins', 'evil.jar')));
+});
+
+test('D1: a level-name that is one of the server\'s own folders is not used as a world', (t) => {
+  const s = fakeServer(t);
+  fs.writeFileSync(path.join(s.serverDir, 'server.properties'), 'level-name=plugins\n');
+  assert.equal(backups.levelNameOf(s.serverDir), 'world');
+});
