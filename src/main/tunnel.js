@@ -112,14 +112,28 @@ class Tunnel extends EventEmitter {
     super();
     this.ws = null;
     this.players = new Map(); // connID -> { sock, pendingBytes, closed }
-    this.running = false;
+    this.running = false; // registered with the relay and online
+    this.live = false; // from start() until 'stopped': connecting, online and reconnecting all count
     this.manualStop = false;
+    this.reconnectTimer = null;
     this.pingTimer = null;
     this.lastPingSent = 0;
     this.reconnectDelay = 1000;
     this.wsStallTimer = null;
     this.udpSessions = new Map(); // connID -> { sock, idleTimer }
     this.listing = null; // re-sent after every (re)registration
+  }
+
+  /** True from start() until 'stopped': a tunnel that is still connecting or reconnecting exists, even though it is not online. */
+  isLive() { return this.live; }
+
+  /** The end of this tunnel's life: said once, whichever way it got here. */
+  _finish() {
+    if (!this.live) return;
+    this.live = false;
+    this.running = false;
+    this.emit('status', 'stopped');
+    this.emit('stopped');
   }
 
   /**
@@ -137,6 +151,7 @@ class Tunnel extends EventEmitter {
     this.udpPort = udpPort;
     this.client = client; // "desktop/1.7.0": goes into the relay's log so a support question can be answered
     this.manualStop = false;
+    this.live = true;
     this._connect();
   }
 
@@ -156,6 +171,7 @@ class Tunnel extends EventEmitter {
       });
     } catch (err) {
       this.emit('error', 'Bad relay URL: ' + err.message);
+      this._finish(); // nothing will ever connect: don't stay "live" with no socket
       return;
     }
     this.ws = ws;
@@ -172,16 +188,15 @@ class Tunnel extends EventEmitter {
     ws.on('message', (raw) => this._onMessage(raw));
 
     ws.on('close', () => {
+      if (this.manualStop) {
+        // stop() already tore everything down; only the end is left to say (once).
+        this._finish();
+        return;
+      }
       this._teardownPlayers();
       this._teardownUdp();
       this._stopPing();
       this._clearWsStallTimer();
-      if (this.manualStop) {
-        this.running = false;
-        this.emit('status', 'stopped');
-        this.emit('stopped');
-        return;
-      }
       this.running = false;
       // Never reached this candidate — move straight on to the next one.
       if (!opened && hasFallback) {
@@ -195,7 +210,8 @@ class Tunnel extends EventEmitter {
       // Unexpected drop — retry with backoff while the user wants it running.
       this.emit('status', 'reconnecting');
       this.emit('log', `Disconnected. Reconnecting in ${Math.round(this.reconnectDelay / 1000)}s…`);
-      setTimeout(() => {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
         if (!this.manualStop) this._connect();
       }, this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
@@ -300,8 +316,14 @@ class Tunnel extends EventEmitter {
           break;
         }
         // Buffer.from(..., 'base64') never throws on malformed input, it
-        // just decodes what it can — bound the *decoded* size too.
-        if (decoded.length > MAX_WS_MESSAGE_BYTES) break;
+        // just decodes what it can — bound the *decoded* size too. Skipping the
+        // chunk would leave a hole in that player's stream (Minecraft cannot
+        // recover from one), so the player is disconnected instead.
+        if (decoded.length > MAX_WS_MESSAGE_BYTES) {
+          this.emit('log', 'A frame from the relay was larger than allowed — disconnecting that player.');
+          this._closePlayer(msg.conn, /* notifyRelay */ true);
+          break;
+        }
         this._writeToPlayer(msg.conn, pc, decoded);
         break;
       }
@@ -498,7 +520,10 @@ class Tunnel extends EventEmitter {
   }
 
   stop() {
+    if (!this.live || this.manualStop) return; // never started, or already stopping: one 'stopped' per life
     this.manualStop = true;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this._stopPing();
     this._clearWsStallTimer();
     this._teardownPlayers();
@@ -509,12 +534,11 @@ class Tunnel extends EventEmitter {
     // time) — it will never fire again, so ws.close() here would be a
     // silent no-op and 'stopped' would never be emitted, leaving a caller
     // waiting forever. Only rely on the 'close' handler when the socket is
-    // actually still open/connecting; otherwise emit 'stopped' directly.
+    // actually still open/connecting; otherwise finish directly.
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       this.ws.close();
     } else {
-      this.emit('status', 'stopped');
-      this.emit('stopped');
+      this._finish();
     }
   }
 }

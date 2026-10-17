@@ -486,3 +486,109 @@ test('isValidRelayMessage checks notice frames', () => {
   assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 1.5 }), false);
   assert.equal(isValidRelayMessage({ type: 'notice', message: 'ok', seconds: 999999999 }), false);
 });
+
+// ─── Lifecycle: a tunnel is live until it says it stopped ──────────────────
+
+/** A relay address nothing listens on, so every connection attempt fails at once. */
+function deadRelayUrl() {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(`ws://127.0.0.1:${port}`)); });
+  });
+}
+
+test('C1: a tunnel is live while it is still connecting or reconnecting, and not before start or after stop', async () => {
+  const url = await deadRelayUrl();
+  const tunnel = new Tunnel();
+  assert.equal(tunnel.isLive(), false, 'before start');
+  const statuses = [];
+  tunnel.on('status', (s) => statuses.push(s));
+  tunnel.start({ relayUrl: url, token: 'vp_testtoken1234567890', localPort: 25565 });
+  assert.equal(tunnel.isLive(), true, 'connecting');
+  assert.equal(tunnel.running, false, 'running still means registered and online');
+  await new Promise((resolve) => { const t = setInterval(() => { if (statuses.includes('reconnecting')) { clearInterval(t); resolve(); } }, 10); });
+  assert.equal(tunnel.isLive(), true, 'waiting to reconnect is still live');
+  assert.equal(tunnel.running, false);
+  const stopped = once(tunnel, 'stopped');
+  tunnel.stop();
+  await stopped;
+  assert.equal(tunnel.isLive(), false, 'after stop');
+});
+
+test('C1: stopping while it waits to reconnect says "stopped" once and never reconnects', async () => {
+  const url = await deadRelayUrl();
+  const tunnel = new Tunnel();
+  const events = [];
+  tunnel.on('stopped', () => events.push('stopped'));
+  tunnel.on('status', (s) => events.push('status:' + s));
+  tunnel.start({ relayUrl: url, token: 'vp_testtoken1234567890', localPort: 25565 });
+  await new Promise((resolve) => { const t = setInterval(() => { if (events.includes('status:reconnecting')) { clearInterval(t); resolve(); } }, 10); });
+  tunnel.stop();
+  tunnel.stop(); // a second stop changes nothing
+  await new Promise((resolve) => setTimeout(resolve, 1500)); // longer than the first backoff (1 s)
+  assert.equal(events.filter((e) => e === 'stopped').length, 1);
+  assert.equal(events.filter((e) => e === 'status:connecting').length, 1, 'only the first attempt: no reconnect after stop');
+  assert.equal(tunnel.isLive(), false);
+});
+
+test('C1: a tunnel that was stopped can be told to stop again without a second "stopped"', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const hostSocket = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_testtoken1234567890', localPort: 25565 });
+  await once(hostSocket, 'message');
+  let stoppedCount = 0;
+  tunnel.on('stopped', () => stoppedCount++);
+  tunnel.stop();
+  tunnel.stop();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  tunnel.stop();
+  assert.equal(stoppedCount, 1);
+  wss.close();
+});
+
+test('C1: a bad relay address ends the tunnel instead of leaving it live with no socket', () => {
+  const tunnel = new Tunnel();
+  tunnel.on('error', () => {});
+  let stopped = 0;
+  tunnel.on('stopped', () => stopped++);
+  tunnel.start({ relayUrl: 'not a url', token: 'vp_testtoken1234567890', localPort: 25565 });
+  assert.equal(tunnel.isLive(), false);
+  assert.equal(stopped, 1);
+});
+
+test('K7: stop() reports zero players and "stopped" exactly once each', async () => {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  const hostSocket = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_testtoken1234567890', localPort: 25565 });
+  await once(hostSocket, 'message');
+  hostSocket.send(JSON.stringify({ type: 'port', port: 26000 }));
+  await once(tunnel, 'assigned');
+  const seen = [];
+  tunnel.on('players', (n) => seen.push('players:' + n));
+  tunnel.on('stopped', () => seen.push('stopped'));
+  tunnel.stop();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(seen, ['players:0', 'stopped']);
+  wss.close();
+});
+
+// ─── K5: a frame that is too big for a player's stream ──────────────────────
+
+test('K5: an oversized data frame disconnects that player instead of silently leaving a hole in the stream', () => {
+  const tunnel = new Tunnel();
+  const sent = [];
+  const logs = [];
+  tunnel.on('log', (l) => logs.push(l));
+  tunnel.ws = { readyState: WebSocket.OPEN, send: (s) => sent.push(JSON.parse(s)) };
+  let destroyed = false;
+  tunnel.players.set('c1', { sock: { destroy: () => { destroyed = true; }, write() {} }, pendingBytes: 0, closed: false });
+  tunnel.players.set('c2', { sock: { destroy() {}, write() {} }, pendingBytes: 0, closed: false });
+  // Valid as a frame (under the base64 length limit), but it decodes to just over the 4 MiB cap.
+  const data = 'A'.repeat(5_592_500);
+  tunnel._onMessage(JSON.stringify({ type: 'data', conn: 'c1', data }));
+  assert.equal(destroyed, true);
+  assert.equal(tunnel.players.has('c1'), false);
+  assert.equal(tunnel.players.has('c2'), true, 'other players are not affected');
+  assert.deepEqual(sent, [{ type: 'close', conn: 'c1' }], 'the relay is told the player is gone');
+  assert.ok(logs.some((l) => /larger than allowed/.test(l)));
+});

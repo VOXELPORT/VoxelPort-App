@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { downloadServerJar } = require('./serverInstall');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 /**
  * Plugins (Paper) and mods (Fabric) from Modrinth: search, install with the libraries they need, and remove.
@@ -104,7 +105,7 @@ function installedAddons(serverDir) {
 }
 
 function saveRegistry(serverDir, list) {
-  fs.writeFileSync(registryPath(serverDir), JSON.stringify(list, null, 2));
+  atomicWriteFileSync(registryPath(serverDir), JSON.stringify(list, null, 2));
 }
 
 /** Deletes the files VoxelPort installed for a project. A running server has them open, so it has to be stopped first. */
@@ -123,13 +124,21 @@ function removeAddon({ serverDir, projectId, running = false }) {
  * Which projects are already in the folder, by file fingerprint (so a mod added by hand, or Fabric API that Bedrock
  * support installed, is recognised and not downloaded twice). A failed lookup just means "none recognised".
  */
+/** SHA-512 of a file, read as a stream: a mods folder holds jars of many megabytes, and none of it is held in memory or blocks the app. */
+function hashFile(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha512');
+    fs.createReadStream(file).on('error', reject).on('data', (chunk) => hash.update(chunk)).on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
 async function projectsInFolder(dir, fetchImpl) {
   let names;
-  try { names = fs.readdirSync(dir).filter((f) => /\.jar$/i.test(f)).slice(0, MAX_JARS_TO_IDENTIFY); } catch { return new Set(); }
+  try { names = (await fs.promises.readdir(dir)).filter((f) => /\.jar$/i.test(f)).slice(0, MAX_JARS_TO_IDENTIFY); } catch { return new Set(); }
   if (!names.length) return new Set();
   const hashes = [];
   for (const f of names) {
-    try { hashes.push(crypto.createHash('sha512').update(fs.readFileSync(path.join(dir, f))).digest('hex')); } catch { /* unreadable */ }
+    try { hashes.push(await hashFile(path.join(dir, f))); } catch { /* unreadable */ }
   }
   try {
     const res = await fetchImpl(`${MODRINTH_API}/version_files`, {
@@ -186,6 +195,10 @@ async function installAddon({
     const registry = installedAddons(serverDir);
     const older = registry.filter((a) => a.id === id);
     const dest = path.join(dir, fileName);
+    // A file with this name that VoxelPort did not put there is the owner's own (added by hand, or by another tool): never overwrite it.
+    if (fs.existsSync(dest) && !older.some((a) => a.file === fileName)) {
+      throw Object.assign(new Error(`A file named ${fileName} is already in ${folderFor(type)}. Remove it first, or keep using it.`), { code: 'exists', file: fileName });
+    }
     if (running && (older.length || fs.existsSync(dest))) {
       throw new Error('Stop the server first to update one that is already installed.');
     }

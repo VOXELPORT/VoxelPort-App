@@ -305,4 +305,9 @@
   'Stop the server first to update one that is already installed.': 'Jo pehle se install hai use update karne ke liye pehle server band karo.',
   'Couldn\'t install that.': 'Yeh install nahi ho paya.',
   'Couldn\'t remove that.': 'Yeh hata nahi paya.',
+  'Couldn\'t read your saved VoxelPort ID (is your system keyring locked?). Using a temporary one — restart after unlocking it.': 'Tumhari saved VoxelPort ID padh nahi paye (kya system keyring locked hai?). Abhi ek temporary ID use ho rahi hai — unlock karke app dobara kholo.',
+  'That folder already has a Minecraft server in it. Use Import Existing Server instead.': 'Is folder mein pehle se ek Minecraft server hai. Uski jagah "Purana server import karo" use karo.',
+  'Wait for the server to finish starting, then make it public.': 'Server ke poori tarah start hone ka wait karo, phir use public karo.',
+  'A file named {file} is already in {folder}. Remove it first, or keep using it.': '{file} naam ki file pehle se {folder} mein hai. Pehle use hatao, ya wahi use karte raho.',
+  'The previous server is still shutting down — try again in a few seconds.': 'Pichla server abhi band ho raha hai — kuch second baad dobara try karo.',
 };

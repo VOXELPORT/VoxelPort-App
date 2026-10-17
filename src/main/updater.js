@@ -6,13 +6,15 @@ const { EventEmitter } = require('events');
  * Wraps electron-updater for the NSIS Windows build only. electron-updater
  * only ever talks to GitHub's API (api.github.com) over HTTPS for this
  * specific repo (owner/repo baked into package.json's build.publish config,
- * not user-configurable at runtime) and verifies the downloaded installer's
- * checksum against the value in the signed latest.yml manifest before ever
- * applying it -- real integrity verification, not "trust the download."
+ * not user-configurable at runtime) and checks the downloaded installer's
+ * checksum against the value in latest.yml before ever applying it.
  *
- * Since the app isn't currently code-signed (see SECURITY.md), this gives
- * checksum-verified integrity but not Authenticode publisher verification --
- * stated honestly, not overclaimed.
+ * That guards against a corrupted or truncated download. It is NOT a
+ * signature: latest.yml is not signed, and it comes from the same GitHub
+ * release as the installer, so if the release itself were compromised the
+ * checksum would match the bad file. The app isn't code-signed either (see
+ * SECURITY.md), so there is no publisher verification on top -- stated
+ * honestly, not overclaimed.
  *
  * Deliberately does NOT auto-install: an update downloads in the background,
  * but applying it (quitting and relaunching into the new version) always

@@ -167,7 +167,8 @@
     try { res = await window.vp.addons.install(profileId, hit.id, hit.title); } catch (err) { res = { ok: false, error: String(err && err.message ? err.message : err) }; }
     await refreshInfo();
     setBusy(false);
-    if (!res || !res.ok) showStatus(t((res && res.error) || "Couldn't install that."), true);
+    if (res && res.code === 'exists') showStatus(t('A file named {file} is already in {folder}. Remove it first, or keep using it.', { file: String(res.file || ''), folder: info ? info.folder : '' }), true);
+    else if (!res || !res.ok) showStatus(t((res && res.error) || "Couldn't install that."), true);
     else showStatus(window.VPAddons.installedLine(res.installed, res.restartNeeded, t));
   }
 
