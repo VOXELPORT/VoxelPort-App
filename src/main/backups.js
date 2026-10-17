@@ -31,6 +31,8 @@ const KEEP_RANGE = [1, 30];
 const AUTO_BUDGET_BYTES = 5 * GB;
 const KEEP_BEFORE_RESTORE = 3;
 const MAX_RESTORE_BYTES = 200 * GB;
+// A real world is a few thousand files; a backup with millions of entries is a trap, not a world.
+const LIMITS = { entries: 1_000_000 };
 const SPARE_BYTES = 200 * MB; // never fill the disk to the last byte
 
 class BackupError extends Error {
@@ -274,7 +276,9 @@ async function readBackupInfo(file) {
     let uncompressed = 0;
     const fail = (err) => { zip.close(); reject(err instanceof BackupError ? err : new BackupError('bad-backup', `That backup file is damaged (${err.message}).`)); };
     zip.on('error', fail);
+    let seen = 0;
     zip.on('entry', (entry) => {
+      if (++seen > LIMITS.entries) { fail(new BackupError('too-big', 'That backup is too big to restore.')); return; }
       if (/\/$/.test(entry.fileName)) { zip.readEntry(); return; }
       entries.push(entry.fileName);
       uncompressed += entry.uncompressedSize;
@@ -317,7 +321,8 @@ function extractAll(file, destDir, onBytes) {
     zip.on('entry', (entry) => {
       const name = entry.fileName;
       const target = path.resolve(destDir, ...name.split('/'));
-      if (!target.startsWith(root) || name.includes('\\') || name.includes(':') || path.isAbsolute(name)) { fail(new BackupError('unsafe', 'That backup contains a file outside its folder, so it was not restored.')); return; }
+      const isSymlink = ((entry.externalFileAttributes >>> 16) & 0xF000) === 0xA000; // VoxelPort never makes one, so one here is not ours
+      if (isSymlink || !target.startsWith(root) || name.includes('\\') || name.includes(':') || path.isAbsolute(name)) { fail(new BackupError('unsafe', 'That backup contains a file outside its folder, so it was not restored.')); return; }
       if (/\/$/.test(name)) { fs.mkdirSync(target, { recursive: true }); zip.readEntry(); return; }
       fs.mkdirSync(path.dirname(target), { recursive: true });
       zip.openReadStream(entry, (err, rs) => {
@@ -453,5 +458,5 @@ function applyRetention(backupDir, { keep = DEFAULTS.keep, budgetBytes = AUTO_BU
 module.exports = {
   BackupError, backupSettings, validateBackupSettings, parseBackupName, listBackups, levelNameOf, worldNamesFor,
   existingWorlds, createBackup, readBackupInfo, restoreBackup, deleteBackup, applyRetention,
-  META_NAME, DEFAULTS, INTERVAL_RANGE, KEEP_RANGE, CONFIG_FILES,
+  META_NAME, DEFAULTS, INTERVAL_RANGE, KEEP_RANGE, CONFIG_FILES, LIMITS,
 };
