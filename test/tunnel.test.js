@@ -592,3 +592,264 @@ test('K5: an oversized data frame disconnects that player instead of silently le
   assert.deepEqual(sent, [{ type: 'close', conn: 'c1' }], 'the relay is told the player is gone');
   assert.ok(logs.some((l) => /larger than allowed/.test(l)));
 });
+
+// ─── Protocol v2: binary data frames ────────────────────────────────────────
+
+const dgramV2 = require('dgram');
+const { parseBinaryFrame, buildBinaryFrame, FRAME_TCP, FRAME_UDP, FRAME_HEADER_LEN } = require('../src/main/tunnel');
+
+const newConnId = () => crypto.randomBytes(16).toString('hex');
+const binaryFrame = (kind, connHex, payload) => Buffer.concat([Buffer.from([kind]), Buffer.from(connHex, 'hex'), Buffer.from(payload)]);
+
+/**
+ * A fake relay for one tunnel, in either mode. It answers the register frame with a port frame: with "bin": 1 only when
+ * `v2` is set and the client asked for it, exactly as the real relay does. `frames` records everything the tunnel sends.
+ */
+async function startProtocolRelay({ v2, udpPort = null, onLog } = {}) {
+  const { wss, url } = await startFakeRelay();
+  const tunnel = new Tunnel();
+  if (onLog) tunnel.on('log', onLog);
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_protocol_v2_test', localPort: 1, udpPort });
+  const frames = [];
+  const waiters = [];
+  ws.on('message', (data, isBinary) => {
+    const frame = { binary: isBinary, data: Buffer.from(data) };
+    frames.push(frame);
+    for (const w of [...waiters]) if (w.match(frame)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(frame); }
+  });
+  const registered = await new Promise((resolve) => {
+    const find = () => frames.find((f) => !f.binary && JSON.parse(f.data.toString()).type === 'register');
+    if (find()) return resolve(JSON.parse(find().data.toString()));
+    waiters.push({ match: (f) => !f.binary && JSON.parse(f.data.toString()).type === 'register', resolve: (f) => resolve(JSON.parse(f.data.toString())) });
+  });
+  frames.splice(0); // the register frame has been read; what is recorded from here on is what the tunnel sends next
+  const assigned = once(tunnel, 'assigned');
+  ws.send(JSON.stringify({ type: 'port', port: 26137, ...(v2 && registered.bin === 1 ? { bin: 1 } : {}) }));
+  await assigned;
+  const next = (match) => new Promise((resolve) => {
+    const have = frames.find((f) => match(f));
+    if (have) { frames.splice(frames.indexOf(have), 1); return resolve(have); }
+    waiters.push({ match, resolve: (f) => { const i = frames.indexOf(f); if (i >= 0) frames.splice(i, 1); resolve(f); } });
+  });
+  return {
+    tunnel, ws, frames, registered, next,
+    json: (type) => next((f) => !f.binary && JSON.parse(f.data.toString()).type === type).then((f) => JSON.parse(f.data.toString())),
+    binary: () => next((f) => f.binary),
+    close() { tunnel.stop(); wss.close(); },
+  };
+}
+
+/** A local Minecraft server stand-in that echoes, and remembers what it was sent. */
+async function startRecordingEcho() {
+  const received = [];
+  const srv = net.createServer((sock) => sock.on('data', (buf) => { received.push(Buffer.from(buf)); sock.write(buf); }));
+  await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  return { srv, port: srv.address().port, received, bytes: () => Buffer.concat(received) };
+}
+
+async function startedRelay(opts) {
+  const echo = await startRecordingEcho();
+  const relay = await startProtocolRelay(opts);
+  relay.tunnel.localPort = echo.port;
+  return { ...relay, echo, close() { relay.close(); echo.srv.close(); } };
+}
+
+test('C1: the tunnel always asks for protocol v2 when it registers', async () => {
+  for (const v2 of [false, true]) {
+    const r = await startProtocolRelay({ v2 });
+    assert.equal(r.registered.bin, 1);
+    assert.equal(r.tunnel.bin, v2, v2 ? 'the relay confirmed it' : 'an older relay never does');
+    r.close();
+  }
+});
+
+test('C2: against a relay that does not confirm v2 everything stays JSON, and the bytes arrive unchanged', async () => {
+  const r = await startedRelay({ v2: false });
+  const conn = newConnId();
+  r.ws.send(JSON.stringify({ type: 'connect', conn, ip: '203.0.113.5' }));
+  await once(r.tunnel, 'players');
+  const payload = crypto.randomBytes(300 * 1024);
+  for (let i = 0; i < payload.length; i += 32768) {
+    r.ws.send(JSON.stringify({ type: 'data', conn, data: payload.subarray(i, i + 32768).toString('base64') }));
+  }
+  let echoed = Buffer.alloc(0);
+  while (echoed.length < payload.length) {
+    const f = await r.next(() => true);
+    assert.equal(f.binary, false, 'a legacy relay must never be sent a binary frame');
+    const msg = JSON.parse(f.data.toString());
+    if (msg.type === 'data' && msg.conn === conn) echoed = Buffer.concat([echoed, Buffer.from(msg.data, 'base64')]);
+  }
+  assert.equal(crypto.createHash('sha256').update(r.echo.bytes()).digest('hex'), crypto.createHash('sha256').update(payload).digest('hex'));
+  assert.equal(crypto.createHash('sha256').update(echoed).digest('hex'), crypto.createHash('sha256').update(payload).digest('hex'));
+  r.close();
+});
+
+test('C2: against a v2 relay payloads travel as binary frames in both directions, and the bytes arrive unchanged', async () => {
+  const r = await startedRelay({ v2: true });
+  const conn = newConnId();
+  r.ws.send(JSON.stringify({ type: 'connect', conn, ip: '203.0.113.5' }));
+  await once(r.tunnel, 'players');
+
+  const payload = crypto.randomBytes(300 * 1024);
+  for (let i = 0; i < payload.length; i += 32768) r.ws.send(binaryFrame(FRAME_TCP, conn, payload.subarray(i, i + 32768)));
+
+  let echoed = Buffer.alloc(0);
+  while (echoed.length < payload.length) {
+    const f = await r.next(() => true);
+    assert.equal(f.binary, true, 'payload to a v2 relay is binary');
+    assert.equal(f.data[0], FRAME_TCP);
+    assert.equal(f.data.subarray(1, FRAME_HEADER_LEN).toString('hex'), conn, 'the header names the connection');
+    echoed = Buffer.concat([echoed, f.data.subarray(FRAME_HEADER_LEN)]);
+  }
+  assert.equal(crypto.createHash('sha256').update(r.echo.bytes()).digest('hex'), crypto.createHash('sha256').update(payload).digest('hex'), 'relay -> local server unchanged');
+  assert.equal(crypto.createHash('sha256').update(echoed).digest('hex'), crypto.createHash('sha256').update(payload).digest('hex'), 'local server -> relay unchanged');
+
+  // Control frames stay JSON: the tunnel's ping, and the close it sends when the player goes away.
+  r.tunnel.lastPingSent = Date.now();
+  r.tunnel._send({ type: 'ping' });
+  assert.equal((await r.json('ping')).type, 'ping');
+  const closed = r.json('close');
+  r.tunnel.players.get(conn).sock.destroy();
+  assert.equal((await closed).conn, conn);
+  r.close();
+});
+
+test('C2: a v2 relay may still send JSON data frames', async () => {
+  const r = await startedRelay({ v2: true });
+  const conn = newConnId();
+  r.ws.send(JSON.stringify({ type: 'connect', conn }));
+  await once(r.tunnel, 'players');
+  r.ws.send(JSON.stringify({ type: 'data', conn, data: Buffer.from('json is fine').toString('base64') }));
+  const back = await r.binary();
+  assert.equal(back.data.subarray(FRAME_HEADER_LEN).toString(), 'json is fine', 'and the reply goes back the v2 way');
+  r.close();
+});
+
+test('C2: malformed binary frames are ignored, logged once, and the tunnel carries on', async () => {
+  const logs = [];
+  const r = await startedRelay({ v2: true, onLog: (l) => logs.push(l) });
+  const conn = newConnId();
+  r.ws.send(JSON.stringify({ type: 'connect', conn }));
+  await once(r.tunnel, 'players');
+  const unknown = newConnId();
+  const bad = [
+    Buffer.alloc(0),
+    Buffer.from([FRAME_TCP]),
+    Buffer.concat([Buffer.from([FRAME_TCP]), crypto.randomBytes(5)]),
+    binaryFrame(0x7f, conn, 'unknown kind'),
+    binaryFrame(0x00, conn, 'unknown kind'),
+    binaryFrame(FRAME_TCP, unknown, 'no such connection'),
+    binaryFrame(FRAME_UDP, conn, 'this tunnel has no UDP port'),
+  ];
+  for (const f of bad) r.ws.send(f);
+  r.ws.send(binaryFrame(FRAME_TCP, conn, 'still works'));
+  const back = await r.binary();
+  assert.equal(back.data.subarray(FRAME_HEADER_LEN).toString(), 'still works', 'the next good frame is delivered');
+  assert.equal(r.echo.bytes().toString(), 'still works', 'and nothing else reached the local server');
+  assert.equal(logs.filter((l) => /Ignored a binary frame/.test(l)).length, 1, 'a flood of bad frames is logged once');
+  assert.equal(r.tunnel.players.size, 1);
+  assert.equal(r.tunnel.isLive(), true);
+  r.close();
+});
+
+test('C2: a binary frame from a relay that did not agree to v2 is ignored', async () => {
+  const r = await startedRelay({ v2: false });
+  const conn = newConnId();
+  r.ws.send(JSON.stringify({ type: 'connect', conn }));
+  await once(r.tunnel, 'players');
+  r.ws.send(binaryFrame(FRAME_TCP, conn, 'not agreed'));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(r.echo.bytes().length, 0);
+  r.ws.send(JSON.stringify({ type: 'data', conn, data: Buffer.from('json').toString('base64') }));
+  const f = await r.next((x) => !x.binary && JSON.parse(x.data.toString()).type === 'data');
+  assert.equal(Buffer.from(JSON.parse(f.data.toString()).data, 'base64').toString(), 'json');
+  r.close();
+});
+
+test('C2: an oversized TCP payload disconnects that player; an oversized UDP datagram is dropped', async () => {
+  const tunnel = new Tunnel();
+  const sent = [];
+  tunnel.ws = { readyState: WebSocket.OPEN, send: (d) => sent.push(d), bufferedAmount: 0 };
+  tunnel.bin = true;
+  let destroyed = false;
+  const conn = newConnId();
+  tunnel.players.set(conn, { sock: { destroy: () => { destroyed = true; }, write() {} }, pendingBytes: 0, closed: false, raw: Buffer.from(conn, 'hex') });
+  tunnel._onBinary(Buffer.concat([Buffer.from([FRAME_TCP]), Buffer.from(conn, 'hex'), Buffer.alloc(4 * 1024 * 1024 + 1)]));
+  assert.equal(destroyed, true);
+  assert.equal(tunnel.players.size, 0);
+  assert.deepEqual(sent.map((s) => JSON.parse(s)), [{ type: 'close', conn }], 'the relay is told');
+
+  tunnel.udpPort = 1;
+  tunnel._onBinary(binaryFrame(FRAME_UDP, newConnId(), Buffer.alloc(2049)));
+  assert.equal(tunnel.udpSessions.size, 0, 'nothing was forwarded');
+});
+
+test('C2: UDP works in both modes', async () => {
+  for (const v2 of [false, true]) {
+    const geyser = dgramV2.createSocket('udp4');
+    await new Promise((r) => geyser.bind(0, '127.0.0.1', r));
+    geyser.on('message', (buf, rinfo) => geyser.send(Buffer.concat([Buffer.from('pong:'), buf]), rinfo.port, rinfo.address));
+    const r = await startProtocolRelay({ v2, udpPort: geyser.address().port });
+    const session = newConnId();
+    if (v2) {
+      r.ws.send(binaryFrame(FRAME_UDP, session, 'ping'));
+      const f = await r.binary();
+      assert.equal(f.data[0], FRAME_UDP);
+      assert.equal(f.data.subarray(1, FRAME_HEADER_LEN).toString('hex'), session);
+      assert.equal(f.data.subarray(FRAME_HEADER_LEN).toString(), 'pong:ping');
+    } else {
+      r.ws.send(JSON.stringify({ type: 'udp', conn: session, ip: '9.9.9.9', data: Buffer.from('ping').toString('base64') }));
+      const reply = await r.json('udp');
+      assert.equal(reply.conn, session);
+      assert.equal(Buffer.from(reply.data, 'base64').toString(), 'pong:ping');
+    }
+    r.close();
+    geyser.close();
+  }
+});
+
+test('C2: a JSON udp frame from a v2 relay still works', async () => {
+  const geyser = dgramV2.createSocket('udp4');
+  await new Promise((r) => geyser.bind(0, '127.0.0.1', r));
+  geyser.on('message', (buf, rinfo) => geyser.send(buf, rinfo.port, rinfo.address));
+  const r = await startProtocolRelay({ v2: true, udpPort: geyser.address().port });
+  const session = newConnId();
+  r.ws.send(JSON.stringify({ type: 'udp', conn: session, data: Buffer.from('echo me').toString('base64') }));
+  const f = await r.binary();
+  assert.equal(f.data.subarray(FRAME_HEADER_LEN).toString(), 'echo me');
+  r.close();
+  geyser.close();
+});
+
+test('C2: a connection id that is not 32 hex characters stays on JSON even when v2 is on', async () => {
+  const r = await startedRelay({ v2: true });
+  r.ws.send(JSON.stringify({ type: 'connect', conn: 'conn-not-hex' }));
+  await once(r.tunnel, 'players');
+  r.ws.send(JSON.stringify({ type: 'data', conn: 'conn-not-hex', data: Buffer.from('hi').toString('base64') }));
+  const f = await r.next(() => true);
+  assert.equal(f.binary, false);
+  assert.equal(JSON.parse(f.data.toString()).type, 'data');
+  r.close();
+});
+
+test('C2: binary frame helpers: layout, and what is refused', () => {
+  const conn = newConnId();
+  const frame = buildBinaryFrame(FRAME_UDP, Buffer.from(conn, 'hex'), Buffer.from('abc'));
+  assert.equal(frame.length, 20);
+  assert.equal(frame[0], 0x02);
+  assert.equal(frame.subarray(1, 17).toString('hex'), conn);
+  assert.deepEqual(parseBinaryFrame(frame), { kind: FRAME_UDP, conn, payload: Buffer.from('abc') });
+  assert.equal(parseBinaryFrame(Buffer.alloc(16)), null, 'shorter than the header');
+  assert.equal(parseBinaryFrame(Buffer.alloc(17)), null, 'kind 0 is not a kind');
+  assert.equal(parseBinaryFrame(Buffer.concat([Buffer.from([0x03]), Buffer.alloc(20)])), null);
+  assert.equal(parseBinaryFrame('not a buffer'), null);
+  assert.deepEqual(parseBinaryFrame(Buffer.concat([Buffer.from([FRAME_TCP]), Buffer.from(conn, 'hex')])).payload, Buffer.alloc(0), 'an empty payload parses (and is ignored later)');
+  assert.equal(FRAME_TCP, 0x01);
+  assert.equal(FRAME_HEADER_LEN, 17);
+});
+
+test('C2: the port frame check accepts a bin field and refuses a mistyped one', () => {
+  assert.equal(isValidRelayMessage({ type: 'port', port: 26000 }), true);
+  assert.equal(isValidRelayMessage({ type: 'port', port: 26000, bin: 1 }), true);
+  assert.equal(isValidRelayMessage({ type: 'port', port: 26000, bin: 'yes' }), false);
+});
