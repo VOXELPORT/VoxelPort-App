@@ -380,3 +380,48 @@ test('progress is reported while zipping', async (t) => {
   assert.equal(seen[0].done, 0);
   assert.equal(seen.at(-1).done, seen.at(-1).total, 'finishes at 100%');
 });
+
+// ─── Archives that are traps ─────────────────────────────────────────────────
+
+/** A backup file whose entries are exactly `files` ({ name, data, mode? }), with the metadata a real one has. */
+async function craftedBackup(s, name, files) {
+  fs.mkdirSync(s.backupDir, { recursive: true });
+  const zip = new yazl.ZipFile();
+  zip.addBuffer(Buffer.from(JSON.stringify({ format: 1, createdAt: new Date().toISOString(), reason: 'manual', levelName: 'world', worlds: ['world'] })), backups.META_NAME);
+  for (const f of files) zip.addBuffer(Buffer.from(f.data), f.name, f.mode ? { mode: f.mode } : undefined);
+  zip.end();
+  await new Promise((resolve) => zip.outputStream.pipe(fs.createWriteStream(path.join(s.backupDir, name))).on('close', resolve));
+}
+
+test('a backup holding a symbolic link is refused, and the current world is left alone', async (t) => {
+  const s = fakeServer(t);
+  await craftedBackup(s, '2026-04-04_04-04-04_manual.zip', [
+    { name: 'world/level.dat', data: 'x' },
+    { name: 'world/escape', data: '/etc/passwd', mode: 0o120777 }, // a symlink entry
+  ]);
+  const before = fs.readFileSync(path.join(s.serverDir, 'world', 'level.dat'));
+  await assert.rejects(backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: '2026-04-04_04-04-04_manual.zip' }), (e) => e.code === 'unsafe');
+  assert.deepEqual(fs.readFileSync(path.join(s.serverDir, 'world', 'level.dat')), before);
+  assert.deepEqual(fs.readdirSync(s.serverDir).filter((n) => n.startsWith('.vp-')), [], 'no half-unpacked folder left behind');
+});
+
+test('a backup with more entries than any world has is refused', async (t) => {
+  const s = fakeServer(t);
+  await craftedBackup(s, '2026-05-05_05-05-05_manual.zip', [
+    { name: 'world/level.dat', data: 'x' }, { name: 'world/a', data: '1' }, { name: 'world/b', data: '2' }, { name: 'world/c', data: '3' },
+  ]);
+  const old = backups.LIMITS.entries;
+  backups.LIMITS.entries = 3;
+  try {
+    await assert.rejects(backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: '2026-05-05_05-05-05_manual.zip' }), (e) => e.code === 'too-big');
+    backups.LIMITS.entries = 100;
+    const res = await backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: '2026-05-05_05-05-05_manual.zip' });
+    assert.ok(res, 'the same backup restores when it is under the limit');
+  } finally {
+    backups.LIMITS.entries = old;
+  }
+});
+
+test('the entry limit is high enough for any real world and low enough to stop a trap', () => {
+  assert.ok(backups.LIMITS.entries >= 100_000 && backups.LIMITS.entries <= 5_000_000);
+});
