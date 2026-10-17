@@ -23,10 +23,13 @@ const MODRINTH_API = 'https://api.modrinth.com/v2';
 const USER_AGENT = 'VoxelPort-App (+https://voxelport.in)';
 const DEFAULT_BEDROCK_PORT = 19132;
 
-// Only jars this module itself manages — anything else in plugins/ or mods/
-// is never touched.
-const MANAGED_JAR = /^(?:geyser|floodgate)[\w.+-]*\.jar$/i;
+// Only jars this module itself installed are ever replaced or removed: their exact names are written to
+// voxelport-bedrock.json. A server set up by an older VoxelPort has no such list; for those the jars are recognised by
+// the exact names Geyser and Floodgate use, which does not match look-alikes such as GeyserSkinManager-Spigot.jar.
+const LEGACY_JAR = /^(?:geyser|floodgate)[-_](?:spigot|fabric)(?:[-_.][\w.+-]*)?\.jar$/i;
 const SAFE_JAR_NAME = /^[\w.+-]{1,120}\.jar$/;
+const REGISTRY = 'voxelport-bedrock.json';
+const FOLDERS = ['plugins', 'mods'];
 
 async function getJson(url, fetchImpl = fetch) {
   const res = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT } });
@@ -73,6 +76,33 @@ async function resolveBedrockJars(type, mcVersion, fetchImpl = fetch) {
   throw new Error('Bedrock players need a Paper or Fabric server — Vanilla can\'t run Geyser.');
 }
 
+/** The jars an earlier install put there, as [{ dir, name }], or null when there is no (usable) list. */
+function readRegistry(serverDir) {
+  let data;
+  try { data = JSON.parse(fs.readFileSync(path.join(serverDir, REGISTRY), 'utf8')); } catch { return null; }
+  if (!data || !Array.isArray(data.files)) return null;
+  return data.files
+    .filter((f) => f && FOLDERS.includes(f.dir) && typeof f.name === 'string' && SAFE_JAR_NAME.test(f.name))
+    .map((f) => ({ dir: f.dir, name: f.name }));
+}
+
+function writeRegistry(serverDir, files) {
+  fs.writeFileSync(path.join(serverDir, REGISTRY), JSON.stringify({ files }, null, 2));
+}
+
+/** The jars to replace or remove: the ones on the list, or (no list) the ones with Geyser's and Floodgate's own names. */
+function ownedJars(serverDir) {
+  const listed = readRegistry(serverDir);
+  if (listed) return listed.filter((f) => fs.existsSync(path.join(serverDir, f.dir, f.name)));
+  const out = [];
+  for (const dir of FOLDERS) {
+    let names = [];
+    try { names = fs.readdirSync(path.join(serverDir, dir)); } catch { continue; }
+    for (const name of names) if (LEGACY_JAR.test(name)) out.push({ dir, name });
+  }
+  return out;
+}
+
 /**
  * Installs Geyser + Floodgate into serverDir. Existing Geyser/Floodgate jars
  * are replaced; an existing Fabric API is kept.
@@ -81,6 +111,8 @@ async function installBedrockSupport({ serverDir, type, version, onProgress = ()
   if (typeof serverDir !== 'string' || !path.isAbsolute(serverDir)) throw new Error('Invalid server folder.');
   onProgress({ stage: 'resolve' });
   const jars = await resolveBedrockJars(type, version, fetchImpl);
+  let owned = ownedJars(serverDir); // what is VoxelPort's to replace, worked out before anything is written
+  const installed = [];
 
   for (const jar of jars) {
     const dir = path.join(serverDir, jar.dir);
@@ -89,26 +121,26 @@ async function installBedrockSupport({ serverDir, type, version, onProgress = ()
     onProgress({ stage: 'download', file: jar.fileName });
     const dest = path.join(dir, path.basename(jar.fileName));
     await download(jar.url, dest, null, jar.checksum);
-    // Drop older copies so the server doesn't load two Geysers.
-    if (MANAGED_JAR.test(jar.fileName)) {
+    if (jar.project !== 'fabric-api') {
+      // Drop older copies of the same one, so the server doesn't load two Geysers.
       const family = /^geyser/i.test(jar.fileName) ? /^geyser/i : /^floodgate/i;
-      for (const f of fs.readdirSync(dir)) {
-        if (f !== path.basename(jar.fileName) && MANAGED_JAR.test(f) && family.test(f)) fs.rmSync(path.join(dir, f), { force: true });
+      const name = path.basename(jar.fileName);
+      for (const old of owned) {
+        if (old.dir === jar.dir && old.name !== name && family.test(old.name)) fs.rmSync(path.join(serverDir, old.dir, old.name), { force: true });
       }
+      owned = owned.filter((o) => !(o.dir === jar.dir && family.test(o.name)));
+      installed.push({ dir: jar.dir, name });
     }
   }
+  writeRegistry(serverDir, [...owned, ...installed]);
   onProgress({ stage: 'done' });
   return { port: bedrockPort(serverDir) };
 }
 
-/** Removes the Geyser/Floodgate jars (Fabric API stays — other mods may need it). */
+/** Removes the Geyser/Floodgate jars VoxelPort installed (Fabric API stays — other mods may need it). */
 function removeBedrockSupport(serverDir) {
-  for (const sub of ['plugins', 'mods']) {
-    const dir = path.join(serverDir, sub);
-    let files = [];
-    try { files = fs.readdirSync(dir); } catch { continue; }
-    for (const f of files) if (MANAGED_JAR.test(f)) fs.rmSync(path.join(dir, f), { force: true });
-  }
+  for (const f of ownedJars(serverDir)) fs.rmSync(path.join(serverDir, f.dir, f.name), { force: true });
+  fs.rmSync(path.join(serverDir, REGISTRY), { force: true });
 }
 
 /** The UDP port Geyser listens on (from its config once it has run), default 19132. */

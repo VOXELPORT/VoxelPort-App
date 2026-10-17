@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
-const { writeServerProperties, downloadServerJar, updateServerPropertiesSafely, detectExistingServer, isOfficialDownloadHost } = require('../src/main/serverInstall');
+const { writeServerProperties, downloadServerJar, updateServerPropertiesSafely, detectExistingServer, isOfficialDownloadHost, assertFolderEmptyForInstall } = require('../src/main/serverInstall');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-test-'));
@@ -256,4 +256,33 @@ test('detectExistingServer reports nothing found for an empty folder', () => {
   const info = detectExistingServer(dir);
   assert.equal(info.looksLikeServer, false);
   assert.equal(info.guessedType, null);
+});
+
+test('D3: install refuses a folder that already holds a server, and says what to do instead', () => {
+  for (const [what, make] of [
+    ['a server.jar', (d) => fs.writeFileSync(path.join(d, 'server.jar'), 'x')],
+    ['a server.properties', (d) => fs.writeFileSync(path.join(d, 'server.properties'), 'motd=mine')],
+    ['a world folder', (d) => fs.mkdirSync(path.join(d, 'world'))],
+  ]) {
+    const dir = tmpDir();
+    make(dir);
+    assert.throws(() => assertFolderEmptyForInstall(dir), /already has a Minecraft server in it\. Use Import Existing Server instead\./, what);
+  }
+});
+
+test('D3: install accepts a folder that does not exist yet, an empty one, or one with unrelated files', () => {
+  assert.doesNotThrow(() => assertFolderEmptyForInstall(path.join(tmpDir(), 'new-folder')));
+  assert.doesNotThrow(() => assertFolderEmptyForInstall(tmpDir()));
+  const notes = tmpDir();
+  fs.writeFileSync(path.join(notes, 'notes.txt'), 'my notes');
+  assert.doesNotThrow(() => assertFolderEmptyForInstall(notes));
+});
+
+test('D3: a refused install leaves the existing server exactly as it was', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'server.properties'), 'motd=keep me\n');
+  fs.writeFileSync(path.join(dir, 'server.jar'), 'my jar');
+  assert.throws(() => assertFolderEmptyForInstall(dir));
+  assert.equal(fs.readFileSync(path.join(dir, 'server.properties'), 'utf8'), 'motd=keep me\n');
+  assert.equal(fs.readFileSync(path.join(dir, 'server.jar'), 'utf8'), 'my jar');
 });

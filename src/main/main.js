@@ -12,9 +12,10 @@ const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaChe
 const { installJava, findManagedJava } = require('./javaInstall');
 const {
   getServerDir, downloadServerJar, writeEula, writeServerProperties,
-  detectExistingServer, updateServerPropertiesSafely,
+  detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
 } = require('./serverInstall');
 const { ServerProcess } = require('./serverProcess');
+const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
 const serverProfiles = require('./serverProfiles');
 const { isSafeRelayUrl } = require('./relayUrlSafety');
@@ -139,6 +140,7 @@ function userDataDir() {
 }
 
 function createWindow() {
+  appClosing = false; // a window (re)opened, so the app is not closing
   mainWindow = new BrowserWindow({
     width: 640,
     height: 800,
@@ -432,7 +434,9 @@ if (!gotLock) {
 }
 
 let appClosing = false;
-app.on('window-all-closed', () => {
+
+/** Stops the tunnel and the server for good (the app is closing or updating). No "stop" backup is made: the app is going away. */
+function shutDownForQuit() {
   appClosing = true;
   updater.stop();
   perf.stop();
@@ -440,7 +444,23 @@ app.on('window-all-closed', () => {
   if (tunnel) tunnel.stop();
   stopRequested = true;
   if (serverProc.child) serverProc.stop();
-  if (process.platform !== 'darwin') app.quit();
+}
+
+// The app does not exit until a running server has saved and stopped (or the wait runs out).
+const quitGate = createQuitGate({
+  serverRunning: () => Boolean(serverProc.child),
+  stopEverything: shutDownForQuit,
+  waitForServerStopped: (ms) => waitForServerStopped(ms),
+  quit: () => app.quit(),
+  timeoutMs: STOP_WAIT_TIMEOUT_MS,
+});
+app.on('before-quit', (event) => quitGate.onBeforeQuit(event));
+
+app.on('window-all-closed', () => {
+  // Windows and Linux: closing the window quits, and before-quit waits for the server. macOS keeps the app alive, so the
+  // server is stopped here, as it always was.
+  if (process.platform === 'darwin') shutDownForQuit();
+  else app.quit();
 });
 
 const g = () => mainWindow;
@@ -492,6 +512,11 @@ ipcMain.handle('update:install', guarded(g, async () => {
     if (response !== 1) return { ok: false, cancelled: true };
   }
 
+  // quitAndInstall exits the app straight away, so a running server must already be saved and stopped.
+  if (serverProc.child) {
+    shutDownForQuit();
+    await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+  }
   updater.install();
   return { ok: true };
 }));
@@ -814,6 +839,7 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   if (!serverProfiles.KNOWN_TYPES.has(type)) throw new Error('Unknown server type.');
 
   const dir = serverDir || path.join(getServerDir(userDataDir()), '..', 'servers', String(Date.now()));
+  assertFolderEmptyForInstall(dir); // before anything is downloaded or written
   fs.mkdirSync(dir, { recursive: true });
 
   send('install:progress', { phase: 'resolving' });
