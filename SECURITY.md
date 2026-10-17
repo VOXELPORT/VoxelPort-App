@@ -45,6 +45,17 @@ migrated to encrypted storage the next time `safeStorage` becomes available,
 without ever generating a new token (your tunnel identity never changes as a
 side effect of this).
 
+**An unreadable token file is never replaced.** If the file is there but can't be
+read right now (the keyring is locked or unavailable, a decrypt fails, or the
+file is damaged), the app does **not** write a new token over it, because that
+would silently change your tunnel identity and lose your custom address. It
+keeps the file exactly as it is, saves a copy beside it as
+`device-token.unreadable-<time>.json` (one copy per distinct content), and runs
+this session on a temporary token that is never saved. The Manual tunnel screen
+shows a warning while that is the case. Once the keyring is unlocked, the next
+launch reads the original token again. A new token is only ever written when no
+token file existed at all.
+
 ## Relay connection
 
 - The app only ever connects to `wss://` (TLS) by default. A custom
@@ -85,7 +96,11 @@ Installing a Vanilla/Paper/Fabric server:
   hosts (`mojang.com`, `minecraft.net`, `papermc.io`, `fabricmc.net`, and
   their subdomains) — confirmed against real, actually-resolved download
   URLs, not guessed. A redirect to any other host, or a downgrade to plain
-  `http://`, is rejected.
+  `http://`, is rejected. Loopback and private-network addresses are
+  refused too, including as the target of a redirect, so a download can't be
+  pointed at this machine or your local network. Tests and development against
+  a mock download server can allow them by setting the environment variable
+  `VOXELPORT_DEV_DOWNLOADS=1`; the shipped app never sets it.
 - Downloads to a temporary file and only replaces an existing `server.jar`
   via an atomic rename once the download has fully completed and passed
   checksum verification (Vanilla: SHA-1, Paper: SHA-256, both published by
@@ -111,23 +126,26 @@ scoped entirely to this app's own GitHub repository:
   fixed at build time in `package.json`'s `build.publish` config — it is
   **not** something a running instance of the app, or anything reachable
   from the renderer, can redirect elsewhere.
-- Before ever applying an update, `electron-updater` verifies the
+- Before ever applying an update, `electron-updater` checks the
   downloaded installer's SHA-512 checksum against the value published in
-  `latest.yml` on the GitHub release, both fetched over HTTPS. This is real
-  integrity verification — a corrupted or tampered download is rejected,
-  not just trusted.
+  `latest.yml` on the GitHub release, both fetched over HTTPS. That guards
+  against a **corrupted or truncated download**. It is not a signature:
+  `latest.yml` is not signed and comes from the same release as the
+  installer, so a compromised release would carry a matching checksum.
 - **What this does not give you**, stated honestly rather than implied:
   since the app is not currently code-signed (see "A note on Windows code
   signing" in the README), there is no Authenticode publisher-identity
-  check on top of the checksum. Checksum verification confirms the
-  downloaded bytes match what GitHub actually served for this release; it
-  does not by itself prove who built them. That gap closes once real code
-  signing is in place.
+  check on top of the checksum. The checksum confirms the downloaded bytes
+  match what GitHub served for this release; it does not prove who built
+  them. That gap closes once real code signing is in place. Until then, the
+  GitHub account and organisation need two-factor sign-in, because whoever
+  can publish a release can publish an update.
 - Downloading a new version happens automatically in the background, but
   **applying** it (quitting and relaunching into the new version) always
   requires an explicit click in the app — never silent, never forced — and
   if a managed server is running or the tunnel is public, you're asked to
-  confirm before either gets interrupted.
+  confirm before either gets interrupted. A running server is stopped and
+  allowed to finish saving before the app restarts into the update.
 - The portable `.exe` and the Linux build intentionally do not auto-update
   — there's no single fixed install location for `electron-updater` to
   safely replace in-place the way it can for the installed Windows build.

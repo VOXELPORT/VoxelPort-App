@@ -88,6 +88,35 @@ npm test
 npm audit
 ```
 
+Tests that download from a local mock server need `VOXELPORT_DEV_DOWNLOADS=1`
+(the test files set it themselves). The app only accepts loopback or private
+addresses for a download when that variable is set, so it must never be set in a
+real run.
+
+## Things that are easy to get wrong
+
+- **A tunnel is live until it says `stopped`.** `Tunnel.isLive()` is true from
+  `start()` until the `stopped` event, including while it is connecting or
+  waiting to reconnect. `running` only means registered and online. Use
+  `isLive()` for "does a tunnel exist?" and wait for `stopped` before making
+  another one: two tunnels with one device token fight each other.
+- **The device token file is never overwritten when it can't be read.** See
+  `src/main/token.js` and the token section of SECURITY.md.
+- **Bedrock (Geyser/Floodgate) files.** `voxelport-bedrock.json` in the server
+  folder lists the exact jars VoxelPort installed; only those are replaced or
+  removed. A server from an older version, with no list, is matched by the exact
+  Geyser/Floodgate file names (`LEGACY_JAR` in `src/main/bedrock.js`), which must
+  not match look-alikes such as `GeyserSkinManager-Spigot.jar`.
+- **Reading the server's output.** Use `stripLogPrefix` (exported from
+  `serverProcess.js`) and match the whole message: chat lines are
+  `<name> text`, so a player can type almost anything after the prefix.
+- **Quitting.** `before-quit` (`src/main/quitGate.js`) holds the quit until a
+  running server has stopped; `update:install` does the same before
+  `quitAndInstall`. Anything that exits the app with `process.exit` or
+  `app.exit` skips that.
+- **Writing files.** Use `atomicWriteFileSync` (`src/main/atomicWrite.js`) for
+  anything the person would be upset to find half written.
+
 ## Package
 
 ```bash
