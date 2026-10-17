@@ -132,7 +132,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .ghost:not(:disabled):hover { background: var(--gold); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
 .ghost:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
 .ghost.copied { background: var(--grass); }
-.ghost.small { font-size: .95rem; padding: 7px 11px 5px; }
+.ghost.small, .primary.small { font-size: .95rem; padding: 7px 11px 5px; }
 
 .back-link {
   align-self: flex-start; background: transparent; padding: 2px 0;
@@ -471,5 +471,15 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 .bk-meta { font-family: var(--type); font-size: .74rem; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .bk-item-actions { display: flex; gap: 8px; flex: none; }
 .bk-empty { font-size: .84rem; color: var(--muted); padding: 4px 2px; }
+
+/* Plugins & mods */
+.ad-search { display: flex; gap: 8px; }
+.ad-search input { flex: 1; min-width: 0; }
+.ad-item { display: flex; align-items: center; gap: 10px; border: 2.5px solid var(--ink); background: var(--card); padding: 8px 10px; }
+.ad-avatar { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border: 2.5px solid var(--ink); background: var(--grass); color: var(--ink); font-family: var(--display); font-size: 1.3rem; line-height: 1; }
+.ad-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ad-name { font-weight: 700; font-size: .92rem; overflow-wrap: anywhere; }
+.ad-desc { font-size: .8rem; color: var(--ink-2); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ad-item > button { flex: none; }
 
 .invite-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

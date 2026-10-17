@@ -72,6 +72,11 @@ function renderManagementScreen() {
   else if (status === 'crashed') { srvDot.classList.add('err'); srvStatusText.textContent = t('Crashed'); }
   else { srvStatusText.textContent = t('Stopped'); }
 
+  // Plugins (Paper) and mods (Fabric); Vanilla can't load either, so it has no button.
+  const addonsKind = managingProfile ? window.VPAddons.kind(managingProfile.type) : '';
+  $('srvAddonsBtn').classList.toggle('hidden', !addonsKind);
+  if (addonsKind) $('srvAddonsBtn').textContent = window.VPAddons.words(managingProfile.type, t).button;
+
   srvStartBtn.classList.toggle('hidden', running);
   srvStopBtn.classList.toggle('hidden', !running || !active);
   cmdInput.disabled = !(active && status === 'online');
@@ -277,6 +282,7 @@ window.vp.on('server:diagnosis', ({ profileId, items }) => {
 
 srvSettingsBtn.addEventListener('click', () => { if (managingProfileId) window.openSettingsScreen(managingProfileId); });
 $('srvBackupsBtn').addEventListener('click', () => { if (managingProfileId) window.openBackupsScreen(managingProfileId); });
+$('srvAddonsBtn').addEventListener('click', () => { if (managingProfileId) window.openAddonsScreen(managingProfileId); });
 window.onAppState.push(() => { if ($('screen-console').classList.contains('active')) renderManagementScreen(); });
 
 window.openManagementScreen = async function openManagementScreen(id) {

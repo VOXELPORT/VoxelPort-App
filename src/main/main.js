@@ -27,6 +27,7 @@ const {
 } = require('./perfMonitor');
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 const accounts = require('./accounts');
+const addons = require('./addons');
 const support = require('./support');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
@@ -1204,6 +1205,80 @@ ipcMain.handle('server:accounts:installLogin', guarded(g, async (_evt, { id }) =
   } finally {
     accountsBusy = false;
   }
+}));
+
+// ─── Plugins & mods (Modrinth) ────────────────────────────────────────────
+// What it does and how it stays safe: addons.js. One install or removal at a time.
+
+const serverIsRunning = (id) => activeServerProfileId === id && Boolean(serverProc.child);
+
+ipcMain.handle('addons:get', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) throw new Error('Server profile not found.');
+  const supported = addons.supported(profile.type);
+  return {
+    supported,
+    type: profile.type,
+    version: profile.version,
+    folder: supported ? addons.folderFor(profile.type) : '',
+    installed: supported ? addons.installedAddons(profile.serverDir) : [],
+    running: serverIsRunning(id),
+  };
+}));
+
+ipcMain.handle('addons:search', guarded(g, async (_evt, { id, query, anyVersion, offset }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  try {
+    const res = await addons.searchAddons({
+      type: profile.type, version: profile.version,
+      query: typeof query === 'string' ? query : '', anyVersion: anyVersion === true, offset,
+    });
+    return { ok: true, ...res };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}));
+
+let addonsBusy = false;
+ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (addonsBusy) return { ok: false, error: 'Already installing — one moment.' };
+  addonsBusy = true;
+  try {
+    const installed = await addons.installAddon({
+      serverDir: profile.serverDir, type: profile.type, version: profile.version, projectId,
+      title: typeof title === 'string' ? title : '', running: serverIsRunning(id),
+      onProgress: (p) => send('addons:progress', p),
+    });
+    return { ok: true, installed, restartNeeded: serverIsRunning(id) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    addonsBusy = false;
+  }
+}));
+
+ipcMain.handle('addons:remove', guarded(g, (_evt, { id, projectId }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (addonsBusy) return { ok: false, error: 'Already installing — one moment.' };
+  try {
+    addons.removeAddon({ serverDir: profile.serverDir, projectId, running: serverIsRunning(id) });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}));
+
+ipcMain.handle('addons:openFolder', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile || !addons.supported(profile.type)) return { ok: false };
+  const dir = path.join(profile.serverDir, addons.folderFor(profile.type));
+  fs.mkdirSync(dir, { recursive: true });
+  shell.openPath(dir);
+  return { ok: true };
 }));
 
 // ─── Custom address (steve.voxelport.in) ──────────────────────────────────
