@@ -292,6 +292,7 @@ function whenDomReady() {
   await whenDomReady();
   relayUrl.placeholder = info.defaultRelayUrl;
   tokenField.value = info.maskedToken;
+  $('tokenWarn').classList.toggle('hidden', !info.tokenUnreadable);
   version.textContent = 'v' + info.version;
   log(t('Ready. Set your local port and click Start hosting.'));
   await loadRegions();

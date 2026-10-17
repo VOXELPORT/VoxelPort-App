@@ -43,8 +43,11 @@ const STOP_WAIT_TIMEOUT_MS = 25000; // a little past ServerProcess's own 20s for
 
 let mainWindow = null;
 let tunnel = null;
+// A tunnel that was let go (set to null) but has not finished closing yet: a new one waits for it.
+let retiringTunnel = null;
 let deviceToken = '';
 let tokenEncryptedAtRest = false;
+let tokenUnreadable = false; // the saved ID couldn't be read this run: a temporary one is in use
 const serverProc = new ServerProcess();
 const updater = new Updater();
 
@@ -223,6 +226,7 @@ function wireTunnel(t, publicHost) {
   });
   t.on('udpError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('stopped', () => {
+    if (tunnel && tunnel !== t) return; // an old tunnel finishing after a newer one took over must not clear its state
     send('tunnel:status', 'stopped');
     send('tunnel:notice', { message: '', seconds: 0 });
     noticeAnnouncer.cancel();
@@ -387,12 +391,13 @@ function waitForServerStopped(timeoutMs) {
   });
 }
 
-function waitForTunnelStopped(timeoutMs) {
-  if (!tunnel || !tunnel.running) return Promise.resolve();
+/** Resolves once `t` (default: the current tunnel) has finished stopping, or after timeoutMs. A tunnel that is still connecting counts. */
+function waitForTunnelStopped(timeoutMs, t = tunnel) {
+  if (!t || !t.isLive()) return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = setTimeout(() => { tunnel && tunnel.off('stopped', onStopped); resolve(); }, timeoutMs);
+    const timer = setTimeout(() => { t.off('stopped', onStopped); resolve(); }, timeoutMs);
     function onStopped() { clearTimeout(timer); resolve(); }
-    tunnel.once('stopped', onStopped);
+    t.once('stopped', onStopped);
   });
 }
 
@@ -414,6 +419,7 @@ if (!gotLock) {
     const loaded = loadOrCreateToken(userDataDir(), safeStorage);
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
+    tokenUnreadable = loaded.unreadable;
     loadCustomAddress();
     loadPrefs();
     createWindow();
@@ -446,6 +452,7 @@ ipcMain.handle('app:info', guarded(g, () => ({
   defaultRelayUrl: DEFAULT_RELAY_URL,
   maskedToken: maskToken(deviceToken),
   tokenEncryptedAtRest,
+  tokenUnreadable,
   version: app.getVersion(),
 })));
 
@@ -471,7 +478,7 @@ ipcMain.handle('update:state', guarded(g, () => ({ readyToInstall: updater.ready
 ipcMain.handle('update:install', guarded(g, async () => {
   if (!updater.readyToInstall) return { ok: false };
 
-  if (serverProc.child || (tunnel && tunnel.running)) {
+  if (serverProc.child || (tunnel && tunnel.isLive())) {
     const { response } = await dialog.showMessageBox(mainWindow, {
       type: 'question',
       buttons: [say('Cancel', 'Cancel'), say('Restart & Update', 'Restart karo aur Update karo')],
@@ -550,7 +557,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
     return { ok: false };
   }
 
-  if (tunnel && tunnel.running) {
+  if (tunnel && tunnel.isLive()) {
     const currentlyManual = manualTunnelActive;
     const currentProfile = publicServerProfileId ? serverProfiles.getProfile(userDataDir(), publicServerProfileId) : null;
     const targetProfile = profileId ? serverProfiles.getProfile(userDataDir(), profileId) : null;
@@ -580,11 +587,18 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
     const seq = ++tunnelStartSeq;
     region = await chooseRegion();
     if (seq !== tunnelStartSeq) return { ok: false, cancelled: true }; // stopped (or restarted) meanwhile
-    if (tunnel && tunnel.running) return { ok: true, alreadyRunning: true };
+    if (tunnel && tunnel.isLive()) return { ok: true, alreadyRunning: true };
   }
   const relayUrls = region ? region.relayUrls : [resolvedRelayUrl];
   const publicHost = region ? region.publicHost : new URL(resolvedRelayUrl).hostname;
 
+  // Never leave an older tunnel behind: two of them would share this device's token and fight for it.
+  if (retiringTunnel && retiringTunnel.isLive()) await waitForTunnelStopped(10000, retiringTunnel);
+  if (tunnel && tunnel.isLive()) {
+    const old = tunnel;
+    old.stop();
+    await waitForTunnelStopped(10000, old);
+  }
   tunnel = new Tunnel();
   tunnelRegion = region;
   wireTunnel(tunnel, publicHost);
@@ -612,12 +626,18 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
   return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort });
 }));
 
+/** Lets go of the current tunnel: stops it now, and remembers it until it has really finished closing. */
+function retireTunnel() {
+  const old = tunnel;
+  tunnel = null;
+  if (!old) return;
+  old.stop();
+  if (old.isLive()) retiringTunnel = old;
+}
+
 ipcMain.handle('tunnel:stop', guarded(g, () => {
   tunnelStartSeq++; // cancels a start that is still picking its region
-  if (tunnel) {
-    tunnel.stop();
-    tunnel = null;
-  }
+  retireTunnel();
   publicServerProfileId = null;
   manualTunnelActive = false;
   broadcastState();

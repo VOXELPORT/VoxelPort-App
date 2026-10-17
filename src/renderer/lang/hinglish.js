@@ -305,4 +305,5 @@
   'Stop the server first to update one that is already installed.': 'Jo pehle se install hai use update karne ke liye pehle server band karo.',
   'Couldn\'t install that.': 'Yeh install nahi ho paya.',
   'Couldn\'t remove that.': 'Yeh hata nahi paya.',
+  'Couldn\'t read your saved VoxelPort ID (is your system keyring locked?). Using a temporary one — restart after unlocking it.': 'Tumhari saved VoxelPort ID padh nahi paye (kya system keyring locked hai?). Abhi ek temporary ID use ho rahi hai — unlock karke app dobara kholo.',
 };
