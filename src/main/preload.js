@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('vp', {
       'server:diagnosis',
       'bedrock:progress',
       'accounts:progress',
+      'addons:progress',
       'tunnel:region',
       'tunnel:notice',
       'backup:progress',
@@ -98,6 +99,15 @@ contextBridge.exposeInMainWorld('vp', {
     get: (id) => ipcRenderer.invoke('server:accounts:get', { id }),
     set: (id, cracked, confirmed) => ipcRenderer.invoke('server:accounts:set', { id, cracked, confirmed }),
     installLogin: (id) => ipcRenderer.invoke('server:accounts:installLogin', { id }),
+  },
+
+  // Plugins (Paper) and mods (Fabric) from Modrinth. The renderer only sends ids and search words, never URLs or paths.
+  addons: {
+    get: (id) => ipcRenderer.invoke('addons:get', { id }),
+    search: (id, query, anyVersion, offset) => ipcRenderer.invoke('addons:search', { id, query, anyVersion, offset }),
+    install: (id, projectId, title) => ipcRenderer.invoke('addons:install', { id, projectId, title }),
+    remove: (id, projectId) => ipcRenderer.invoke('addons:remove', { id, projectId }),
+    openFolder: (id) => ipcRenderer.invoke('addons:openFolder', { id }),
   },
 
   // The Support screen. Links are opened by id/kind: the renderer never passes a URL.

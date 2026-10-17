@@ -228,6 +228,7 @@
         <button id="srvStopBtn" class="ghost hidden">Stop</button>
         <button id="srvSettingsBtn" class="ghost">Settings</button>
         <button id="srvBackupsBtn" class="ghost">Backups</button>
+        <button id="srvAddonsBtn" class="ghost hidden">Plugins</button>
         <button id="srvFolderBtn" class="ghost">Open folder</button>
         <button id="srvRemoveBtn" class="ghost">Remove from VoxelPort</button>
       </div>
@@ -385,6 +386,41 @@
       </div>
     </section>
 
+    <!-- PLUGINS & MODS: search Modrinth, install, remove -->
+    <section class="screen panel" id="screen-addons">
+      <button class="back-link" id="addonsBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="adSubtitle"></div><h1 id="adTitle">PLUGINS</h1></div></div>
+
+      <p class="hint" id="adIntro"></p>
+
+      <div class="set-group">
+        <div class="set-group-title">Installed</div>
+        <div class="hint">Only the ones installed from here are listed. Files you added yourself are never touched.</div>
+        <div class="hint hidden" id="adRunningNote">The server is running. You can add new ones now, but stop it to remove or update one.</div>
+        <div class="bk-list" id="adInstalled"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Find and install</div>
+        <div class="ad-search">
+          <input id="adQuery" type="text" maxlength="100" placeholder="Search" autocomplete="off" spellcheck="false" />
+          <button class="primary" id="adSearchBtn" type="button">Search</button>
+        </div>
+        <label class="toggle-row compact">
+          <input type="checkbox" id="adAnyVersion" />
+          <span>Also show ones not marked for this version</span>
+        </label>
+        <div class="hint hidden" id="adProgress" aria-live="polite"></div>
+        <div class="hint" id="adStatus" aria-live="polite"></div>
+        <div class="bk-list" id="adResults"></div>
+        <button class="ghost hidden" id="adMoreBtn" type="button">Show more</button>
+      </div>
+
+      <div class="bk-actions">
+        <button class="ghost" id="adFolderBtn" type="button">Open plugins folder</button>
+      </div>
+    </section>
+
     <!-- SUPPORT VOXELPORT: tips, supporter perks, paid-hosting suggestions -->
     <section class="screen panel" id="screen-support">
       <button class="back-link" id="supportBackBtn" type="button">‹ Back</button>
@@ -445,6 +481,7 @@
   <script src="lang/hinglish.js"></script>
   <script src="i18n.js"></script>
   <script src="invite.js"></script>
+  <script src="addonsText.js"></script>
   <script src="renderer.js"></script>
   <script src="library.js"></script>
   <script src="wizard.js"></script>
@@ -452,6 +489,7 @@
   <script src="console.js"></script>
   <script src="settings.js"></script>
   <script src="backups-ui.js"></script>
+  <script src="addons-ui.js"></script>
   <script src="support.js"></script>
 </body>
 </html>
