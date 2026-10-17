@@ -647,6 +647,10 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
   if (activeServerProfileId !== id) {
     return { ok: false, error: 'Start this server before making it public.' };
   }
+  // The server is "active" from the moment Start is pressed, but while Java is still being installed there is no process yet.
+  if (!serverProc.child) {
+    return { ok: false, error: 'Wait for the server to finish starting, then make it public.' };
+  }
   const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
   return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort });
 }));
@@ -1218,7 +1222,8 @@ ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title 
     });
     return { ok: true, installed, restartNeeded: serverIsRunning(id) };
   } catch (err) {
-    return { ok: false, error: err.message };
+    // 'exists' lets the screen say it in the person's language, with the file name filled in.
+    return err.code === 'exists' ? { ok: false, error: err.message, code: 'exists', file: err.file } : { ok: false, error: err.message };
   } finally {
     addonsBusy = false;
   }

@@ -45,6 +45,7 @@ const MESSAGES_THE_APP_SENDS = [
   'Plugins and mods need a Paper or Fabric server.', 'Invalid project.', 'That one was not installed by VoxelPort.',
   'Stop the server first. A running server has its plugins and mods open.', 'Stop the server first to update one that is already installed.',
   "Couldn't install that.", "Couldn't remove that.",
+  'Wait for the server to finish starting, then make it public.',
 ];
 
 const { static: staticStrings, code: codeStrings, data: dataStrings } = allStrings();

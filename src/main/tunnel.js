@@ -316,8 +316,14 @@ class Tunnel extends EventEmitter {
           break;
         }
         // Buffer.from(..., 'base64') never throws on malformed input, it
-        // just decodes what it can — bound the *decoded* size too.
-        if (decoded.length > MAX_WS_MESSAGE_BYTES) break;
+        // just decodes what it can — bound the *decoded* size too. Skipping the
+        // chunk would leave a hole in that player's stream (Minecraft cannot
+        // recover from one), so the player is disconnected instead.
+        if (decoded.length > MAX_WS_MESSAGE_BYTES) {
+          this.emit('log', 'A frame from the relay was larger than allowed — disconnecting that player.');
+          this._closePlayer(msg.conn, /* notifyRelay */ true);
+          break;
+        }
         this._writeToPlayer(msg.conn, pc, decoded);
         break;
       }
