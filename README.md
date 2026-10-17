@@ -69,6 +69,7 @@
 - ♥ **Support screen** — one-click tipping (UPI QR, GitHub Sponsors), the optional supporter perks, and suggestions for paid 24/7 hosting.
 - 📊 **Performance panel** — live CPU, RAM and TPS, with a warning when the server can't keep up.
 - 💾 **World backups** — automatic backups while the server runs (only if someone played) and when you stop it, with one-click restore. Restoring saves your current world first, so you can always undo it.
+- ⚡ **Lighter on the connection** — the app and the relay now send game data as raw bytes instead of base64 text, about a third less data and less work on both ends. It switches on by itself when the relay supports it.
 - 🧩 **Plugins & mods** — search Modrinth from the server page and install Paper plugins or Fabric mods in one click, with the libraries they need. Every download is checked against Modrinth's checksum, and Remove only deletes what VoxelPort installed.
 - 📋 **Copy invite message** — a ready-to-send message with the address, Bedrock instructions and "hosted with VoxelPort", in English or Hinglish.
 - 🇮🇳 **Hinglish interface** — switch the whole app to Hinglish (Hindi in the English alphabet) from the footer.
