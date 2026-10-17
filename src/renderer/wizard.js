@@ -73,7 +73,10 @@ async function loadTypes() {
     const btn = document.createElement('button');
     btn.className = 'mode-card small';
     btn.dataset.type = t.id;
-    btn.innerHTML = `<div class="mode-title">${t.label}</div>`;
+    const title = document.createElement('div');
+    title.className = 'mode-title';
+    title.textContent = t.label;
+    btn.appendChild(title);
     btn.addEventListener('click', () => selectType(t.id, btn));
     typeGrid.appendChild(btn);
   }
