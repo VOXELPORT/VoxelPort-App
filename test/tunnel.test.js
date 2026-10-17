@@ -571,3 +571,24 @@ test('K7: stop() reports zero players and "stopped" exactly once each', async ()
   assert.deepEqual(seen, ['players:0', 'stopped']);
   wss.close();
 });
+
+// ─── K5: a frame that is too big for a player's stream ──────────────────────
+
+test('K5: an oversized data frame disconnects that player instead of silently leaving a hole in the stream', () => {
+  const tunnel = new Tunnel();
+  const sent = [];
+  const logs = [];
+  tunnel.on('log', (l) => logs.push(l));
+  tunnel.ws = { readyState: WebSocket.OPEN, send: (s) => sent.push(JSON.parse(s)) };
+  let destroyed = false;
+  tunnel.players.set('c1', { sock: { destroy: () => { destroyed = true; }, write() {} }, pendingBytes: 0, closed: false });
+  tunnel.players.set('c2', { sock: { destroy() {}, write() {} }, pendingBytes: 0, closed: false });
+  // Valid as a frame (under the base64 length limit), but it decodes to just over the 4 MiB cap.
+  const data = 'A'.repeat(5_592_500);
+  tunnel._onMessage(JSON.stringify({ type: 'data', conn: 'c1', data }));
+  assert.equal(destroyed, true);
+  assert.equal(tunnel.players.has('c1'), false);
+  assert.equal(tunnel.players.has('c2'), true, 'other players are not affected');
+  assert.deepEqual(sent, [{ type: 'close', conn: 'c1' }], 'the relay is told the player is gone');
+  assert.ok(logs.some((l) => /larger than allowed/.test(l)));
+});

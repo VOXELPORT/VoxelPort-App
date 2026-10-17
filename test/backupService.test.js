@@ -319,3 +319,32 @@ test('a backup can be deleted, but not while a job is running on that server', a
   r.service.delete('srv1', made.backup.name);
   assert.deepEqual(kinds(r), []);
 });
+
+// ─── The "saved" line is the server's, not a player's ────────────────────────
+
+test('K3: only the server\'s own "Saved the game" counts, in the Vanilla and the Paper format', async (t) => {
+  const r = rig(t, { answerSave: false, saveWaitMs: 400 });
+  r.proc.sendCommand = (cmd) => {
+    r.proc.commands.push(cmd);
+    if (cmd === 'save-all flush') {
+      setImmediate(() => {
+        r.proc.emit('log', '[12:00:00 INFO]: <Steve> Saved the game'); // a player typing it
+        r.proc.emit('log', '[12:00:00 INFO]: [Not Secure] <Steve> Saved the game');
+        r.proc.emit('log', '[12:00:00 INFO]: <Steve> x: Saved the world');
+      });
+    }
+  };
+  const res = await r.service.create('srv1', 'manual');
+  assert.equal(res.ok, true);
+  assert.ok(r.sent.some(([c, p]) => c === 'server:log' && /slow to save/.test(p)), 'chat did not end the wait');
+});
+
+test('K3: the real "Saved the game" line ends the wait, in both log formats', async (t) => {
+  for (const line of ['[12:00:00] [Server thread/INFO]: Saved the game', '[12:00:00 INFO]: Saved the game', '[12:00:00 INFO]: Saved the world']) {
+    const r = rig(t, { answerSave: false, saveWaitMs: 400 });
+    r.proc.sendCommand = (cmd) => { r.proc.commands.push(cmd); if (cmd === 'save-all flush') setImmediate(() => r.proc.emit('log', line)); };
+    const res = await r.service.create('srv1', 'manual');
+    assert.equal(res.ok, true);
+    assert.ok(!r.sent.some(([c, p]) => c === 'server:log' && /slow to save/.test(p)), line);
+  }
+});

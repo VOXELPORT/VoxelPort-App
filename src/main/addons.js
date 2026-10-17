@@ -186,6 +186,10 @@ async function installAddon({
     const registry = installedAddons(serverDir);
     const older = registry.filter((a) => a.id === id);
     const dest = path.join(dir, fileName);
+    // A file with this name that VoxelPort did not put there is the owner's own (added by hand, or by another tool): never overwrite it.
+    if (fs.existsSync(dest) && !older.some((a) => a.file === fileName)) {
+      throw Object.assign(new Error(`A file named ${fileName} is already in ${folderFor(type)}. Remove it first, or keep using it.`), { code: 'exists', file: fileName });
+    }
     if (running && (older.length || fs.existsSync(dest))) {
       throw new Error('Stop the server first to update one that is already installed.');
     }
