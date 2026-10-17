@@ -5,9 +5,11 @@
 
 const path = require('path');
 const backups = require('./backups');
+const { stripLogPrefix } = require('./serverProcess');
 
 // What a Minecraft server says when `save-all` is done ("Saved the game"; older versions: "Saved the world").
-const SAVED_RE = /Saved the (?:game|world)/i;
+const SAVED_RE = /^Saved the (?:game|world)$/i; // the whole message, after the log prefix: chat can't pass for it
+const PROFILE_ID_RE = /^[0-9a-f-]{36}$/i;
 const SAVE_WAIT_MS = 60 * 1000;
 const CHECK_EVERY_MS = 60 * 1000;
 // A "server stopped" backup is skipped when the last one is this recent.
@@ -35,6 +37,8 @@ class BackupService {
   }
 
   dirFor(id) {
+    // Profile ids are random UUIDs; anything else (a path, "..") must never become part of a folder name.
+    if (typeof id !== 'string' || !PROFILE_ID_RE.test(id)) throw new Error('Invalid server id.');
     const root = typeof this.userDataDir === 'function' ? this.userDataDir() : this.userDataDir;
     return path.join(root, 'backups', id);
   }
@@ -211,7 +215,7 @@ class BackupService {
 
   _waitForLog(re, ms) {
     return new Promise((resolve) => {
-      const onLog = (line) => { if (re.test(line)) { done(true); } };
+      const onLog = (line) => { if (re.test(stripLogPrefix(line))) { done(true); } };
       const timer = setTimeout(() => done(false), ms);
       const done = (ok) => { clearTimeout(timer); this.serverProc.off('log', onLog); resolve(ok); };
       this.serverProc.on('log', onLog);

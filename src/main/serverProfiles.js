@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { getServerDir } = require('./serverInstall');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 const KNOWN_TYPES = new Set(['vanilla', 'paper', 'fabric']);
 const STORE_VERSION = 2;
@@ -76,10 +77,7 @@ function loadRaw(userDataDir) {
 /** Atomic write: temp file in the same directory, then rename over the target. */
 function saveRaw(userDataDir, store) {
   fs.mkdirSync(userDataDir, { recursive: true });
-  const file = profilesPath(userDataDir);
-  const tmp = file + '.tmp-' + crypto.randomBytes(4).toString('hex');
-  fs.writeFileSync(tmp, JSON.stringify(store, null, 2));
-  fs.renameSync(tmp, file);
+  atomicWriteFileSync(profilesPath(userDataDir), JSON.stringify(store, null, 2));
 }
 
 /**

@@ -321,3 +321,48 @@ test('fingerprint lookup handles an empty or missing folder', async () => {
   assert.equal((await projectsInFolder(path.join(tmpDir(), 'nope'), fetchImpl)).size, 0);
   assert.equal((await projectsInFolder(tmpDir(), fetchImpl)).size, 0);
 });
+
+// ─── K6: the owner's own file is never taken over ────────────────────────────
+
+test('K6: a file with the same name that VoxelPort did not install is left alone, and nothing is downloaded', async () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  fs.writeFileSync(path.join(dir, 'plugins', 'Thing-1.0.jar'), 'the owner\'s own copy');
+  const { fetchImpl } = fakeModrinth({ [`https://api.modrinth.com/v2/project/${ID('A')}/version`]: [version()] });
+  const { download, calls } = fakeDownload();
+  await assert.rejects(
+    installAddon({ serverDir: dir, type: 'paper', version: '1.21.4', projectId: ID('A'), title: 'Thing', fetchImpl, download }),
+    (e) => e.code === 'exists' && e.file === 'Thing-1.0.jar' && /A file named Thing-1\.0\.jar is already in plugins\. Remove it first, or keep using it\./.test(e.message),
+  );
+  assert.equal(calls.length, 0);
+  assert.equal(fs.readFileSync(path.join(dir, 'plugins', 'Thing-1.0.jar'), 'utf8'), 'the owner\'s own copy');
+  assert.deepEqual(installedAddons(dir), [], 'it is not registered as ours either');
+});
+
+test('K6: the same holds for a library that a mod needs, and for mods/', async () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'mods'));
+  fs.writeFileSync(path.join(dir, 'mods', 'fabric-api-1.jar'), 'a library the owner added themselves');
+  const lib = version({ files: [{ primary: true, filename: 'fabric-api-1.jar', url: 'https://cdn.modrinth.com/l.jar', hashes: { sha512: SHA } }] });
+  const mod = version({ dependencies: [{ dependency_type: 'required', project_id: ID('L') }] });
+  const { fetchImpl } = fakeModrinth({
+    [`https://api.modrinth.com/v2/project/${ID('M')}/version`]: [mod],
+    [`https://api.modrinth.com/v2/project/${ID('L')}/version`]: [lib],
+    [`https://api.modrinth.com/v2/project/${ID('L')}`]: { title: 'Fabric API' },
+    'https://api.modrinth.com/v2/version_files': {}, // not recognised by its fingerprint
+  });
+  const { download, calls } = fakeDownload();
+  await assert.rejects(installAddon({ serverDir: dir, type: 'fabric', version: '1.21.4', projectId: ID('M'), fetchImpl, download }), (e) => e.code === 'exists');
+  assert.equal(calls.length, 0, 'the mod itself was not downloaded either');
+  assert.equal(fs.readFileSync(path.join(dir, 'mods', 'fabric-api-1.jar'), 'utf8'), 'a library the owner added themselves');
+});
+
+test('K6: updating one VoxelPort installed (same file name) still works', async () => {
+  const dir = tmpDir();
+  const { fetchImpl } = fakeModrinth({ [`https://api.modrinth.com/v2/project/${ID('A')}/version`]: [version()] });
+  const { download, calls } = fakeDownload();
+  await installAddon({ serverDir: dir, type: 'paper', version: '1.21.4', projectId: ID('A'), title: 'Thing', fetchImpl, download });
+  await installAddon({ serverDir: dir, type: 'paper', version: '1.21.4', projectId: ID('A'), title: 'Thing', fetchImpl, download });
+  assert.equal(calls.length, 2);
+  assert.equal(installedAddons(dir).length, 1);
+});

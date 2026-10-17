@@ -2,11 +2,21 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const readline = require('readline');
 const { EventEmitter } = require('events');
 
-const READY_RE = /Done \([^)]*\)!/;
-const JOIN_RE = /: (\S+) joined the game/;
-const LEAVE_RE = /: (\S+) left the game/;
+// A server line is "[time] [thread/LEVEL]: message" (Vanilla) or "[time LEVEL]: message" (Paper). What the server means is
+// the whole message after that, never a piece of it: chat is "<name> text", so a player typing "Bob joined the game" can
+// not pass for the server saying it.
+const LOG_PREFIX_RE = /^\[[^\]]*\](?: \[[^\]]*\])?:\s*/;
+const READY_RE = /^Done \([^)]*\)!/;
+const JOIN_RE = /^([A-Za-z0-9_.*-]{1,32}) joined the game$/;
+const LEAVE_RE = /^([A-Za-z0-9_.*-]{1,32}) left the game$/;
+
+/** A server log line without its "[time] [thread/LEVEL]:" front. */
+function stripLogPrefix(line) {
+  return String(line).replace(LOG_PREFIX_RE, '').trimEnd();
+}
 
 const STOP_GRACE_MS = 20000;
 const MAX_COMMAND_LEN = 512;
@@ -21,8 +31,10 @@ const MAX_COMMAND_LEN = 512;
  * Events: 'status' (state), 'log' (line), 'players' (count), 'exit' (code).
  */
 class ServerProcess extends EventEmitter {
-  constructor() {
+  /** `spawnImpl` is for tests. */
+  constructor({ spawnImpl = spawn } = {}) {
     super();
+    this.spawnImpl = spawnImpl;
     this.child = null;
     this.status = 'stopped';
     this.online = new Set();
@@ -52,47 +64,56 @@ class ServerProcess extends EventEmitter {
     this.online.clear();
     this._setStatus('starting');
 
-    this.child = spawn(javaPath, [
+    const child = this.spawnImpl(javaPath, [
       `-Xms${minRamMb}M`,
       `-Xmx${maxRamMb}M`,
       '-jar', jarName,
       'nogui',
     ], { cwd: serverDir, shell: false });
+    this.child = child;
 
-    this.child.stdout.on('data', (buf) => this._onLine(buf.toString()));
-    this.child.stderr.on('data', (buf) => this._onLine(buf.toString()));
+    // One line at a time, however the output was cut into chunks (and a character split between two chunks stays whole).
+    for (const stream of [child.stdout, child.stderr]) {
+      readline.createInterface({ input: stream, crlfDelay: Infinity }).on('line', (line) => this._onLine(line));
+    }
+    // Writing a command to a server that has just gone away must not crash the app.
+    child.stdin.on('error', (err) => this.emit('log', `Could not send to the server: ${err.message}`));
 
-    this.child.on('exit', (code) => {
+    // However it ends, "exit" is said once: when the process ends, or when it never started.
+    let ended = false;
+    const finish = (code) => {
+      if (ended) return;
+      ended = true;
       clearTimeout(this.stopTimer);
       this.stopTimer = null;
       const crashed = this.status !== 'stopping' && code !== 0;
-      this.child = null;
+      if (this.child === child) this.child = null;
       this.online.clear();
       this._setStatus(crashed ? 'crashed' : 'stopped');
       this.emit('players', 0);
       this.emit('exit', code);
-    });
+    };
 
-    this.child.on('error', (err) => {
+    child.on('exit', (code) => finish(code));
+
+    child.on('error', (err) => {
       this.emit('log', `Failed to start Java: ${err.message}`);
-      this.child = null;
-      clearTimeout(this.stopTimer);
-      this.stopTimer = null;
-      this._setStatus('crashed');
+      // No process means no 'exit' will follow: say it now, so the app lets go of this server. (An error from a process that
+      // did start, such as a failed kill, is only logged: its exit still comes.)
+      if (child.pid === undefined) finish(-1);
     });
   }
 
-  _onLine(text) {
-    for (const line of text.split(/\r?\n/)) {
-      if (!line) continue;
-      this.emit('log', line);
-      if (this.status === 'starting' && READY_RE.test(line)) this._setStatus('online');
+  _onLine(line) {
+    if (!line) return;
+    this.emit('log', line);
+    const message = stripLogPrefix(line);
+    if (this.status === 'starting' && READY_RE.test(message)) this._setStatus('online');
 
-      const joined = JOIN_RE.exec(line);
-      if (joined) { this.online.add(joined[1]); this.emit('players', this.online.size); }
-      const left = LEAVE_RE.exec(line);
-      if (left) { this.online.delete(left[1]); this.emit('players', this.online.size); }
-    }
+    const joined = JOIN_RE.exec(message);
+    if (joined) { this.online.add(joined[1]); this.emit('players', this.online.size); }
+    const left = LEAVE_RE.exec(message);
+    if (left) { this.online.delete(left[1]); this.emit('players', this.online.size); }
   }
 
   /**
@@ -124,4 +145,4 @@ class ServerProcess extends EventEmitter {
   }
 }
 
-module.exports = { ServerProcess };
+module.exports = { ServerProcess, stripLogPrefix };

@@ -12,9 +12,10 @@ const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaChe
 const { installJava, findManagedJava } = require('./javaInstall');
 const {
   getServerDir, downloadServerJar, writeEula, writeServerProperties,
-  detectExistingServer, updateServerPropertiesSafely,
+  detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
 } = require('./serverInstall');
 const { ServerProcess } = require('./serverProcess');
+const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
 const serverProfiles = require('./serverProfiles');
 const { isSafeRelayUrl } = require('./relayUrlSafety');
@@ -28,6 +29,7 @@ const {
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 const accounts = require('./accounts');
 const addons = require('./addons');
+const { atomicWriteFileSync } = require('./atomicWrite');
 const support = require('./support');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
@@ -43,8 +45,11 @@ const STOP_WAIT_TIMEOUT_MS = 25000; // a little past ServerProcess's own 20s for
 
 let mainWindow = null;
 let tunnel = null;
+// A tunnel that was let go (set to null) but has not finished closing yet: a new one waits for it.
+let retiringTunnel = null;
 let deviceToken = '';
 let tokenEncryptedAtRest = false;
+let tokenUnreadable = false; // the saved ID couldn't be read this run: a temporary one is in use
 const serverProc = new ServerProcess();
 const updater = new Updater();
 
@@ -97,7 +102,7 @@ function loadCustomAddress() {
   } catch { /* none yet */ }
 }
 function saveCustomAddress() {
-  try { fs.writeFileSync(customAddressPath(), JSON.stringify(customAddress)); } catch { /* best-effort */ }
+  try { atomicWriteFileSync(customAddressPath(), JSON.stringify(customAddress)); } catch { /* best-effort */ }
 }
 
 // The custom address as the UI should show it: hidden while the tunnel runs
@@ -121,7 +126,7 @@ function loadPrefs() {
   } catch { /* defaults */ }
 }
 function savePrefs() {
-  try { fs.writeFileSync(prefsPath(), JSON.stringify(prefs)); } catch { /* best-effort */ }
+  try { atomicWriteFileSync(prefsPath(), JSON.stringify(prefs)); } catch { /* best-effort */ }
 }
 
 // Region of the running tunnel (null when stopped or on a self-hosted relay),
@@ -136,6 +141,7 @@ function userDataDir() {
 }
 
 function createWindow() {
+  appClosing = false; // a window (re)opened, so the app is not closing
   mainWindow = new BrowserWindow({
     width: 640,
     height: 800,
@@ -223,6 +229,7 @@ function wireTunnel(t, publicHost) {
   });
   t.on('udpError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('stopped', () => {
+    if (tunnel && tunnel !== t) return; // an old tunnel finishing after a newer one took over must not clear its state
     send('tunnel:status', 'stopped');
     send('tunnel:notice', { message: '', seconds: 0 });
     noticeAnnouncer.cancel();
@@ -387,12 +394,13 @@ function waitForServerStopped(timeoutMs) {
   });
 }
 
-function waitForTunnelStopped(timeoutMs) {
-  if (!tunnel || !tunnel.running) return Promise.resolve();
+/** Resolves once `t` (default: the current tunnel) has finished stopping, or after timeoutMs. A tunnel that is still connecting counts. */
+function waitForTunnelStopped(timeoutMs, t = tunnel) {
+  if (!t || !t.isLive()) return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = setTimeout(() => { tunnel && tunnel.off('stopped', onStopped); resolve(); }, timeoutMs);
+    const timer = setTimeout(() => { t.off('stopped', onStopped); resolve(); }, timeoutMs);
     function onStopped() { clearTimeout(timer); resolve(); }
-    tunnel.once('stopped', onStopped);
+    t.once('stopped', onStopped);
   });
 }
 
@@ -414,6 +422,7 @@ if (!gotLock) {
     const loaded = loadOrCreateToken(userDataDir(), safeStorage);
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
+    tokenUnreadable = loaded.unreadable;
     loadCustomAddress();
     loadPrefs();
     createWindow();
@@ -426,7 +435,9 @@ if (!gotLock) {
 }
 
 let appClosing = false;
-app.on('window-all-closed', () => {
+
+/** Stops the tunnel and the server for good (the app is closing or updating). No "stop" backup is made: the app is going away. */
+function shutDownForQuit() {
   appClosing = true;
   updater.stop();
   perf.stop();
@@ -434,7 +445,23 @@ app.on('window-all-closed', () => {
   if (tunnel) tunnel.stop();
   stopRequested = true;
   if (serverProc.child) serverProc.stop();
-  if (process.platform !== 'darwin') app.quit();
+}
+
+// The app does not exit until a running server has saved and stopped (or the wait runs out).
+const quitGate = createQuitGate({
+  serverRunning: () => Boolean(serverProc.child),
+  stopEverything: shutDownForQuit,
+  waitForServerStopped: (ms) => waitForServerStopped(ms),
+  quit: () => app.quit(),
+  timeoutMs: STOP_WAIT_TIMEOUT_MS,
+});
+app.on('before-quit', (event) => quitGate.onBeforeQuit(event));
+
+app.on('window-all-closed', () => {
+  // Windows and Linux: closing the window quits, and before-quit waits for the server. macOS keeps the app alive, so the
+  // server is stopped here, as it always was.
+  if (process.platform === 'darwin') shutDownForQuit();
+  else app.quit();
 });
 
 const g = () => mainWindow;
@@ -446,6 +473,7 @@ ipcMain.handle('app:info', guarded(g, () => ({
   defaultRelayUrl: DEFAULT_RELAY_URL,
   maskedToken: maskToken(deviceToken),
   tokenEncryptedAtRest,
+  tokenUnreadable,
   version: app.getVersion(),
 })));
 
@@ -471,7 +499,7 @@ ipcMain.handle('update:state', guarded(g, () => ({ readyToInstall: updater.ready
 ipcMain.handle('update:install', guarded(g, async () => {
   if (!updater.readyToInstall) return { ok: false };
 
-  if (serverProc.child || (tunnel && tunnel.running)) {
+  if (serverProc.child || (tunnel && tunnel.isLive())) {
     const { response } = await dialog.showMessageBox(mainWindow, {
       type: 'question',
       buttons: [say('Cancel', 'Cancel'), say('Restart & Update', 'Restart karo aur Update karo')],
@@ -485,6 +513,11 @@ ipcMain.handle('update:install', guarded(g, async () => {
     if (response !== 1) return { ok: false, cancelled: true };
   }
 
+  // quitAndInstall exits the app straight away, so a running server must already be saved and stopped.
+  if (serverProc.child) {
+    shutDownForQuit();
+    await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+  }
   updater.install();
   return { ok: true };
 }));
@@ -550,7 +583,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
     return { ok: false };
   }
 
-  if (tunnel && tunnel.running) {
+  if (tunnel && tunnel.isLive()) {
     const currentlyManual = manualTunnelActive;
     const currentProfile = publicServerProfileId ? serverProfiles.getProfile(userDataDir(), publicServerProfileId) : null;
     const targetProfile = profileId ? serverProfiles.getProfile(userDataDir(), profileId) : null;
@@ -580,11 +613,18 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
     const seq = ++tunnelStartSeq;
     region = await chooseRegion();
     if (seq !== tunnelStartSeq) return { ok: false, cancelled: true }; // stopped (or restarted) meanwhile
-    if (tunnel && tunnel.running) return { ok: true, alreadyRunning: true };
+    if (tunnel && tunnel.isLive()) return { ok: true, alreadyRunning: true };
   }
   const relayUrls = region ? region.relayUrls : [resolvedRelayUrl];
   const publicHost = region ? region.publicHost : new URL(resolvedRelayUrl).hostname;
 
+  // Never leave an older tunnel behind: two of them would share this device's token and fight for it.
+  if (retiringTunnel && retiringTunnel.isLive()) await waitForTunnelStopped(10000, retiringTunnel);
+  if (tunnel && tunnel.isLive()) {
+    const old = tunnel;
+    old.stop();
+    await waitForTunnelStopped(10000, old);
+  }
   tunnel = new Tunnel();
   tunnelRegion = region;
   wireTunnel(tunnel, publicHost);
@@ -608,16 +648,26 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
   if (activeServerProfileId !== id) {
     return { ok: false, error: 'Start this server before making it public.' };
   }
+  // The server is "active" from the moment Start is pressed, but while Java is still being installed there is no process yet.
+  if (!serverProc.child) {
+    return { ok: false, error: 'Wait for the server to finish starting, then make it public.' };
+  }
   const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
   return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort });
 }));
 
+/** Lets go of the current tunnel: stops it now, and remembers it until it has really finished closing. */
+function retireTunnel() {
+  const old = tunnel;
+  tunnel = null;
+  if (!old) return;
+  old.stop();
+  if (old.isLive()) retiringTunnel = old;
+}
+
 ipcMain.handle('tunnel:stop', guarded(g, () => {
   tunnelStartSeq++; // cancels a start that is still picking its region
-  if (tunnel) {
-    tunnel.stop();
-    tunnel = null;
-  }
+  retireTunnel();
   publicServerProfileId = null;
   manualTunnelActive = false;
   broadcastState();
@@ -794,6 +844,7 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   if (!serverProfiles.KNOWN_TYPES.has(type)) throw new Error('Unknown server type.');
 
   const dir = serverDir || path.join(getServerDir(userDataDir()), '..', 'servers', String(Date.now()));
+  assertFolderEmptyForInstall(dir); // before anything is downloaded or written
   fs.mkdirSync(dir, { recursive: true });
 
   send('install:progress', { phase: 'resolving' });
@@ -864,6 +915,8 @@ async function startServerProfile(id, { retried = false } = {}) {
     stopRequested = true;
     serverProc.stop();
     await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+    // The wait can run out with the old server still alive: starting another on top of it would fight over the same port and world.
+    if (serverProc.child) return { ok: false, error: 'The previous server is still shutting down — try again in a few seconds.' };
   } else if (serverProc.child && activeServerProfileId === id) {
     return { ok: true, alreadyRunning: true, port: profile.port };
   }
@@ -933,6 +986,7 @@ ipcMain.handle('backup:settings:set', guarded(g, (_evt, { id, settings }) => bac
 ipcMain.handle('backup:delete', guarded(g, (_evt, { id, name }) => backupService.delete(id, name)));
 
 ipcMain.handle('backup:openFolder', guarded(g, (_evt, { id }) => {
+  if (!serverProfiles.getProfile(userDataDir(), id)) return { ok: false, error: 'Server profile not found.' };
   const dir = backupService.dirFor(id);
   fs.mkdirSync(dir, { recursive: true });
   shell.openPath(dir);
@@ -1172,7 +1226,8 @@ ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title 
     });
     return { ok: true, installed, restartNeeded: serverIsRunning(id) };
   } catch (err) {
-    return { ok: false, error: err.message };
+    // 'exists' lets the screen say it in the person's language, with the file name filled in.
+    return err.code === 'exists' ? { ok: false, error: err.message, code: 'exists', file: err.file } : { ok: false, error: err.message };
   } finally {
     addonsBusy = false;
   }

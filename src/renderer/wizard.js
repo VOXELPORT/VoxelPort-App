@@ -128,6 +128,13 @@ async function loadDefaultDir() {
 chooseFolderBtn.addEventListener('click', async () => {
   const dir = await window.vp.server.chooseFolder();
   if (dir) {
+    // Find out now, not after the download: a folder that already holds a server is for Import, not Install.
+    let existing = null;
+    try { existing = await window.vp.server.detectExisting(dir); } catch { /* the install itself checks again */ }
+    if (existing && existing.looksLikeServer) {
+      window.alert(window.t('That folder already has a Minecraft server in it. Use Import Existing Server instead.'));
+      return;
+    }
     wizardState.serverDir = dir;
     serverDirDisplay.value = dir;
   }
