@@ -49,20 +49,29 @@ function loadOrCreateToken(userDataDir, safeStorage) {
   const file = tokenFile(userDataDir);
   const canEncrypt = !!(safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable());
 
-  let record = null;
+  // Only a file that does not exist at all may be replaced by a new token. One that is there but can't be read right
+  // now (a locked keyring, a failed decrypt, a damaged file) holds the person's identity, and with it their custom
+  // address, so it is left exactly as it is.
+  let raw = null;
+  let existed = true;
   try {
-    record = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    // no token yet
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') existed = false;
   }
 
-  if (record) {
+  let record = null;
+  if (raw !== null) {
+    try { record = JSON.parse(raw); } catch { record = null; }
+  }
+
+  if (record && typeof record === 'object') {
     let token = null;
     if (record.enc && canEncrypt) {
       try {
         token = safeStorage.decryptString(Buffer.from(record.enc, 'base64'));
       } catch {
-        token = null; // corrupt/unreadable — fall through to regenerate
+        token = null; // can't be decrypted now: handled below, never overwritten
       }
     } else if (typeof record.token === 'string') {
       // Plaintext legacy record (or safeStorage unavailable this run).
@@ -80,8 +89,15 @@ function loadOrCreateToken(userDataDir, safeStorage) {
           // best-effort; the plaintext copy still works next launch
         }
       }
-      return { token, encryptedAtRest: !!record.enc || canEncrypt && isValidToken(token) };
+      return { token, encryptedAtRest: !!record.enc || canEncrypt && isValidToken(token), unreadable: false };
     }
+  }
+
+  if (existed) {
+    // Keep a copy for recovery, and run on a token that lives only for this session. The file itself stays where it is,
+    // so once the keyring is unlocked the next launch gets the original token back.
+    keepUnreadableCopy(userDataDir, file, raw);
+    return { token: generateDeviceToken(), encryptedAtRest: false, unreadable: true };
   }
 
   const token = generateDeviceToken();
@@ -91,7 +107,23 @@ function loadOrCreateToken(userDataDir, safeStorage) {
   } catch {
     // best-effort persistence; a transient token still works for this session
   }
-  return { token, encryptedAtRest: canEncrypt };
+  return { token, encryptedAtRest: canEncrypt, unreadable: false };
+}
+
+const UNREADABLE_RE = /^device-token\.unreadable-.+\.json$/;
+
+/** device-token.unreadable-<time>.json beside the original, unless a copy with the same contents is already there. */
+function keepUnreadableCopy(userDataDir, file, raw) {
+  try {
+    const bytes = raw !== null ? Buffer.from(raw, 'utf8') : fs.readFileSync(file);
+    for (const name of fs.readdirSync(userDataDir)) {
+      if (UNREADABLE_RE.test(name) && fs.readFileSync(path.join(userDataDir, name)).equals(bytes)) return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.writeFileSync(path.join(userDataDir, `device-token.unreadable-${stamp}.json`), bytes, { mode: 0o600 });
+  } catch {
+    // best-effort: the original is still untouched
+  }
 }
 
 function persist(file, token, safeStorage) {
