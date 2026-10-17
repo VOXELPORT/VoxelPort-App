@@ -93,6 +93,28 @@ Tests that download from a local mock server need `VOXELPORT_DEV_DOWNLOADS=1`
 addresses for a download when that variable is set, so it must never be set in a
 real run.
 
+## Relay protocol v2 (binary data frames)
+
+The tunnel (`src/main/tunnel.js`) asks the relay for binary data frames by sending `"bin": 1` in `register`. Only if the
+relay's `port` frame also says `"bin": 1` do both sides switch; an older relay never sets it, so the app is safe against
+any relay. In v2, TCP and UDP payloads are *binary* WebSocket messages:
+
+```
+byte 0        kind    0x01 = TCP data, 0x02 = UDP datagram
+bytes 1..16   connection (or UDP session) id as 16 raw bytes (the relay's 32-character hex id; keep maps keyed by the hex string)
+bytes 17..    payload
+```
+
+Everything else (`connect`, `close`, `ping`, `pong`, `udp_close`, names, listing, errors, notices) stays JSON text in both
+modes, and JSON `data` / `udp` frames are accepted in either mode. Binary frames are validated like JSON ones (`parseBinaryFrame`):
+shorter than 17 bytes, an unknown kind, an unknown TCP connection, or a UDP payload over the cap is dropped (logged at most
+once every 30 s); a TCP payload over the frame cap ends that player. A connection id that is not 32 hex characters stays on
+JSON. In v2 a UDP session's first datagram carries no source address, which this app never used.
+
+The Android app and the (discontinued) Fabric mod still speak JSON only; the relay serves them as before. To adopt v2 they
+need the same three things: send `bin: 1`, check `bin: 1` in `port`, and use the frame layout above. The relay side is
+documented in the relay repository's README ("Protocol v2").
+
 ## Things that are easy to get wrong
 
 - **A tunnel is live until it says `stopped`.** `Tunnel.isLive()` is true from
