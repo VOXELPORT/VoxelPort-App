@@ -516,3 +516,28 @@ test('D1: a level-name that is one of the server\'s own folders is not used as a
   fs.writeFileSync(path.join(s.serverDir, 'server.properties'), 'level-name=plugins\n');
   assert.equal(backups.levelNameOf(s.serverDir), 'world');
 });
+
+// ─── H3: waiting for Windows to let go of a folder does not freeze the app ───
+
+test('H3: while a folder move is retried (a scanner has it open), the app keeps running', async (t) => {
+  const s = fakeServer(t);
+  const b = await make(s);
+  const real = fs.renameSync;
+  let refusals = 0;
+  fs.renameSync = (from, to) => {
+    if (String(from).includes('.vp-restore-') && refusals < 2) { refusals++; const e = new Error('busy'); e.code = 'EBUSY'; throw e; }
+    return real(from, to);
+  };
+  t.after(() => { fs.renameSync = real; });
+
+  let ticks = 0;
+  const timer = setInterval(() => { ticks++; }, 20);
+  try {
+    await backups.restoreBackup({ backupDir: s.backupDir, serverDir: s.serverDir, name: b.name });
+  } finally {
+    clearInterval(timer);
+    fs.renameSync = real;
+  }
+  assert.equal(refusals, 2, 'the move really was retried');
+  assert.ok(ticks >= 15, `the event loop kept running during the 750 ms of waiting (${ticks} ticks)`);
+});

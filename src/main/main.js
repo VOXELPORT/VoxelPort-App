@@ -29,6 +29,7 @@ const {
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 const accounts = require('./accounts');
 const addons = require('./addons');
+const { atomicWriteFileSync } = require('./atomicWrite');
 const support = require('./support');
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
@@ -101,7 +102,7 @@ function loadCustomAddress() {
   } catch { /* none yet */ }
 }
 function saveCustomAddress() {
-  try { fs.writeFileSync(customAddressPath(), JSON.stringify(customAddress)); } catch { /* best-effort */ }
+  try { atomicWriteFileSync(customAddressPath(), JSON.stringify(customAddress)); } catch { /* best-effort */ }
 }
 
 // The custom address as the UI should show it: hidden while the tunnel runs
@@ -125,7 +126,7 @@ function loadPrefs() {
   } catch { /* defaults */ }
 }
 function savePrefs() {
-  try { fs.writeFileSync(prefsPath(), JSON.stringify(prefs)); } catch { /* best-effort */ }
+  try { atomicWriteFileSync(prefsPath(), JSON.stringify(prefs)); } catch { /* best-effort */ }
 }
 
 // Region of the running tunnel (null when stopped or on a self-hosted relay),
@@ -914,6 +915,8 @@ async function startServerProfile(id, { retried = false } = {}) {
     stopRequested = true;
     serverProc.stop();
     await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+    // The wait can run out with the old server still alive: starting another on top of it would fight over the same port and world.
+    if (serverProc.child) return { ok: false, error: 'The previous server is still shutting down — try again in a few seconds.' };
   } else if (serverProc.child && activeServerProfileId === id) {
     return { ok: true, alreadyRunning: true, port: profile.port };
   }
@@ -983,6 +986,7 @@ ipcMain.handle('backup:settings:set', guarded(g, (_evt, { id, settings }) => bac
 ipcMain.handle('backup:delete', guarded(g, (_evt, { id, name }) => backupService.delete(id, name)));
 
 ipcMain.handle('backup:openFolder', guarded(g, (_evt, { id }) => {
+  if (!serverProfiles.getProfile(userDataDir(), id)) return { ok: false, error: 'Server profile not found.' };
   const dir = backupService.dirFor(id);
   fs.mkdirSync(dir, { recursive: true });
   shell.openPath(dir);

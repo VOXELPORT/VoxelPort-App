@@ -151,15 +151,15 @@ function existingWorlds(serverDir, level) {
   return worldNamesFor(level).filter((w) => isRealDirectory(path.join(serverDir, w)));
 }
 
-/** Every regular file under `abs`, as { abs, rel, size, mtime }. Symlinks are never followed. */
-function collectFiles(abs, rel, out) {
-  for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+/** Every regular file under `abs`, as { abs, rel, size, mtime }. Symlinks are never followed. Async: a big world has many thousands of files. */
+async function collectFiles(abs, rel, out) {
+  for (const entry of await fs.promises.readdir(abs, { withFileTypes: true })) {
     if (SKIP_FILES.has(entry.name)) continue;
     const full = path.join(abs, entry.name);
     const relPath = `${rel}/${entry.name}`;
-    if (entry.isDirectory()) collectFiles(full, relPath, out);
+    if (entry.isDirectory()) await collectFiles(full, relPath, out);
     else if (entry.isFile()) {
-      const st = fs.statSync(full);
+      const st = await fs.promises.stat(full);
       out.push({ abs: full, rel: relPath, size: st.size, mtime: st.mtime });
     }
   }
@@ -201,7 +201,7 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
   if (!worlds.length) throw new BackupError('no-world', 'There is no world to back up yet. Start the server once so it creates one.');
 
   const files = [];
-  for (const w of worlds) collectFiles(path.join(serverDir, w), w, files);
+  for (const w of worlds) await collectFiles(path.join(serverDir, w), w, files);
   for (const f of CONFIG_FILES) {
     const abs = path.join(serverDir, f);
     try {
@@ -372,13 +372,14 @@ function extractAll(file, destDir, onBytes) {
 
 // ─── Restoring ───────────────────────────────────────────────────────────────
 
-function renameWithRetry(from, to) {
-  // Windows can briefly refuse to move a folder a virus scanner is looking at.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function renameWithRetry(from, to) {
+  // Windows can briefly refuse to move a folder a virus scanner is looking at. The wait does not hold up the app.
   for (let attempt = 0; ; attempt++) {
     try { fs.renameSync(from, to); return; } catch (err) {
       if (attempt >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
-      const until = Date.now() + 250 * (attempt + 1);
-      while (Date.now() < until) { /* short wait */ }
+      await sleep(250 * (attempt + 1));
     }
   }
 }
@@ -434,12 +435,12 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
     fs.mkdirSync(old, { recursive: true });
     for (const w of touched) {
       if (!isRealDirectory(path.join(serverDir, w))) continue;
-      renameWithRetry(path.join(serverDir, w), path.join(old, w));
+      await renameWithRetry(path.join(serverDir, w), path.join(old, w));
       moved.push(w);
     }
     for (const w of meta.worlds) {
       if (!isRealDirectory(path.join(tmp, w))) continue;
-      renameWithRetry(path.join(tmp, w), path.join(serverDir, w));
+      await renameWithRetry(path.join(tmp, w), path.join(serverDir, w));
       placed.push(w);
     }
     for (const f of CONFIG_FILES) {
@@ -452,7 +453,7 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
   } catch (err) {
     // Put everything back the way it was.
     for (const w of placed) rmQuiet(path.join(serverDir, w));
-    for (const w of moved) { try { renameWithRetry(path.join(old, w), path.join(serverDir, w)); } catch { /* keep going: the rest still matters */ } }
+    for (const w of moved) { try { await renameWithRetry(path.join(old, w), path.join(serverDir, w)); } catch { /* keep going: the rest still matters */ } }
     for (const f of listsKept) { try { fs.copyFileSync(path.join(old, f), path.join(serverDir, f)); } catch { /* keep going */ } }
     for (const f of listsAdded) rmQuiet(path.join(serverDir, f));
     rmQuiet(tmp);

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { downloadServerJar } = require('./serverInstall');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 /**
  * "Cracked" (offline-mode) servers: let people without a paid Minecraft account join.
@@ -58,7 +59,7 @@ function setCracked(serverDir, cracked) {
     if (m) { lines[i] = `${m[1]}=${value}`; seen.add(m[1]); }
   }
   for (const key of KEYS) if (!seen.has(key)) lines.push(`${key}=${value}`);
-  fs.writeFileSync(file, lines.join(nl) + nl);
+  atomicWriteFileSync(file, lines.join(nl) + nl);
 }
 
 /** Checks a change coming from the renderer: enabling cracked mode needs an explicit confirmation. */
