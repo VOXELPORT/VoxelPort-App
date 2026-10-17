@@ -39,6 +39,16 @@ const WS_BUFFERED_LOW_WATERMARK = 1 * 1024 * 1024;
 
 const LOCAL_CONNECT_TIMEOUT_MS = 10000;
 
+// Protocol v2: when the relay confirms "bin": 1 in its port frame, TCP and UDP payloads travel as binary WebSocket
+// messages instead of base64 inside JSON. Layout: byte 0 = kind, bytes 1-16 = the connection id as 16 raw bytes (the
+// relay's 32-character hex id), bytes 17+ = the payload. Control frames stay JSON in both modes.
+const FRAME_TCP = 0x01;
+const FRAME_UDP = 0x02;
+const FRAME_HEADER_LEN = 17;
+const HEX_CONN_ID = /^[0-9a-f]{32}$/;
+// A rejected binary frame is logged at most this often, so a broken relay can't flood the console.
+const BAD_FRAME_LOG_EVERY_MS = 30000;
+
 // Bedrock (UDP) sessions — mirrors the relay's own caps (relay/udp.go).
 const MAX_UDP_SESSIONS = 256;
 const MAX_UDP_DATAGRAM = 2048;
@@ -47,6 +57,27 @@ const UDP_SESSION_IDLE_MS = 60000;
 
 function isValidConnId(id) {
   return typeof id === 'string' && id.length > 0 && id.length <= MAX_CONN_ID_LEN;
+}
+
+/**
+ * Splits a binary relay frame into { kind, conn, payload } (conn is the 32-character hex id), or returns null when
+ * it can't be one: shorter than its header, or a kind this version doesn't know. What the connection id refers to is
+ * checked by the caller.
+ */
+function parseBinaryFrame(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < FRAME_HEADER_LEN) return null;
+  const kind = buf[0];
+  if (kind !== FRAME_TCP && kind !== FRAME_UDP) return null;
+  return { kind, conn: buf.subarray(1, FRAME_HEADER_LEN).toString('hex'), payload: buf.subarray(FRAME_HEADER_LEN) };
+}
+
+/** A binary frame: the header (kind + the 16 bytes of `raw`) in front of `payload`. */
+function buildBinaryFrame(kind, raw, payload) {
+  const frame = Buffer.allocUnsafe(FRAME_HEADER_LEN + payload.length);
+  frame[0] = kind;
+  raw.copy(frame, 1);
+  payload.copy(frame, FRAME_HEADER_LEN);
+  return frame;
 }
 
 /**
@@ -60,7 +91,8 @@ function isValidRelayMessage(msg) {
   if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return false;
   switch (msg.type) {
     case 'port':
-      return Number.isInteger(msg.port) && msg.port >= 1 && msg.port <= 65535;
+      return Number.isInteger(msg.port) && msg.port >= 1 && msg.port <= 65535
+        && (msg.bin === undefined || Number.isInteger(msg.bin));
     case 'connect':
       return isValidConnId(msg.conn) && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
     case 'data':
@@ -113,6 +145,8 @@ class Tunnel extends EventEmitter {
     this.ws = null;
     this.players = new Map(); // connID -> { sock, pendingBytes, closed }
     this.running = false; // registered with the relay and online
+    this.bin = false; // protocol v2 is on for the current connection (the relay confirmed it)
+    this.badFrameLoggedAt = 0;
     this.live = false; // from start() until 'stopped': connecting, online and reconnecting all count
     this.manualStop = false;
     this.reconnectTimer = null;
@@ -179,13 +213,14 @@ class Tunnel extends EventEmitter {
     ws.on('open', () => {
       opened = true;
       this.emit('log', 'Connected. Registering…');
-      const reg = { type: 'register', token: this.token };
+      this.bin = false; // decided again by every port frame
+      const reg = { type: 'register', token: this.token, bin: 1 };
       if (this.client) reg.client = this.client;
       if (this.udpPort) reg.udp = true;
       this._send(reg);
     });
 
-    ws.on('message', (raw) => this._onMessage(raw));
+    ws.on('message', (data, isBinary) => (isBinary ? this._onBinary(data) : this._onMessage(data)));
 
     ws.on('close', () => {
       if (this.manualStop) {
@@ -238,6 +273,7 @@ class Tunnel extends EventEmitter {
     switch (msg.type) {
       case 'port':
         this.running = true;
+        this.bin = msg.bin === 1; // only the relay saying so turns it on: an older relay never does
         this.reconnectDelay = 1000;
         this.emit('status', 'online');
         this.emit('assigned', msg.port);
@@ -339,9 +375,50 @@ class Tunnel extends EventEmitter {
     }
   }
 
+  /** A binary frame from the relay: validated, then handled like the JSON data/udp frame it replaces. */
+  _onBinary(data) {
+    if (!this.bin) { this._noteBadFrame('the relay sent a binary frame without agreeing to protocol v2'); return; }
+    const frame = parseBinaryFrame(data);
+    if (!frame) { this._noteBadFrame('too short, or an unknown kind'); return; }
+    if (frame.payload.length === 0) return;
+
+    if (frame.kind === FRAME_TCP) {
+      const pc = this.players.get(frame.conn);
+      if (!pc || pc.closed) { this._noteBadFrame('it names a connection that does not exist'); return; }
+      // Dropping a chunk would leave a hole in the player's stream, so a payload that is too big ends that player.
+      if (frame.payload.length > MAX_WS_MESSAGE_BYTES) {
+        this.emit('log', 'A frame from the relay was larger than allowed — disconnecting that player.');
+        this._closePlayer(frame.conn, /* notifyRelay */ true);
+        return;
+      }
+      this._writeToPlayer(frame.conn, pc, frame.payload);
+      return;
+    }
+
+    // UDP: the first datagram of a session names an id nobody has seen yet, exactly as the JSON udp frame does.
+    if (!this.udpPort) return;
+    if (frame.payload.length > MAX_UDP_DATAGRAM) { this._noteBadFrame('a datagram that is too big'); return; }
+    let session = this.udpSessions.get(frame.conn);
+    if (!session) {
+      if (this.udpSessions.size >= MAX_UDP_SESSIONS) return;
+      session = this._openUdpSession(frame.conn);
+    }
+    this._touchUdpSession(frame.conn, session);
+    session.sock.send(frame.payload, this.udpPort, '127.0.0.1');
+  }
+
+  _noteBadFrame(reason) {
+    const now = Date.now();
+    if (now - this.badFrameLoggedAt < BAD_FRAME_LOG_EVERY_MS) return;
+    this.badFrameLoggedAt = now;
+    this.emit('log', `Ignored a binary frame from the relay (${reason}); more are not logged for ${BAD_FRAME_LOG_EVERY_MS / 1000}s.`);
+  }
+
   _openPlayer(conn, ip) {
     const sock = new net.Socket();
-    const pc = { sock, pendingBytes: 0, closed: false };
+    // The 16 raw bytes of the id, for binary frames. Only a proper 32-character hex id has them; any other stays on JSON.
+    const raw = HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null;
+    const pc = { sock, pendingBytes: 0, closed: false, raw };
     this.players.set(conn, pc);
     this.emit('players', this.players.size);
     this.emit('log', `Player connected${ip ? ' from ' + ip : ''} → 127.0.0.1:${this.localPort}`);
@@ -378,10 +455,11 @@ class Tunnel extends EventEmitter {
   /** Local server -> relay, with bounded backpressure on the shared WebSocket (item 20). */
   _onLocalData(conn, buf) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this._send({ type: 'data', conn, data: buf.toString('base64') });
+    const pc = this.players.get(conn);
+    if (this.bin && pc && pc.raw) this._sendBinary(buildBinaryFrame(FRAME_TCP, pc.raw, buf));
+    else this._send({ type: 'data', conn, data: buf.toString('base64') });
 
     if (this.ws.bufferedAmount > WS_BUFFERED_HIGH_WATERMARK) {
-      const pc = this.players.get(conn);
       if (pc && !pc.sock.isPaused()) pc.sock.pause();
       this._armWsStallWatch();
     }
@@ -445,12 +523,13 @@ class Tunnel extends EventEmitter {
 
   _openUdpSession(conn) {
     const sock = dgram.createSocket('udp4');
-    const s = { sock, idleTimer: null };
+    const s = { sock, idleTimer: null, raw: HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null };
     this.udpSessions.set(conn, s);
     sock.on('message', (buf) => {
       if (buf.length > MAX_UDP_DATAGRAM) return;
       this._touchUdpSession(conn, s);
-      this._send({ type: 'udp', conn, data: buf.toString('base64') });
+      if (this.bin && s.raw) this._sendBinary(buildBinaryFrame(FRAME_UDP, s.raw, buf));
+      else this._send({ type: 'udp', conn, data: buf.toString('base64') });
     });
     sock.on('error', () => this._closeUdpSession(conn, true));
     return s;
@@ -519,6 +598,12 @@ class Tunnel extends EventEmitter {
     }
   }
 
+  _sendBinary(frame) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(frame, { binary: true });
+    }
+  }
+
   stop() {
     if (!this.live || this.manualStop) return; // never started, or already stopping: one 'stopped' per life
     this.manualStop = true;
@@ -543,4 +628,4 @@ class Tunnel extends EventEmitter {
   }
 }
 
-module.exports = { Tunnel, isValidRelayMessage, MAX_LOCAL_PLAYERS };
+module.exports = { Tunnel, isValidRelayMessage, parseBinaryFrame, buildBinaryFrame, MAX_LOCAL_PLAYERS, FRAME_TCP, FRAME_UDP, FRAME_HEADER_LEN };
