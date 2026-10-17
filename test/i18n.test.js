@@ -25,6 +25,7 @@ const SAME_IN_BOTH = new Set([
   'Modded (Fabric)', 'Creative Flat', 'Peaceful Chill', 'View distance (chunks)', 'Simulation distance (chunks)', 'Spawn protection (blocks)',
   'Memory (RAM) —', 'affiliate link', 'Off.', 'Relay: {message}', 'Local server port',
   'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar',
+  'Plugins', 'PLUGINS', 'Mods', 'MODS',
 ]);
 
 // Messages the main process can send back; the screen runs them through t().
@@ -41,6 +42,9 @@ const MESSAGES_THE_APP_SENDS = [
   'That backup is gone.', "That is not one of VoxelPort's backups.", 'That file is not a VoxelPort backup.', 'That backup has no world in it.',
   'That backup is from a newer VoxelPort or is damaged.', 'The backup could not be verified.', 'That backup is too big to restore.',
   'That backup contains a file outside its folder, so it was not restored.',
+  'Plugins and mods need a Paper or Fabric server.', 'Invalid project.', 'That one was not installed by VoxelPort.',
+  'Stop the server first. A running server has its plugins and mods open.', 'Stop the server first to update one that is already installed.',
+  "Couldn't install that.", "Couldn't remove that.",
 ];
 
 const { static: staticStrings, code: codeStrings, data: dataStrings } = allStrings();
