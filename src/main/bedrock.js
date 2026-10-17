@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { downloadServerJar } = require('./serverInstall');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 /**
  * One-click Bedrock support: Geyser (translates Bedrock ↔ Java) plus
@@ -87,7 +88,7 @@ function readRegistry(serverDir) {
 }
 
 function writeRegistry(serverDir, files) {
-  fs.writeFileSync(path.join(serverDir, REGISTRY), JSON.stringify({ files }, null, 2));
+  atomicWriteFileSync(path.join(serverDir, REGISTRY), JSON.stringify({ files }, null, 2));
 }
 
 /** The jars to replace or remove: the ones on the list, or (no list) the ones with Geyser's and Floodgate's own names. */

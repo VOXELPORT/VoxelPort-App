@@ -9,6 +9,9 @@ const http = require('http');
 const crypto = require('crypto');
 const { writeServerProperties, downloadServerJar, updateServerPropertiesSafely, detectExistingServer, isOfficialDownloadHost, assertFolderEmptyForInstall } = require('../src/main/serverInstall');
 
+// The tests download from a local mock server, which only the development flag allows (see isAllowedDownloadUrl).
+process.env.VOXELPORT_DEV_DOWNLOADS = '1';
+
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-test-'));
 }
@@ -285,4 +288,48 @@ test('D3: a refused install leaves the existing server exactly as it was', () =>
   assert.throws(() => assertFolderEmptyForInstall(dir));
   assert.equal(fs.readFileSync(path.join(dir, 'server.properties'), 'utf8'), 'motd=keep me\n');
   assert.equal(fs.readFileSync(path.join(dir, 'server.jar'), 'utf8'), 'my jar');
+});
+
+test('H2: without the development flag, a download from this machine or the local network is refused', async () => {
+  const dest = path.join(tmpDir(), 'server.jar');
+  const hits = [];
+  const srv = http.createServer((req, res) => { hits.push(req.url); res.end('x'); });
+  await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  const port = srv.address().port;
+  const saved = process.env.VOXELPORT_DEV_DOWNLOADS;
+  delete process.env.VOXELPORT_DEV_DOWNLOADS;
+  try {
+    for (const url of [`http://127.0.0.1:${port}/`, `http://localhost:${port}/`, 'http://192.168.1.10/server.jar', 'https://10.0.0.5/server.jar', 'http://[::1]/server.jar']) {
+      await assert.rejects(downloadServerJar(url, dest, null), /untrusted/i, url);
+    }
+    assert.deepEqual(hits, [], 'nothing was even requested');
+    assert.equal(fs.existsSync(dest), false);
+    process.env.VOXELPORT_DEV_DOWNLOADS = '0';
+    await assert.rejects(downloadServerJar(`http://127.0.0.1:${port}/`, dest, null), /untrusted/i, 'only "1" turns it on');
+  } finally {
+    if (saved === undefined) delete process.env.VOXELPORT_DEV_DOWNLOADS; else process.env.VOXELPORT_DEV_DOWNLOADS = saved;
+    srv.close();
+  }
+});
+
+test('H2: a redirect from a download to this machine is refused too, when the flag is off', async () => {
+  const dest = path.join(tmpDir(), 'server.jar');
+  const target = http.createServer((req, res) => res.end('internal service'));
+  await new Promise((resolve) => target.listen(0, '127.0.0.1', resolve));
+  const targetPort = target.address().port;
+  const first = http.createServer((req, res) => { res.writeHead(302, { location: `http://127.0.0.1:${targetPort}/internal` }); res.end(); });
+  await new Promise((resolve) => first.listen(0, '127.0.0.1', resolve));
+  const firstPort = first.address().port;
+  const saved = process.env.VOXELPORT_DEV_DOWNLOADS;
+  try {
+    process.env.VOXELPORT_DEV_DOWNLOADS = '1'; // the start of the chain is allowed here only so the test can reach the redirect
+    // Turn the flag off as soon as the first response is on its way, as it would be in the real app.
+    first.once('request', () => { delete process.env.VOXELPORT_DEV_DOWNLOADS; });
+    await assert.rejects(downloadServerJar(`http://127.0.0.1:${firstPort}/`, dest, null), /untrusted/i);
+    assert.equal(fs.existsSync(dest), false);
+  } finally {
+    if (saved === undefined) delete process.env.VOXELPORT_DEV_DOWNLOADS; else process.env.VOXELPORT_DEV_DOWNLOADS = saved;
+    first.close();
+    target.close();
+  }
 });

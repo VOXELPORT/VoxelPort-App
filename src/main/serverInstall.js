@@ -6,6 +6,7 @@ const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
 const { isPrivateOrLocalHost } = require('./relayUrlSafety');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 function getServerDir(userDataDir) {
   return path.join(userDataDir, 'server');
@@ -33,16 +34,16 @@ function isOfficialDownloadHost(hostname) {
 }
 
 /**
- * A download URL is allowed when it's HTTPS to an official host, or — the
- * same private/local carve-out relayUrlSafety.js uses for the relay URL —
- * HTTP or HTTPS to loopback/a private address, which only matters for local
- * development/testing against a mock download server and can never be
- * reached by following a redirect from a real Mojang/Paper/Fabric response
- * (those only ever redirect to their own CDN hosts). A public HTTPS URL
- * redirecting to a public HTTP URL is rejected either way (item 23).
+ * A download URL is allowed when it's HTTPS to an official host. Loopback and
+ * private addresses (over HTTP or HTTPS) are allowed only for development and
+ * tests against a mock download server, and only when VOXELPORT_DEV_DOWNLOADS=1
+ * is set in the environment: in the real app a download, or a redirect from
+ * one, can never be pointed at the machine itself or the local network. A
+ * public HTTPS URL redirecting to a public HTTP URL is rejected either way
+ * (item 23).
  */
 function isAllowedDownloadUrl(parsed) {
-  if (isPrivateOrLocalHost(parsed.hostname)) return true;
+  if (process.env.VOXELPORT_DEV_DOWNLOADS === '1' && isPrivateOrLocalHost(parsed.hostname)) return true;
   return parsed.protocol === 'https:' && isOfficialDownloadHost(parsed.hostname);
 }
 
@@ -194,7 +195,7 @@ function writeServerProperties(serverDir, { port = 25565, maxPlayers = 20, diffi
     if (i !== -1) lines[i] = `${key}=${value}`;
     else lines.push(`${key}=${value}`);
   }
-  fs.writeFileSync(path.join(serverDir, 'server.properties'), lines.join('\n') + '\n');
+  atomicWriteFileSync(path.join(serverDir, 'server.properties'), lines.join('\n') + '\n');
 }
 
 /**
@@ -235,7 +236,7 @@ function updateServerPropertiesSafely(serverDir, changes) {
     if (!seen.has(key)) updated.push(`${key}=${value}`);
   }
 
-  fs.writeFileSync(file, updated.join('\n'));
+  atomicWriteFileSync(file, updated.join('\n'));
 }
 
 /**
