@@ -37,7 +37,7 @@ const { NoticeAnnouncer } = require('./notice');
 const { BackupService } = require('./backupService');
 const backupsLib = require('./backups');
 
-// "Use VoxelPort's relay" — the region (India / North America) is picked per
+// "Use VoxelPort's relay" — the region (India / Europe) is picked per
 // tunnel by regions.js. Any other URL is a self-hosted relay used as-is.
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
 const PUBLIC_HOST = REGIONS.in.publicHost;
@@ -114,7 +114,7 @@ function visibleCustomAddress() {
   return customAddress;
 }
 
-// App-wide preferences (currently just the relay region: auto / in / na).
+// App-wide preferences (currently just the relay region: auto / in / eu).
 let prefs = { region: 'auto' };
 function prefsPath() {
   return path.join(userDataDir(), 'preferences.json');

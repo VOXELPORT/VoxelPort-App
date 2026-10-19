@@ -22,22 +22,52 @@ test('every shipped region has relay URLs, a status URL and a public host', () =
   assert.ok(REGIONS[DEFAULT_REGION], 'the default region is shipped');
 });
 
-test('only India ships right now (North America removed)', () => {
-  assert.deepEqual(Object.keys(REGIONS), ['in']);
+test('India and Europe ship (North America is not offered)', () => {
+  assert.deepEqual(Object.keys(REGIONS), ['in', 'eu']);
+  assert.equal(REGIONS.eu.label, 'Europe');
+  assert.deepEqual(REGIONS.eu.relayUrls, ['wss://eu.voxelport.in']);
+  assert.deepEqual(REGIONS.eu.statusUrls, ['https://eu.voxelport.in/api/status']);
+  assert.equal(REGIONS.eu.publicHost, 'play-eu.voxelport.in');
 });
 
 test('preferences are auto plus the shipped regions; others fall back to auto', () => {
   assert.equal(normalizePreference('in'), 'in');
+  assert.equal(normalizePreference('eu'), 'eu');
   assert.equal(normalizePreference('auto'), 'auto');
   assert.equal(normalizePreference('na'), 'auto'); // not shipped
   assert.equal(normalizePreference('mars'), 'auto');
   assert.equal(normalizePreference(undefined), 'auto');
 });
 
-test('a single shipped region is used without measuring', async () => {
-  const res = await pickRegion({ preference: 'auto', measure: () => { throw new Error('measured'); } });
+test('a single region is used without measuring', async () => {
+  const res = await pickRegion({ preference: 'auto', regions: { in: REGIONS.in }, measure: () => { throw new Error('measured'); } });
   assert.equal(res.region.id, 'in');
   assert.equal(res.reason, 'only');
+});
+
+test('shipped regions: a player near India stays on India, one near Europe gets Europe', async () => {
+  const india = await pickRegion({ preference: 'auto', measure: fixed({ in: 18, eu: 160 }) });
+  assert.equal(india.region.id, 'in');
+  const europe = await pickRegion({ preference: 'auto', measure: fixed({ in: 150, eu: 22 }) });
+  assert.equal(europe.region.id, 'eu');
+  assert.equal(europe.reason, 'fastest');
+});
+
+test('shipped regions: a custom address (India only) keeps the tunnel on India, even from Europe', async () => {
+  const res = await pickRegion({ preference: 'auto', nameRegion: 'in', measure: fixed({ in: 150, eu: 22 }) });
+  assert.equal(res.region.id, 'in');
+  assert.equal(res.reason, 'address');
+});
+
+test('shipped regions: Europe being down falls back to India', async () => {
+  const res = await pickRegion({ preference: 'auto', measure: fixed({ in: 30, eu: Infinity }) });
+  assert.equal(res.region.id, 'in');
+});
+
+test('choosing Europe explicitly uses it even when India is faster', async () => {
+  const res = await pickRegion({ preference: 'eu', measure: () => { throw new Error('measured'); } });
+  assert.equal(res.region.id, 'eu');
+  assert.equal(res.reason, 'chosen');
 });
 
 test('an explicit region wins, without measuring', async () => {

@@ -6,16 +6,14 @@
 // relayUrls are tried in order (see Tunnel.start). India is reached directly
 // first, then through Cloudflare if the direct port is blocked.
 //
-// The code supports several regions; the app currently ships only India. To
-// bring North America back, re-add its entry below — nothing else needs to
-// change:
-//   na: {
-//     id: 'na',
-//     label: 'North America',
-//     relayUrls: ['wss://na.voxelport.in'],
-//     statusUrls: ['https://na.voxelport.in/api/status'],
-//     publicHost: 'play-na.voxelport.in',
-//   },
+// The app ships India and Europe. Adding another region is one entry below
+// (nothing else needs to change). The Europe relay serves wss straight on
+// :443 with a Let's Encrypt certificate (no Cloudflare in front), so it has a
+// single relay URL.
+//
+// Custom addresses (supporters) are created through Cloudflare DNS, which only
+// the India relay is set up for; the Europe relay answers a claim with an
+// error, and the app keeps an address on the region that owns it.
 const REGIONS = {
   in: {
     id: 'in',
@@ -23,6 +21,13 @@ const REGIONS = {
     relayUrls: ['wss://direct.voxelport.in:26499', 'wss://relay.voxelport.in'],
     statusUrls: ['https://direct.voxelport.in:26499/api/status', 'https://relay.voxelport.in/api/status'],
     publicHost: 'play.voxelport.in',
+  },
+  eu: {
+    id: 'eu',
+    label: 'Europe',
+    relayUrls: ['wss://eu.voxelport.in'],
+    statusUrls: ['https://eu.voxelport.in/api/status'],
+    publicHost: 'play-eu.voxelport.in',
   },
 };
 const DEFAULT_REGION = 'in';
