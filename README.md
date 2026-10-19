@@ -6,13 +6,13 @@
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest"><img src="https://img.shields.io/github/v/release/VOXELPORT/VoxelPort-App?style=for-the-badge&label=Latest&color=5FAE3B&labelColor=15120F" alt="Latest release" /></a>
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases"><img src="https://img.shields.io/badge/Price-Free-F6CB2F?style=for-the-badge&labelColor=15120F" alt="Free" /></a>
   <a href="https://voxelport.in/status"><img src="https://img.shields.io/badge/Relay-Status-43C8D8?style=for-the-badge&labelColor=15120F" alt="Relay status" /></a>
-  <a href="https://discord.gg/2wJbCPwP4r"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=15120F" alt="Join the Discord" /></a>
+  <a href="https://discord.gg/JAUfmey2fP"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=15120F" alt="Join the Discord" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-C8262B?style=for-the-badge&labelColor=15120F" alt="MIT license" /></a>
 </p>
 
 <h3 align="center">
   Host a Minecraft server from your PC. Friends join with plain Minecraft.<br />
-  No port forwarding · no signup · a friendly <a href="https://discord.gg/2wJbCPwP4r">Discord</a> if you want help.
+  No port forwarding · no signup · a friendly <a href="https://discord.gg/JAUfmey2fP">Discord</a> if you want help.
 </h3>
 
 <p align="center">
