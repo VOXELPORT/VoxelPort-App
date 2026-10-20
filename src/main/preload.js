@@ -110,6 +110,20 @@ contextBridge.exposeInMainWorld('vp', {
     openFolder: (id) => ipcRenderer.invoke('addons:openFolder', { id }),
   },
 
+  // Import a Modrinth .mrpack and build a Fabric server from it.
+  modpack: {
+    choose: () => ipcRenderer.invoke('modpack:choose'),
+    install: (config) => ipcRenderer.invoke('modpack:install', config),
+  },
+
+  // Friends-only hosting: the whitelist, edited from one screen.
+  whitelist: {
+    status: (id) => ipcRenderer.invoke('whitelist:status', { id }),
+    add: (id, text) => ipcRenderer.invoke('whitelist:add', { id, text }),
+    remove: (id, name) => ipcRenderer.invoke('whitelist:remove', { id, name }),
+    setEnabled: (id, on) => ipcRenderer.invoke('whitelist:setEnabled', { id, on }),
+  },
+
   // The Support screen. Links are opened by id/kind: the renderer never passes a URL.
   support: {
     get: (force) => ipcRenderer.invoke('support:get', { force }),

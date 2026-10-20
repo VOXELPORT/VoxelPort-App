@@ -29,6 +29,8 @@ const {
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 const accounts = require('./accounts');
 const addons = require('./addons');
+const modpackImport = require('./modpackImport');
+const whitelist = require('./whitelist');
 const { atomicWriteFileSync } = require('./atomicWrite');
 const support = require('./support');
 
@@ -1252,6 +1254,114 @@ ipcMain.handle('addons:openFolder', guarded(g, (_evt, { id }) => {
   fs.mkdirSync(dir, { recursive: true });
   shell.openPath(dir);
   return { ok: true };
+}));
+
+// ─── Modpack import (Modrinth .mrpack → Fabric server) ──────────────────────
+
+/** Ask for a .mrpack file and read its plan (what would be installed, what would be skipped), without installing. */
+ipcMain.handle('modpack:choose', guarded(g, async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: say('Choose a Modrinth modpack (.mrpack)', 'Modrinth modpack (.mrpack) chuno'),
+    properties: ['openFile'],
+    filters: [{ name: 'Modrinth modpack', extensions: ['mrpack'] }],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const file = result.filePaths[0];
+  try {
+    const plan = await modpackImport.readPlan(file);
+    return {
+      ok: true, file,
+      name: plan.name, minecraft: plan.minecraft, quilt: plan.quilt,
+      install: plan.downloads.length, skipped: plan.skipped,
+    };
+  } catch (err) {
+    return { ok: false, error: err.message, code: err.code || '' };
+  }
+}));
+
+/** Create a Fabric server from the chosen .mrpack: install the Fabric server jar, then the pack's server mods and config. */
+ipcMain.handle('modpack:install', guarded(g, async (_evt, { file, name, port, minRamMb, maxRamMb, serverDir }) => {
+  if (addonsBusy) return { ok: false, error: say('Already installing — one moment.', 'Pehle se install ho raha hai — ek pal.') };
+  const portNum = Number(port);
+  if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return { ok: false, error: say('Enter a valid server port (1–65535).', 'Sahi server port daalo (1–65535).') };
+  const minRam = Number(minRamMb);
+  const maxRam = Number(maxRamMb);
+  if (!Number.isInteger(minRam) || !Number.isInteger(maxRam) || minRam < 256 || maxRam < minRam || maxRam > 131072) return { ok: false, error: say('Invalid RAM allocation.', 'RAM galat hai.') };
+  if (serverDir !== undefined && serverDir !== null && (typeof serverDir !== 'string' || !path.isAbsolute(serverDir))) return { ok: false, error: say('Invalid server folder.', 'Server folder galat hai.') };
+
+  addonsBusy = true;
+  try {
+    const plan = await modpackImport.readPlan(file); // re-read: the file could have changed since it was chosen
+    const dir = serverDir || path.join(getServerDir(userDataDir()), '..', 'servers', String(Date.now()));
+    assertFolderEmptyForInstall(dir);
+    fs.mkdirSync(dir, { recursive: true });
+
+    send('install:progress', { phase: 'resolving' });
+    const { url, checksum } = await mcVersions.resolveDownload('fabric', plan.minecraft);
+    send('install:progress', { phase: 'downloading', received: 0, total: 0 });
+    await downloadServerJar(url, path.join(dir, 'server.jar'), (p) => send('install:progress', { phase: 'downloading', ...p }), checksum);
+
+    send('install:progress', { phase: 'mods', index: 0, total: plan.downloads.length });
+    const count = await modpackImport.installMods({
+      file, serverDir: dir, plan,
+      onProgress: (p) => send('install:progress', { phase: 'mods', ...p }),
+    });
+
+    writeEula(dir);
+    writeServerProperties(dir, { port: portNum, extra: {} });
+    const profile = serverProfiles.createProfile(userDataDir(), {
+      name: (typeof name === 'string' && name.trim()) || plan.name || 'Modpack server',
+      type: 'fabric', version: plan.minecraft, serverDir: dir, port: portNum, minRamMb: minRam, maxRamMb: maxRam,
+    });
+    send('install:progress', { phase: 'done' });
+    return { ok: true, profile, modsInstalled: count, skipped: plan.skipped };
+  } catch (err) {
+    return { ok: false, error: err.message, code: err.code || '' };
+  } finally {
+    addonsBusy = false;
+  }
+}));
+
+// ─── Friends-only (whitelist) ───────────────────────────────────────────────
+
+function whitelistSend(id) {
+  return serverIsRunning(id) ? (cmd) => serverProc.sendCommand(cmd) : null;
+}
+
+ipcMain.handle('whitelist:status', guarded(g, (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  return { ok: true, ...whitelist.status(profile.serverDir), running: serverIsRunning(id) };
+}));
+
+ipcMain.handle('whitelist:add', guarded(g, (_evt, { id, text }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  try {
+    const running = serverIsRunning(id);
+    const r = whitelist.addFriends({ serverDir: profile.serverDir, text, running, send: whitelistSend(id) });
+    return { ok: true, ...r };
+  } catch (err) { return { ok: false, error: err.message }; }
+}));
+
+ipcMain.handle('whitelist:remove', guarded(g, (_evt, { id, name }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  try {
+    const running = serverIsRunning(id);
+    const r = whitelist.removeFriend({ serverDir: profile.serverDir, name, running, send: whitelistSend(id) });
+    return { ok: true, ...r };
+  } catch (err) { return { ok: false, error: err.message }; }
+}));
+
+ipcMain.handle('whitelist:setEnabled', guarded(g, (_evt, { id, on }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  try {
+    const running = serverIsRunning(id);
+    const r = whitelist.setEnabled({ serverDir: profile.serverDir, on, running, send: whitelistSend(id) });
+    return { ok: true, ...r };
+  } catch (err) { return { ok: false, error: err.message }; }
 }));
 
 // ─── Custom address (steve.voxelport.in) ──────────────────────────────────
