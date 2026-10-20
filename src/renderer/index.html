@@ -22,6 +22,7 @@
       <div class="server-list" id="serverList"></div>
       <div class="library-actions">
         <button class="primary" id="addServerBtn">+ Add Server</button>
+        <button class="ghost" id="importModpackBtn">Import a Modpack</button>
         <button class="ghost" id="importServerBtn">Import Existing Server</button>
       </div>
       <button class="back-link" id="manualModeLink">Tunnel a server I already run elsewhere ›</button>
@@ -201,6 +202,77 @@
       <button id="importConfirmBtn" class="primary" disabled>Add to VoxelPort</button>
     </section>
 
+    <!-- IMPORT A MODPACK (.mrpack → Fabric server) -->
+    <section class="screen panel" id="screen-modpack">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Fabric modpack</div><h1>IMPORT A MODPACK</h1></div></div>
+
+      <p class="hint">Choose a Modrinth modpack file (.mrpack). VoxelPort installs the mods that run on a server and creates a Fabric server from it. Client-only mods like shaders and minimaps are skipped — they only work on each player's own game.</p>
+
+      <button id="modpackChooseBtn" class="ghost" type="button" style="margin-top:14px">Choose a .mrpack file…</button>
+      <div class="hint" id="modpackError" style="color:var(--danger);"></div>
+
+      <div id="modpackPlan" class="hidden" style="margin-top:18px">
+        <div class="field">
+          <span class="label">Server name</span>
+          <input id="modpackName" type="text" placeholder="My modpack server" maxlength="60" />
+        </div>
+        <div class="hint" id="modpackSummary"></div>
+        <details id="modpackSkippedBox" class="hidden" style="margin-top:10px">
+          <summary id="modpackSkippedSummary" style="cursor:pointer"></summary>
+          <ul id="modpackSkippedList" class="hint" style="margin-top:8px"></ul>
+        </details>
+
+        <label class="field" style="margin-top:14px">
+          <span class="label">Local port</span>
+          <input id="modpackPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span class="label">Memory (RAM) — <span id="modpackRamValueLabel">4096</span> MB</span>
+          <input id="modpackRamSlider" type="range" min="1024" max="16384" step="256" value="4096" />
+          <span class="hint">Modpacks need more RAM than a plain server. 4–6 GB is a good start.</span>
+        </label>
+
+        <button id="modpackInstallBtn" class="primary">Create the server</button>
+      </div>
+
+      <div id="modpackProgress" class="hidden" style="margin-top:18px">
+        <div class="hint" id="modpackProgressText">Working…</div>
+      </div>
+    </section>
+
+    <!-- FRIENDS ONLY (whitelist) -->
+    <section class="screen panel" id="screen-friends">
+      <button class="back-link" id="friendsBackBtn">‹ Back</button>
+      <div class="screen-title"><div><div class="label" id="friendsServerName">—</div><h1>FRIENDS ONLY</h1></div></div>
+
+      <label class="toggle-row" style="display:flex;align-items:center;gap:12px;margin-top:8px">
+        <input type="checkbox" id="friendsEnabled" />
+        <span>Only let my friends join (whitelist on)</span>
+      </label>
+      <p class="hint" id="friendsState"></p>
+      <div class="hint hidden" id="friendsCrackedWarn" style="color:var(--warn, #b8860b)"></div>
+
+      <label class="field" style="margin-top:16px">
+        <span class="label">Add friends by Minecraft username</span>
+        <textarea id="friendsInput" rows="2" placeholder="Steve, Alex, Notch" spellcheck="false"></textarea>
+        <span class="hint">Separate names with spaces, commas or new lines. 3–16 letters, numbers or underscore.</span>
+      </label>
+      <button id="friendsAddBtn" class="primary">Add to the whitelist</button>
+      <div class="hint" id="friendsAddMsg"></div>
+
+      <div style="margin-top:20px">
+        <div class="label">On the whitelist</div>
+        <ul id="friendsList" class="server-list" style="margin-top:8px"></ul>
+        <p class="hint hidden" id="friendsEmpty">No one yet. Add a friend above.</p>
+      </div>
+
+      <div class="share-invite" style="margin-top:22px">
+        <button id="friendsInviteBtn" class="ghost small" type="button">Copy invite message</button>
+        <span class="hint">Share your server address so friends know how to join.</span>
+      </div>
+    </section>
+
     <!-- MANAGE (per-server console) -->
     <section class="screen panel" id="screen-console">
       <button class="back-link" data-back="screen-library">‹ Back to library</button>
@@ -229,6 +301,7 @@
         <button id="srvStopBtn" class="ghost hidden">Stop</button>
         <button id="srvSettingsBtn" class="ghost">Settings</button>
         <button id="srvBackupsBtn" class="ghost">Backups</button>
+        <button id="srvFriendsBtn" class="ghost">Friends only</button>
         <button id="srvAddonsBtn" class="ghost hidden">Plugins</button>
         <button id="srvFolderBtn" class="ghost">Open folder</button>
         <button id="srvRemoveBtn" class="ghost">Remove from VoxelPort</button>
@@ -487,7 +560,9 @@
   <script src="library.js"></script>
   <script src="wizard.js"></script>
   <script src="import.js"></script>
+  <script src="modpack-ui.js"></script>
   <script src="console.js"></script>
+  <script src="friends-ui.js"></script>
   <script src="settings.js"></script>
   <script src="backups-ui.js"></script>
   <script src="addons-ui.js"></script>

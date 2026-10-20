@@ -159,7 +159,8 @@ $('nameRemoveBtn').addEventListener('click', async () => {
 });
 
 // "Copy invite message": the address as the screen shows it, with the name, version and Bedrock details.
-wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), () => {
+// Exposed so the Friends-only screen can offer the same invite for the server being managed.
+function currentInviteData() {
   if (!assigned) return null;
   const plain = `${assigned.host}:${assigned.port}`;
   const bedrockOn = Boolean(managingProfile && managingProfile.bedrock);
@@ -170,7 +171,9 @@ wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), () => {
     plainAddress: customAddress.address ? plain : '',
     bedrock: bedrockOn ? { host: customAddress.address || assigned.host, port: assigned.port } : null,
   };
-});
+}
+window.currentInviteData = currentInviteData;
+wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), currentInviteData);
 
 window.vp.on('tunnel:name', (n) => {
   if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
@@ -286,6 +289,7 @@ window.onAppState.push(() => { if ($('screen-console').classList.contains('activ
 window.openManagementScreen = async function openManagementScreen(id) {
   if (managingProfileId !== id) { clearDiagnosis(); resetPerf(); }
   managingProfileId = id;
+  window.managingProfileId = id; // other screens (Friends only) read the server being managed
   srvLog.innerHTML = '';
   const profile = await window.vp.server.get(id);
   if (!profile) { showScreen('screen-library'); return; }

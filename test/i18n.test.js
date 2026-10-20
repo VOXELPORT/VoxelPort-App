@@ -26,6 +26,8 @@ const SAME_IN_BOTH = new Set([
   'Memory (RAM) —', 'affiliate link', 'Off.', 'Relay: {message}', 'Local server port',
   'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar',
   'Plugins', 'PLUGINS', 'Mods', 'MODS',
+  // Example usernames and a loader name read the same written in Roman script.
+  'Steve, Alex, Notch', 'Fabric modpack',
 ]);
 
 // Messages the main process can send back; the screen runs them through t().

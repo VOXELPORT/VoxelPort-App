@@ -139,10 +139,14 @@ function wireInviteButtons(mainBtn, altBtn, getData) {
   const other = mine === 'en' ? 'hinglish' : 'en';
   const mainLabel = mainBtn.textContent;
   const altLabel = other === 'hinglish' ? t('Copy in Hinglish') : t('Copy in English');
-  altBtn.textContent = altLabel;
+  if (altBtn) altBtn.textContent = altLabel;
   const copy = (lang, btn, label) => async () => {
     const data = getData();
-    if (!data) return;
+    if (!data || data.notPublic) {
+      // The server isn't public yet: tell the person to make it public first, rather than copying nothing.
+      if (data && data.notPublic) { btn.textContent = t('Make it public first'); setTimeout(() => { btn.textContent = label; }, 1800); }
+      return;
+    }
     try {
       await navigator.clipboard.writeText(VPInvite.buildInviteMessage({ lang, ...data }));
       btn.textContent = t('Copied!');
@@ -150,7 +154,7 @@ function wireInviteButtons(mainBtn, altBtn, getData) {
     } catch { /* clipboard unavailable */ }
   };
   mainBtn.addEventListener('click', copy(mine, mainBtn, mainLabel));
-  altBtn.addEventListener('click', copy(other, altBtn, altLabel));
+  if (altBtn) altBtn.addEventListener('click', copy(other, altBtn, altLabel));
 }
 window.wireInviteButtons = wireInviteButtons;
 
