@@ -210,9 +210,15 @@ button:focus-visible, input[type="checkbox"]:focus-visible, summary:focus-visibl
 
 /* ─── Footer ───────────────────────────────────────────────────────────── */
 .foot {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;
   font-family: var(--type); font-size: .72rem; color: var(--muted); padding: 14px 4px 2px;
 }
+.foot-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.foot-actions > button { flex: 0 0 auto; white-space: nowrap; }
+.foot-links { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; }
+.foot-links > * { flex-shrink: 0; white-space: nowrap; }
+.diagnostic-status { text-align: center; overflow-wrap: anywhere; user-select: text; }
+.diagnostic-status:empty { display: none; }
 .foot a { color: var(--ink); font-weight: 700; text-decoration: none; border-bottom: 2px solid var(--grass); }
 .foot a:hover { color: var(--red); border-bottom-color: var(--red); }
 
