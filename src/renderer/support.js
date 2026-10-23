@@ -4,6 +4,18 @@
 // page with textContent (never innerHTML), and hosting links are opened by id, not by URL.
 (function () {
   const $ = (id) => document.getElementById(id);
+  $('discordBtn').addEventListener('click', () => window.vp.openDiscord());
+  $('exportErrorsBtn').addEventListener('click', async () => {
+    const button = $('exportErrorsBtn');
+    button.disabled = true;
+    try {
+      const result = await window.vp.exportDiagnostics();
+      $('diagnosticStatus').textContent = result.canceled ? '' : result.ok
+        ? t('Report saved. Review it for personal details, then attach it to a Discord support ticket.')
+        : t('Could not save the error report. Try another folder.');
+    } catch { $('diagnosticStatus').textContent = t('Could not export the report. Please try again.'); }
+    finally { button.disabled = false; }
+  });
   let previous = 'screen-library';
 
   function el(tag, className, text) {

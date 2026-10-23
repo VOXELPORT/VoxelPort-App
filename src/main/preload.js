@@ -6,6 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('vp', {
   // app:info deliberately never returns the raw device token — see token.js/main.js.
   info: () => ipcRenderer.invoke('app:info'),
+  exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
+  openDiscord: () => ipcRenderer.invoke('community:discord'),
   copyToken: () => ipcRenderer.invoke('token:copy'),
 
   start: (opts) => ipcRenderer.invoke('tunnel:start', opts),

@@ -33,6 +33,9 @@ const modpackImport = require('./modpackImport');
 const whitelist = require('./whitelist');
 const { atomicWriteFileSync } = require('./atomicWrite');
 const support = require('./support');
+const { createReport, redact: redactDiagnostic } = require('./diagnostics');
+const diagnosticLines = [];
+let diagnosticServer = null;
 
 const { REGIONS, isRegion, normalizePreference, pickRegion } = require('./regions');
 const { NoticeAnnouncer } = require('./notice');
@@ -184,6 +187,10 @@ function createWindow() {
 }
 
 function send(channel, payload) {
+  if (/^(?:server:log|tunnel:log|tunnel:error|update:error)$/.test(channel)) {
+    diagnosticLines.push(`${new Date().toISOString()} [${channel}] ${redactDiagnostic(String(payload).slice(0, 4000))}`);
+    if (diagnosticLines.length > 160) diagnosticLines.shift();
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
@@ -467,6 +474,20 @@ app.on('window-all-closed', () => {
 });
 
 const g = () => mainWindow;
+ipcMain.handle('diagnostics:export', guarded(g, async () => {
+  try {
+    const report = createReport({ version: app.getVersion(), platform: process.platform, arch: process.arch,
+      server: diagnosticServer, status: serverProc.status, lines: diagnosticLines.slice() });
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export error report', defaultPath: `VoxelPort-errors-${Date.now()}.txt`,
+      filters: [{ name: 'Text report', extensions: ['txt'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    await fs.promises.writeFile(result.filePath, report, 'utf8');
+    return { ok: true };
+  } catch { return { ok: false, error: 'Could not save the error report. Try another folder.' }; }
+}));
+ipcMain.handle('community:discord', guarded(g, () => shell.openExternal('https://discord.gg/JAUfmey2fP')));
 
 // ─── App info / token (item 12/13) ─────────────────────────────────────────
 
@@ -925,6 +946,9 @@ async function startServerProfile(id, { retried = false } = {}) {
 
   serverProfiles.touchProfile(userDataDir(), id);
   activeServerProfileId = id;
+  // Retain only support metadata after a crash clears the active profile ID.
+  diagnosticServer = { type: profile.type, version: profile.version, port: profile.port };
+  if (!retried) diagnosticLines.length = 0;
 
   // Prefer the Java VoxelPort installed itself; otherwise java on the PATH.
   // If neither is new enough for this server, fetch the right one first.

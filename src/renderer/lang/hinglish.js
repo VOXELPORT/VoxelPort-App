@@ -6,6 +6,11 @@
 // run time and must appear in the translation too. Text that is the same in both languages (brand names,
 // "Paper", "RAM") is left out: it shows as it is. test/i18n.test.js checks that nothing is missing.
 (window.VP_LANGS = window.VP_LANGS || {}).hinglish = {
+  'Export error report': 'Error report export karo',
+  'Discord help': 'Discord par madad',
+  'Report saved. Review it for personal details, then attach it to a Discord support ticket.': 'Report save ho gayi. Personal details check karke Discord support ticket mein attach karo.',
+  'Could not export the report. Please try again.': 'Report export nahi hui. Dobara try karo.',
+  'Could not save the error report. Try another folder.': 'Error report save nahi hui. Koi aur folder try karo.',
   // ── Home ──────────────────────────────────────────────────────────────
   'Host any Minecraft server · no port forwarding': 'Koi bhi Minecraft server host karo · port forwarding nahi chahiye',
   'Your worlds': 'Tumhari worlds',
