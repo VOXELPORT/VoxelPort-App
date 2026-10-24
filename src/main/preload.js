@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld('vp', {
 
     start: (id) => ipcRenderer.invoke('server:start', { id }),
     stop: () => ipcRenderer.invoke('server:stop'),
+    restart: () => ipcRenderer.invoke('server:restart'),
     command: (command) => ipcRenderer.invoke('server:command', { command }),
     openFolder: (id) => ipcRenderer.invoke('server:openFolder', { id }),
     makePublic: (id) => ipcRenderer.invoke('server:makePublic', { id }),

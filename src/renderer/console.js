@@ -7,6 +7,7 @@ const srvStatusText = $('srvStatusText');
 const srvPlayers = $('srvPlayers');
 const srvStartBtn = $('srvStartBtn');
 const srvStopBtn = $('srvStopBtn');
+const srvRestartBtn = $('srvRestartBtn');
 const srvFolderBtn = $('srvFolderBtn');
 const srvRemoveBtn = $('srvRemoveBtn');
 const publicShare = $('publicShare');
@@ -79,6 +80,7 @@ function renderManagementScreen() {
 
   srvStartBtn.classList.toggle('hidden', running);
   srvStopBtn.classList.toggle('hidden', !running || !active);
+  srvRestartBtn.classList.toggle('hidden', !(active && (status === 'online' || status === 'starting')));
   cmdInput.disabled = !(active && status === 'online');
   cmdSendBtn.disabled = !(active && status === 'online');
 
@@ -321,6 +323,10 @@ srvStartBtn.addEventListener('click', async () => {
 });
 
 srvStopBtn.addEventListener('click', () => window.vp.server.stop());
+srvRestartBtn.addEventListener('click', async () => {
+  const res = await window.vp.server.restart();
+  if (res && res.ok === false && res.error) srvLogLine(t(res.error));
+});
 srvFolderBtn.addEventListener('click', () => window.vp.server.openFolder(managingProfileId));
 
 srvRemoveBtn.addEventListener('click', async () => {

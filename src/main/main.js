@@ -1058,6 +1058,17 @@ ipcMain.handle('server:stop', guarded(g, () => {
   return { ok: true };
 }));
 
+// Stop the running server, wait for it to exit, then start the same profile again (voice setup and plugin changes need this).
+ipcMain.handle('server:restart', guarded(g, async () => {
+  const id = activeServerProfileId;
+  if (!serverProc.child || !id) return { ok: false, error: 'The server is not running.' };
+  stopRequested = true;
+  serverProc.stop();
+  await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+  if (serverProc.child) return { ok: false, error: 'The server is still shutting down — try again in a few seconds.' };
+  return startServerProfile(id);
+}));
+
 ipcMain.handle('server:command', guarded(g, (_evt, { command }) => {
   serverProc.sendCommand(command);
   return { ok: true };

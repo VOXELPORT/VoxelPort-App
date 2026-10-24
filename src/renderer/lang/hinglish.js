@@ -176,6 +176,7 @@
   'Type a server command…': 'Server command likho…',
   'Start server': 'Server start karo',
   'Stop': 'Band karo',
+  'Restart': 'Dobara start karo',
   'Open folder': 'Folder kholo',
   'Remove from VoxelPort': 'VoxelPort se hatao',
   'Send': 'Bhejo',
