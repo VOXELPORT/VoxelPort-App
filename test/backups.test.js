@@ -15,7 +15,8 @@ const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).
 /** A scratch folder with a fake server in it: a world with a Nether and some region files. */
 function fakeServer(t, { level = 'world', withNether = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-backup-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  // Let pending archive closes finish, and retry transient Windows directory locks.
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const serverDir = path.join(root, 'server');
   const backupDir = path.join(root, 'backups');
   fs.mkdirSync(path.join(serverDir, level, 'region'), { recursive: true });
@@ -41,7 +42,8 @@ function listZipNames(file) {
       if (err) return reject(err);
       const names = [];
       zip.on('entry', (e) => { names.push(e.fileName); zip.readEntry(); });
-      zip.on('end', () => resolve(names));
+      zip.on('error', reject);
+      zip.on('close', () => resolve(names));
       zip.readEntry();
     });
   });
