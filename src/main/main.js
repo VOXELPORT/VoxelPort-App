@@ -1042,7 +1042,10 @@ async function startServerProfile(id, { retried = false } = {}) {
   stopRequested = false;
   recentLines = [];
   perfState = { cpuPercent: null, memMb: null, tps: null, mspt: null, lagWarnings: 0 };
-  voiceRestartNeeded.delete(id);
+  // The restart the voice status asked for is this start, so the "restart once" note is done.
+  if (voiceRestartNeeded.delete(id)) {
+    publishVoiceState({ message: 'Voice chat is configured automatically. Players join using your server address and the matching voice mod.' });
+  }
   serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath });
   if (serverProc.child && serverProc.child.pid) perf.start(serverProc.child.pid);
   broadcastState();
