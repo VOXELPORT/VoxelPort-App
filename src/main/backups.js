@@ -235,14 +235,19 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
     appVersion: info.appVersion || null,
   };
 
+  let zip, out, outputClosed;
+  const inputs = new Set();
   try {
-    const zip = new yazl.ZipFile();
-    const out = fs.createWriteStream(partial);
+    zip = new yazl.ZipFile();
+    out = fs.createWriteStream(partial);
+    outputClosed = new Promise((resolve) => out.once('close', resolve));
     const finished = new Promise((resolve, reject) => {
       out.on('close', resolve);
       out.on('error', reject);
       zip.outputStream.on('error', reject);
     });
+    // A source can fail before we reach await finished. Keep output errors handled.
+    finished.catch(() => {});
     zip.outputStream.pipe(out);
     zip.addBuffer(Buffer.from(JSON.stringify(meta, null, 2)), META_NAME);
 
@@ -254,7 +259,11 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
         const counter = new Transform({
           transform(chunk, _enc, cb) { done += chunk.length; cb(null, chunk); },
         });
+        inputs.add(counter);
+        counter.once('close', () => inputs.delete(counter));
         const rs = fs.createReadStream(f.abs);
+        inputs.add(rs);
+        rs.once('close', () => inputs.delete(rs));
         rs.on('error', reject);
         counter.on('error', reject);
         counter.on('end', () => { onProgress({ phase: 'zipping', done, total }); resolve(); });
@@ -269,6 +278,13 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
     if (!written.meta || written.meta.levelName !== level) throw new BackupError('bad-backup', 'The backup could not be verified.');
     fs.renameSync(partial, path.join(backupDir, name));
   } catch (err) {
+    for (const input of inputs) input.destroy();
+    if (zip) zip.outputStream.destroy();
+    if (out) {
+      out.destroy();
+      // Wait for the Windows file handle (including a pending open) to close.
+      await outputClosed;
+    }
     try { fs.rmSync(partial, { force: true }); } catch { /* nothing to clean */ }
     if (err instanceof BackupError) throw err;
     throw new BackupError('failed', `The backup failed: ${err.message}`);

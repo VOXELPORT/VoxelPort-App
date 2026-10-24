@@ -178,6 +178,30 @@ test('a failed backup leaves no half-written file that could pass for a good one
 
 // ─── Restoring ───────────────────────────────────────────────────────────────
 
+test('failed backup closes its output before deleting the partial file', async (t) => {
+  const s = fakeServer(t);
+  const originalWrite = fs.createWriteStream;
+  const originalRemove = fs.rmSync;
+  let output, checked = false;
+  t.mock.method(fs, 'createWriteStream', (...args) => {
+    output = originalWrite.apply(fs, args);
+    return output;
+  });
+  t.mock.method(fs, 'rmSync', (file, ...args) => {
+    if (String(file).endsWith('.partial')) {
+      checked = true;
+      assert.equal(output.closed, true, 'partial file must be closed before deletion');
+    }
+    return originalRemove.call(fs, file, ...args);
+  });
+  await assert.rejects(make(s, 'manual', { onProgress() { throw new Error('early failure'); } }),
+    (err) => err.code === 'failed');
+  assert.equal(checked, true);
+  assert.equal(output.closed, true);
+  assert.deepEqual(fs.readdirSync(s.backupDir), []);
+  t.mock.restoreAll();
+});
+
 test('restoring puts the world back exactly, even after it was wrecked', async (t) => {
   const s = fakeServer(t);
   const region = path.join(s.serverDir, 'world', 'region', 'r.0.0.mca');
