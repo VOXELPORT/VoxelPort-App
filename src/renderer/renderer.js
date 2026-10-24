@@ -138,13 +138,14 @@ for (const [buttonID, statusID] of [
     finally { $(buttonID).disabled = false; }
   });
 }
-window.vp.on('tunnel:voice', ({ port, host, profileId }) => {
-  window.voiceEndpoint = port ? `${host}:${port}` : null;
-  window.voiceEndpointProfileId = port ? profileId : null;
-  $('srvVoice').classList.toggle('hidden', !port);
-  $('srvVoiceAddress').textContent = window.voiceEndpoint || '';
-  if (window.refreshVoiceHelp) window.refreshVoiceHelp();
-});
+window.renderVoiceState = (state) => {
+  window.currentVoiceState = state;
+  const text = state.message ? t(state.message) : '';
+  $('setVoiceStatus').textContent = text;
+  $('srvVoiceStatus').textContent = text;
+};
+window.vp.on('tunnel:voice', window.renderVoiceState);
+window.vp.voiceState().then(window.renderVoiceState);
 window.vp.on('tunnel:status', (s) => {
   setStatus(s);
   if (s === 'stopped') setRunningUI(false);

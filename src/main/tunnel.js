@@ -90,6 +90,7 @@ function buildBinaryFrame(kind, raw, payload) {
  */
 function isValidRelayMessage(msg) {
   if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return false;
+  if (msg.rank !== undefined && !['free', 'supporter', 'supporter_plus'].includes(msg.rank)) return false;
   switch (msg.type) {
     case 'port':
       return Number.isInteger(msg.port) && msg.port >= 1 && msg.port <= 65535
@@ -183,7 +184,7 @@ class Tunnel extends EventEmitter {
    * after any drop of an established connection, the preferred one is tried
    * again first. `relayUrl` alone is the single-candidate form.
    */
-  start({ relayUrl, relayUrls, token, localPort, udpPort = null, voicePort = null, client = null }) {
+  start({ relayUrl, relayUrls, token, localPort, udpPort = null, voicePort = null, voiceAuto = false, client = null }) {
     this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
     this.urlIndex = 0;
     this.relayUrl = this.relayUrls[0];
@@ -191,6 +192,8 @@ class Tunnel extends EventEmitter {
     this.localPort = localPort;
     this.udpPort = udpPort;
     this.voicePort = voicePort;
+    this.voiceAuto = voiceAuto;
+    this.rank = null;
     this.client = client; // "desktop/1.7.0": goes into the relay's log so a support question can be answered
     this.manualStop = false;
     this.live = true;
@@ -225,7 +228,7 @@ class Tunnel extends EventEmitter {
       const reg = { type: 'register', token: this.token, bin: 1 };
       if (this.client) reg.client = this.client;
       if (this.udpPort) reg.udp = true;
-      if (this.voicePort) reg.voice = true;
+      if (this.voicePort) reg[this.voiceAuto ? 'voice_auto' : 'voice'] = true;
       this._send(reg);
     });
 
@@ -287,8 +290,10 @@ class Tunnel extends EventEmitter {
         this.emit('status', 'online');
         this.emit('assigned', msg.port);
         this.voicePublicPort = this.voicePort ? (msg.voice_port || null) : null;
+        this.rank = msg.rank || null;
+        this.emit('rank', this.rank);
         this.emit('voiceAssigned', this.voicePublicPort);
-        if (this.voicePort && !msg.voice_port) this.emit('log', 'Voice chat is unavailable on this relay or requires Supporter Plus.');
+        if (this.voicePort && !this.voiceAuto && !msg.voice_port) this.emit('log', 'Voice chat is unavailable on this relay or requires Supporter Plus.');
         this.emit('log', `Tunnel is live on public port ${msg.port}.`);
         this._startPing();
         if (this.listing) this._send({ type: 'listing', listing: this.listing });
@@ -384,6 +389,13 @@ class Tunnel extends EventEmitter {
 
       case 'pong':
         if (this.lastPingSent) this.emit('ping', Date.now() - this.lastPingSent);
+        if (msg.rank && msg.rank !== this.rank) {
+          const previous = this.rank;
+          this.rank = msg.rank;
+          this.emit('rank', this.rank);
+          // Re-register once on an entitlement change to allocate/release voice safely.
+          if (this.voiceAuto && this.voicePort && (previous === 'supporter_plus' || this.rank === 'supporter_plus')) this.ws?.close();
+        }
         break;
     }
   }

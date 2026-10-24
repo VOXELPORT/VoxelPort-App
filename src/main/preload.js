@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('vp', {
   openDiscord: () => ipcRenderer.invoke('community:discord'),
   copyToken: () => ipcRenderer.invoke('token:copy'),
   copySupporterID: () => ipcRenderer.invoke('supporterID:copy'),
+  voiceState: () => ipcRenderer.invoke('voice:state'),
 
   start: (opts) => ipcRenderer.invoke('tunnel:start', opts),
   stop: () => ipcRenderer.invoke('tunnel:stop'),

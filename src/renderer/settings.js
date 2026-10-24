@@ -78,10 +78,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
 
   setSubtitle.textContent = profile.name;
   setName.value = profile.name;
-  $('setVoice').checked = Boolean(profile.voice?.enabled);
-  $('setVoicePlugin').value = profile.voice?.plugin || 'simple';
-  $('setVoicePort').value = profile.voice?.port || 24454;
-  window.refreshVoiceHelp();
+  window.renderVoiceState(await window.vp.voiceState());
   setPort.value = profile.port;
   setRam.max = Math.max(1024, Math.min(totalMemMb - 1024, 32768));
   setRam.value = profile.maxRamMb;
@@ -108,16 +105,6 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
 };
 
 setRam.addEventListener('input', () => { setRamLabel.textContent = setRam.value; });
-window.refreshVoiceHelp = function refreshVoiceHelp() {
-  const port = Number($('setVoicePort').value) || 24454;
-  const endpoint = (window.voiceEndpointProfileId === settingsProfileId && window.voiceEndpoint) || 'PUBLIC_HOST:VOICE_PORT';
-  const separator = endpoint.lastIndexOf(':');
-  $('setVoiceHelp').textContent = $('setVoicePlugin').value === 'plasmo'
-    ? `Plasmo Voice config.toml:\n[host]\nip = "127.0.0.1"\nport = ${port}\n[host.public]\nip = "${endpoint.slice(0,separator)}"\nport = ${endpoint.slice(separator+1)}`
-    : `Simple Voice Chat voicechat-server.properties:\nbind_address=127.0.0.1\nport=${port}\nvoice_host=${endpoint}`;
-};
-$('setVoicePlugin').addEventListener('change', window.refreshVoiceHelp);
-$('setVoicePort').addEventListener('input', window.refreshVoiceHelp);
 setListed.addEventListener('change', () => { setListingDesc.disabled = !setListed.checked; });
 
 $('settingsBackBtn').addEventListener('click', async () => {
@@ -142,7 +129,6 @@ setSaveBtn.addEventListener('click', async () => {
       ramMb: Number(setRam.value),
       properties,
       listing: { enabled: setListed.checked, description: setListingDesc.value },
-      voice: { enabled: $('setVoice').checked, plugin: $('setVoicePlugin').value, port: Number($('setVoicePort').value) },
     });
     setSubtitle.textContent = res.profile.name;
     showSetMsg(res.restartNeeded ? t('Saved! Restart the server to apply the changes.') : t('Saved!'), 'ok');

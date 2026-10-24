@@ -15,7 +15,6 @@ const hinglish = globalThis.VP_LANGS.hinglish;
 
 // Text that reads the same in Hinglish: brand names, technical words, the choices of a setting.
 const SAME_IN_BOTH = new Set([
-  'Simple Voice Chat', 'Plasmo Voice',
   'wss://relay.voxelport.in', 'Survival SMP', 'VOXEL', 'PORT', '.voxelport.in', 'voxelport.in/servers', 'voxelport.in', 'trazhub@upi',
   'Java', 'MB', 'CPU', 'RAM', 'TPS', 'Vanilla', 'Paper', 'Fabric', 'Bedrock', 'Minecraft EULA', 'Java + Bedrock', 'Hardcore',
   'Survival', 'Creative', 'Adventure', 'Spectator', 'Peaceful', 'Easy', 'Normal', 'Hard', 'PvP',
@@ -33,6 +32,7 @@ const SAME_IN_BOTH = new Set([
 
 // Messages the main process can send back; the screen runs them through t().
 const MESSAGES_THE_APP_SENDS = [
+  "Make your server public to sync your supporter rank.", "Supporter Plus synced. Setting up voice chat…", "Your supporter rank is synced. Automatic voice chat requires Supporter Plus.", "This relay needs an update to sync your supporter rank.", "Automatic voice chat needs a Paper or Fabric server and an updated relay.", "Voice chat is configured. Restart your server once to activate it. Players need the matching voice mod.", "Voice chat is configured automatically. Players join using your server address and the matching voice mod.",
   'Server profile not found.', 'Start this server before making it public.', 'Stop and un-publish this server before removing it.',
   'Make a server public first, then pick your address.', 'Make a server public first, then remove your address.',
   'Your address lives on another region — switch to it to remove it.', "The relay didn't answer — try again.",

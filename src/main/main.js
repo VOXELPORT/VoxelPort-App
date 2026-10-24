@@ -29,6 +29,15 @@ const {
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
 const accounts = require('./accounts');
 const addons = require('./addons');
+const voiceSetup = require('./voiceSetup');
+const voiceRestartNeeded = new Set();
+let voiceSetupQueue = Promise.resolve();
+let voiceState = { rank: null, message: 'Make your server public to sync your supporter rank.' };
+
+function publishVoiceState(state) {
+  voiceState = { ...voiceState, ...state };
+  send('tunnel:voice', voiceState);
+}
 const modpackImport = require('./modpackImport');
 const whitelist = require('./whitelist');
 const { atomicWriteFileSync } = require('./atomicWrite');
@@ -215,9 +224,38 @@ function broadcastState() {
 function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
   t.on('assigned', (port) => send('tunnel:assigned', { port, host: publicHost }));
+  t.on('rank', (rank) => {
+    if (t !== tunnel) return;
+    publishVoiceState({ rank, profileId: publicServerProfileId,
+      message: rank === 'supporter_plus' ? 'Supporter Plus synced. Setting up voice chat…'
+        : rank ? 'Your supporter rank is synced. Automatic voice chat requires Supporter Plus.'
+          : 'This relay needs an update to sync your supporter rank.' });
+  });
   t.on('voiceAssigned', (port) => {
-    send('tunnel:voice', { port, host: publicHost, profileId: publicServerProfileId });
-    if (port) send('server:log', `[VoxelPort] Voice chat UDP address: ${publicHost}:${port}. Set this as your voice plugin's public address.`);
+    const id = publicServerProfileId;
+    if (t !== tunnel || !id) return;
+    if (!port) {
+      if (t.rank === 'supporter_plus') publishVoiceState({ message: 'Automatic voice chat needs a Paper or Fabric server and an updated relay.' });
+      return;
+    }
+    voiceSetupQueue = voiceSetupQueue.then(async () => {
+      const isCurrent = () => tunnel === t && publicServerProfileId === id && t.rank === 'supporter_plus' && t.voicePublicPort === port;
+      if (!isCurrent()) return;
+      const profile = serverProfiles.getProfile(userDataDir(), id);
+      if (!profile) return;
+      const plan = voiceSetup.voicePlan(profile, profile.bedrock ? bedrockPort(profile.serverDir) : null);
+      if (!plan) return;
+      const result = await voiceSetup.configureVoice({ profile, plan, host: publicHost, publicPort: port,
+        running: activeServerProfileId === id && Boolean(serverProc.child), isCurrent });
+      if (!result || !isCurrent()) return;
+      serverProfiles.updateProfile(userDataDir(), id, { voice: { enabled: true, plugin: result.plugin, port: result.port } });
+      if (result.changed && activeServerProfileId === id && serverProc.child) voiceRestartNeeded.add(id);
+      publishVoiceState({ message: voiceRestartNeeded.has(id)
+        ? 'Voice chat is configured. Restart your server once to activate it. Players need the matching voice mod.'
+        : 'Voice chat is configured automatically. Players join using your server address and the matching voice mod.' });
+    }).catch((err) => {
+      if (t === tunnel && publicServerProfileId === id) publishVoiceState({ message: `Voice setup could not finish: ${err.message}. Make the server public again to retry.` });
+    });
   });
   t.on('voiceError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('players', (n) => send('tunnel:players', n));
@@ -650,6 +688,20 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   }
   const relayUrls = region ? region.relayUrls : [resolvedRelayUrl];
   const publicHost = region ? region.publicHost : new URL(resolvedRelayUrl).hostname;
+  let voiceAuto = false;
+  if (profileId && region) {
+    const profile = serverProfiles.getProfile(userDataDir(), profileId);
+    try {
+      const plan = voiceSetup.voicePlan(profile, udpPort);
+      voicePort = plan ? plan.port : null;
+      voiceAuto = Boolean(plan);
+    } catch (err) {
+      // Voice setup is a Supporter Plus extra: it must never keep a server from going public.
+      voicePort = null;
+      voiceAuto = false;
+      publishVoiceState({ message: err.message });
+    }
+  }
 
   // Never leave an older tunnel behind: two of them would share this device's token and fight for it.
   if (retiringTunnel && retiringTunnel.isLive()) await waitForTunnelStopped(10000, retiringTunnel);
@@ -664,9 +716,9 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   send('tunnel:region', region ? { id: region.id, label: region.label } : null);
   send('tunnel:name', visibleCustomAddress());
   if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
-  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, voicePort, client: `desktop/${app.getVersion()}` });
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, voicePort, voiceAuto, client: `desktop/${app.getVersion()}` });
   broadcastState();
   return { ok: true };
 }
@@ -686,7 +738,6 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
     return { ok: false, error: 'Wait for the server to finish starting, then make it public.' };
   }
   const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
-  if (profile.voice?.enabled && udpPort === profile.voice.port) return { ok: false, error: 'Voice chat and Bedrock need different local UDP ports.' };
   return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort, voicePort: profile.voice?.enabled ? profile.voice.port : null });
 }));
 
@@ -991,6 +1042,7 @@ async function startServerProfile(id, { retried = false } = {}) {
   stopRequested = false;
   recentLines = [];
   perfState = { cpuPercent: null, memMb: null, tps: null, mspt: null, lagWarnings: 0 };
+  voiceRestartNeeded.delete(id);
   serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath });
   if (serverProc.child && serverProc.child.pid) perf.start(serverProc.child.pid);
   broadcastState();
@@ -1156,6 +1208,7 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
 // are validated there, and are opened here only by id from that validated list — the renderer
 // never supplies a URL.
 let supportCache = { hosts: new Map() };
+ipcMain.handle('voice:state', guarded(g, () => voiceState));
 ipcMain.handle('support:get', guarded(g, async (_evt, { force } = {}) => {
   const s = await support.getSupport({ dir: userDataDir(), device: 'desktop', force: Boolean(force) });
   supportCache = { hosts: new Map(s.hosts.items.map((h) => [h.id, h.url])) };

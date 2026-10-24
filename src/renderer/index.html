@@ -315,7 +315,7 @@
           <button id="srvCopyBtn" class="ghost" title="Copy">Copy</button>
         </div>
         <div class="share-alt hidden" id="srvAltAddress"></div>
-        <div class="share-alt hidden" id="srvVoice">Voice UDP: <code id="srvVoiceAddress"></code></div>
+        <p class="hint" id="srvVoiceStatus" role="status"></p>
         <div class="bedrock-line hidden" id="srvBedrock">
           <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
         </div>
@@ -427,15 +427,13 @@
 
       <div class="set-group">
         <div class="set-group-title">Voice chat · Supporter Plus</div>
-        <label class="toggle-row"><input type="checkbox" id="setVoice"><span><b>Forward voice chat</b><span class="hint">A separate permanent UDP port, alongside Java and Bedrock. Requires Supporter Plus and a voice plugin installed on your server.</span></span></label>
-        <label class="field"><span class="label">Voice plugin</span><select id="setVoicePlugin"><option value="simple">Simple Voice Chat</option><option value="plasmo">Plasmo Voice</option></select></label>
-        <label class="field"><span class="label">Local voice UDP port</span><input type="number" id="setVoicePort" min="1" max="65535" value="24454"></label>
+        <p class="hint">Your Supporter Plus rank syncs automatically when your server is public. VoxelPort sets up voice chat for Paper and Fabric. Share only your server joining address.</p>
+        <p class="hint" id="setVoiceStatus" role="status"></p>
         <label class="field"><span class="label">Your VoxelPort ID · share this with the operator</span><div class="folder-row"><input id="setSupporterID" type="text" readonly><button id="setCopySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
         <button id="setShareSupporterIDBtn" class="ghost" type="button">Copy ID and open Discord</button>
         <p class="hint">To get your supporter rank, copy your ID, open a Discord support ticket and paste it there.</p>
         <p class="hint" id="setShareSupporterIDStatus" role="status"></p>
-        <pre id="setVoiceHelp" class="hint" style="white-space:pre-wrap"></pre>
-        <p class="hint">Set your plugin to listen on this local port. After making the server public, use the Voice UDP address shown on the server screen as its public address. Save, then stop and make the tunnel public again to apply forwarding changes.</p>
+        <p class="hint">Players need the matching voice chat mod. If setup changes while your server is running, restart it once to activate voice chat.</p>
       </div>
       <button class="primary" id="setSaveBtn" type="button">Save settings</button>
       <div class="set-msg hidden" id="setMsg"></div>
