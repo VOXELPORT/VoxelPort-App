@@ -15,6 +15,7 @@ const hinglish = globalThis.VP_LANGS.hinglish;
 
 // Text that reads the same in Hinglish: brand names, technical words, the choices of a setting.
 const SAME_IN_BOTH = new Set([
+  'Simple Voice Chat', 'Plasmo Voice',
   'wss://relay.voxelport.in', 'Survival SMP', 'VOXEL', 'PORT', '.voxelport.in', 'voxelport.in/servers', 'voxelport.in', 'trazhub@upi',
   'Java', 'MB', 'CPU', 'RAM', 'TPS', 'Vanilla', 'Paper', 'Fabric', 'Bedrock', 'Minecraft EULA', 'Java + Bedrock', 'Hardcore',
   'Survival', 'Creative', 'Adventure', 'Spectator', 'Peaceful', 'Easy', 'Normal', 'Hard', 'PvP',

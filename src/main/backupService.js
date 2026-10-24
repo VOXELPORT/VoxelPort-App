@@ -145,6 +145,7 @@ class BackupService {
         onProgress: (p) => this.send('backup:progress', { profileId: id, reason: 'restore', ...p }),
       });
       if (res.levelName !== res.previousLevelName) setLevelName(profile.serverDir, res.levelName);
+      if (res.restoredServer) this.updateProfile(id, res.restoredServer);
       this.lastAt.set(id, this.now());
       this.dirty.set(id, false);
       this.send('backup:progress', { profileId: id, reason: 'restore', phase: 'done' });

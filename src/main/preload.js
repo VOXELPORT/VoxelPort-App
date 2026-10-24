@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('vp', {
   exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
   openDiscord: () => ipcRenderer.invoke('community:discord'),
   copyToken: () => ipcRenderer.invoke('token:copy'),
+  copySupporterID: () => ipcRenderer.invoke('supporterID:copy'),
 
   start: (opts) => ipcRenderer.invoke('tunnel:start', opts),
   stop: () => ipcRenderer.invoke('tunnel:stop'),
@@ -17,6 +18,7 @@ contextBridge.exposeInMainWorld('vp', {
     const allowed = [
       'tunnel:status',
       'tunnel:assigned',
+      'tunnel:voice',
       'tunnel:players',
       'tunnel:ping',
       'tunnel:log',

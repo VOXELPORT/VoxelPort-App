@@ -215,6 +215,11 @@ function broadcastState() {
 function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
   t.on('assigned', (port) => send('tunnel:assigned', { port, host: publicHost }));
+  t.on('voiceAssigned', (port) => {
+    send('tunnel:voice', { port, host: publicHost, profileId: publicServerProfileId });
+    if (port) send('server:log', `[VoxelPort] Voice chat UDP address: ${publicHost}:${port}. Set this as your voice plugin's public address.`);
+  });
+  t.on('voiceError', (message) => send('server:log', `[VoxelPort] ${message}`));
   t.on('players', (n) => send('tunnel:players', n));
   t.on('ping', (ms) => send('tunnel:ping', ms));
   t.on('log', (line) => send('tunnel:log', line));
@@ -495,6 +500,7 @@ ipcMain.handle('app:info', guarded(g, () => ({
   publicHost: PUBLIC_HOST,
   defaultRelayUrl: DEFAULT_RELAY_URL,
   maskedToken: maskToken(deviceToken),
+  supporterID: crypto.createHash('sha256').update(deviceToken).digest('hex'),
   tokenEncryptedAtRest,
   tokenUnreadable,
   version: app.getVersion(),
@@ -504,6 +510,10 @@ ipcMain.handle('app:info', guarded(g, () => ({
 // straight from the main process to the OS clipboard.
 ipcMain.handle('token:copy', guarded(g, () => {
   clipboard.writeText(deviceToken);
+  return { ok: true };
+}));
+ipcMain.handle('supporterID:copy', guarded(g, () => {
+  clipboard.writeText(crypto.createHash('sha256').update(deviceToken).digest('hex'));
   return { ok: true };
 }));
 
@@ -594,7 +604,7 @@ async function chooseRegion() {
   return region;
 }
 
-async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = null }) {
+async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = null, voicePort = null }) {
   const port = Number(localPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     send('tunnel:error', 'Enter a valid local port (1–65535).');
@@ -654,7 +664,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   send('tunnel:region', region ? { id: region.id, label: region.label } : null);
   send('tunnel:name', visibleCustomAddress());
   if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
-  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, client: `desktop/${app.getVersion()}` });
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, voicePort, client: `desktop/${app.getVersion()}` });
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
   broadcastState();
@@ -676,7 +686,8 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
     return { ok: false, error: 'Wait for the server to finish starting, then make it public.' };
   }
   const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
-  return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort });
+  if (profile.voice?.enabled && udpPort === profile.voice.port) return { ok: false, error: 'Voice chat and Bedrock need different local UDP ports.' };
+  return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort, voicePort: profile.voice?.enabled ? profile.voice.port : null });
 }));
 
 /** Lets go of the current tunnel: stops it now, and remembers it until it has really finished closing. */
@@ -1033,8 +1044,8 @@ ipcMain.handle('backup:restore', guarded(g, async (_evt, { id, name }) => {
     cancelId: 0,
     message: say('Restore the backup from ' + when + '?', when + ' wala backup restore karein?'),
     detail: say(
-      profile.name + ' goes back to how it was then. Anything built since is replaced. Your current world is saved first, so you can undo this.',
-      profile.name + ' waisi ho jayegi jaisi tab thi. Uske baad ka sab kuch badal jayega. Abhi wali world pehle save ho jati hai, to aap undo kar sakte ho.',
+      profile.name + ' goes back to how it was then. Anything built since is replaced. If the backup includes server.jar, that file is restored too. Your current world and jar are saved first so you can undo this.',
+      profile.name + ' waisi ho jayegi jaisi tab thi. Uske baad ka sab kuch badal jayega. Backup mein server.jar hai to woh bhi restore hogi. Abhi wali world aur jar pehle save hoti hain, to undo kar sakte ho.',
     ),
   });
   if (response !== 1) return { ok: false, cancelled: true };
@@ -1059,12 +1070,18 @@ ipcMain.handle('server:settings:get', guarded(g, (_evt, { id }) => {
   };
 }));
 
-ipcMain.handle('server:settings:save', guarded(g, (_evt, { id, name, port, ramMb, properties, listing }) => {
+ipcMain.handle('server:settings:save', guarded(g, (_evt, { id, name, port, ramMb, properties, listing, voice }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) throw new Error('Server profile not found.');
 
   const props = serverSettings.validateSettings(properties || {});
   const changes = {};
+  if (voice !== undefined) {
+    if (!voice || typeof voice.enabled !== 'boolean' || !['simple', 'plasmo'].includes(voice.plugin)
+      || !Number.isInteger(voice.port) || voice.port < 1 || voice.port > 65535) throw new Error('Enter a valid voice plugin and UDP port (1–65535).');
+    if (voice.enabled && profile.bedrock && voice.port === bedrockPort(profile.serverDir)) throw new Error('Voice chat and Bedrock need different local UDP ports.');
+    changes.voice = { enabled: voice.enabled, plugin: voice.plugin, port: voice.port };
+  }
   if (typeof name === 'string' && name.trim()) changes.name = name.trim().slice(0, 60);
   if (port !== undefined) {
     const p = Number(port);
@@ -1103,6 +1120,7 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
   try {
     if (enabled) {
       if (!bedrockSupported(profile.type)) return { ok: false, error: 'Bedrock players need a Paper or Fabric server.' };
+      if (profile.voice?.enabled && profile.voice.port === bedrockPort(profile.serverDir)) return { ok: false, error: 'Voice chat and Bedrock need different local UDP ports.' };
       await installBedrockSupport({
         serverDir: profile.serverDir, type: profile.type, version: profile.version,
         onProgress: (p) => send('bedrock:progress', p),
@@ -1121,6 +1139,7 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
       await startTunnelInternal({
         localPort: updated.port, relayUrl: DEFAULT_RELAY_URL, profileId: id,
         udpPort: updated.bedrock ? bedrockPort(updated.serverDir) : null,
+        voicePort: updated.voice?.enabled ? updated.voice.port : null,
       });
     }
     const running = activeServerProfileId === id && Boolean(serverProc.child);

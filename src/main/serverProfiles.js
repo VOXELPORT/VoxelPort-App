@@ -37,6 +37,8 @@ function isValidProfile(p) {
     // Optional: Bedrock players via Geyser, the public server-list opt-in,
     // and the template the server was created from.
     && (p.bedrock === undefined || typeof p.bedrock === 'boolean')
+    && (p.voice === undefined || (p.voice && typeof p.voice.enabled === 'boolean'
+      && ['simple', 'plasmo'].includes(p.voice.plugin) && Number.isInteger(p.voice.port) && p.voice.port >= 1 && p.voice.port <= 65535))
     && (p.listing === undefined || isValidListing(p.listing))
     && (p.backups === undefined || isValidBackups(p.backups))
     && (p.template === undefined || (typeof p.template === 'string' && /^[a-z0-9-]{1,32}$/.test(p.template)));

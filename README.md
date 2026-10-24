@@ -99,7 +99,7 @@ Yes on Windows — the Microsoft Store keeps VoxelPort up to date for you. On Li
 <details>
 <summary><b>Where are my worlds stored?</b></summary>
 
-On your PC, in the folder you choose for each server. The relay only forwards traffic — it never stores your world or player data. Backups go in VoxelPort's own data folder ("Open backups folder" on the Backups screen). They hold your world(s) and player lists, not mods or plugins, and they stay on your PC.
+On your PC, in the folder you choose for each server. The relay only forwards traffic — it never stores your world or player data. Backups go in VoxelPort's own data folder ("Open backups folder" on the Backups screen). They hold your world(s), server.jar and player lists, and they stay on your PC. Mods, plugins and their configuration are not included. Restoring a newer backup also restores its server.jar; older world-only backups leave the installed jar alone.
 </details>
 
 ## 🛠️ For developers

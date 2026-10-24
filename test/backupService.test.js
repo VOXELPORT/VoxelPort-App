@@ -255,6 +255,20 @@ test('a running server cannot be restored over', async (t) => {
   assert.equal(res.code, 'running');
 });
 
+test('restoring a jar also restores its recorded server version and clears a stale Java hint', async (t) => {
+  const r = rig(t, {active:false});
+  fs.writeFileSync(path.join(r.serverDir,'server.jar'),'original server');
+  const before = {...r.profiles.get(ID)};
+  const made = await r.service.create(ID,'manual');
+  r.profiles.set(ID,{...before,version:'26.3',javaMajor:25});
+  fs.writeFileSync(path.join(r.serverDir,'server.jar'),'new server');
+  const result=await r.service.restore(ID,made.backup.name,{setLevelName(){}});
+  assert.equal(result.ok,true);
+  assert.equal(r.profiles.get(ID).version,before.version);
+  assert.equal(r.profiles.get(ID).javaMajor,undefined);
+  assert.equal(fs.readFileSync(path.join(r.serverDir,'server.jar'),'utf8'),'original server');
+});
+
 test('restoring puts the world back and frees the server again', async (t) => {
   const r = rig(t, { active: false });
   const region = path.join(r.serverDir, 'world', 'region', 'r.0.0.mca');

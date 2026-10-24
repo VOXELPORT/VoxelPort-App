@@ -84,6 +84,7 @@
           <span class="hint">Generated automatically. Treat it like a password — anyone with it can reconnect as this install.</span>
           <span class="hint hidden" id="tokenWarn" style="color: var(--red)">Couldn't read your saved VoxelPort ID (is your system keyring locked?). Using a temporary one — restart after unlocking it.</span>
         </label>
+        <label class="field"><span class="label">VoxelPort ID · safe to share for supporter ranks</span><div class="folder-row"><input id="supporterID" type="text" readonly><button id="copySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
       </details>
 
       <div class="log" id="log" aria-live="polite"></div>
@@ -314,6 +315,7 @@
           <button id="srvCopyBtn" class="ghost" title="Copy">Copy</button>
         </div>
         <div class="share-alt hidden" id="srvAltAddress"></div>
+        <div class="share-alt hidden" id="srvVoice">Voice UDP: <code id="srvVoiceAddress"></code></div>
         <div class="bedrock-line hidden" id="srvBedrock">
           <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
         </div>
@@ -423,6 +425,18 @@
         </label>
       </div>
 
+      <div class="set-group">
+        <div class="set-group-title">Voice chat · Supporter Plus</div>
+        <label class="toggle-row"><input type="checkbox" id="setVoice"><span><b>Forward voice chat</b><span class="hint">A separate permanent UDP port, alongside Java and Bedrock. Requires Supporter Plus and a voice plugin installed on your server.</span></span></label>
+        <label class="field"><span class="label">Voice plugin</span><select id="setVoicePlugin"><option value="simple">Simple Voice Chat</option><option value="plasmo">Plasmo Voice</option></select></label>
+        <label class="field"><span class="label">Local voice UDP port</span><input type="number" id="setVoicePort" min="1" max="65535" value="24454"></label>
+        <label class="field"><span class="label">Your VoxelPort ID · share this with the operator</span><div class="folder-row"><input id="setSupporterID" type="text" readonly><button id="setCopySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+        <button id="setShareSupporterIDBtn" class="ghost" type="button">Copy ID and open Discord</button>
+        <p class="hint">To get your supporter rank, copy your ID, open a Discord support ticket and paste it there.</p>
+        <p class="hint" id="setShareSupporterIDStatus" role="status"></p>
+        <pre id="setVoiceHelp" class="hint" style="white-space:pre-wrap"></pre>
+        <p class="hint">Set your plugin to listen on this local port. After making the server public, use the Voice UDP address shown on the server screen as its public address. Save, then stop and make the tunnel public again to apply forwarding changes.</p>
+      </div>
       <button class="primary" id="setSaveBtn" type="button">Save settings</button>
       <div class="set-msg hidden" id="setMsg"></div>
     </section>
@@ -432,7 +446,7 @@
       <button class="back-link" id="backupsBackBtn" type="button">‹ Back to server</button>
       <div class="screen-title"><div><div class="label" id="bkSubtitle">Server backups</div><h1>BACKUPS</h1></div></div>
 
-      <p class="hint">Your world is backed up automatically while the server runs, and once more when you stop it. If something goes wrong (a crash, a griefer, a mistake), put an earlier one back. A backup holds your world(s) and the player lists. Mods and plugins are not included: they can be downloaded again.</p>
+      <p class="hint">Your world is backed up automatically while the server runs, and once more when you stop it. A backup holds your world(s), server.jar and player lists. Restoring also restores its server.jar when included; older backups leave your installed jar alone. Mods, plugins and their settings are not included.</p>
 
       <div class="bk-actions">
         <button class="primary" id="bkNowBtn" type="button">Back up now</button>
@@ -499,6 +513,14 @@
     <section class="screen panel" id="screen-support">
       <button class="back-link" id="supportBackBtn" type="button">‹ Back</button>
       <div class="screen-title"><div><div class="label">Keep it free</div><h1>SUPPORT VOXELPORT</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Get your supporter rank</div>
+        <p class="support-text">To get your supporter rank, copy your ID, open a Discord support ticket and paste it there.</p>
+        <label class="field"><span class="label">VoxelPort ID</span><div class="folder-row"><input id="supportPageID" type="text" readonly><button id="supportCopyIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+        <button id="supportShareIDBtn" class="ghost" type="button">Copy ID and open Discord</button>
+        <p class="hint" id="supportShareIDStatus" role="status"></p>
+      </div>
 
       <div class="set-group">
         <div class="set-group-title">♥ Tip jar</div>

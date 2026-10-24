@@ -605,11 +605,11 @@ const binaryFrame = (kind, connHex, payload) => Buffer.concat([Buffer.from([kind
  * A fake relay for one tunnel, in either mode. It answers the register frame with a port frame: with "bin": 1 only when
  * `v2` is set and the client asked for it, exactly as the real relay does. `frames` records everything the tunnel sends.
  */
-async function startProtocolRelay({ v2, udpPort = null, onLog } = {}) {
+async function startProtocolRelay({ v2, udpPort = null, voicePort = null, onLog } = {}) {
   const { wss, url } = await startFakeRelay();
   const tunnel = new Tunnel();
   if (onLog) tunnel.on('log', onLog);
-  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_protocol_v2_test', localPort: 1, udpPort });
+  const ws = await startTunnelAndConnect(wss, tunnel, { relayUrl: url, token: 'vp_protocol_v2_test', localPort: 1, udpPort, voicePort });
   const frames = [];
   const waiters = [];
   ws.on('message', (data, isBinary) => {
@@ -624,7 +624,7 @@ async function startProtocolRelay({ v2, udpPort = null, onLog } = {}) {
   });
   frames.splice(0); // the register frame has been read; what is recorded from here on is what the tunnel sends next
   const assigned = once(tunnel, 'assigned');
-  ws.send(JSON.stringify({ type: 'port', port: 26137, ...(v2 && registered.bin === 1 ? { bin: 1 } : {}) }));
+  ws.send(JSON.stringify({ type: 'port', port: 26137, ...(voicePort ? {voice_port:26138} : {}), ...(v2 && registered.bin === 1 ? { bin: 1 } : {}) }));
   await assigned;
   const next = (match) => new Promise((resolve) => {
     const have = frames.find((f) => match(f));
@@ -841,7 +841,7 @@ test('C2: binary frame helpers: layout, and what is refused', () => {
   assert.deepEqual(parseBinaryFrame(frame), { kind: FRAME_UDP, conn, payload: Buffer.from('abc') });
   assert.equal(parseBinaryFrame(Buffer.alloc(16)), null, 'shorter than the header');
   assert.equal(parseBinaryFrame(Buffer.alloc(17)), null, 'kind 0 is not a kind');
-  assert.equal(parseBinaryFrame(Buffer.concat([Buffer.from([0x03]), Buffer.alloc(20)])), null);
+  assert.equal(parseBinaryFrame(Buffer.concat([Buffer.from([0x7f]), Buffer.alloc(20)])), null);
   assert.equal(parseBinaryFrame('not a buffer'), null);
   assert.deepEqual(parseBinaryFrame(Buffer.concat([Buffer.from([FRAME_TCP]), Buffer.from(conn, 'hex')])).payload, Buffer.alloc(0), 'an empty payload parses (and is ignored later)');
   assert.equal(FRAME_TCP, 0x01);

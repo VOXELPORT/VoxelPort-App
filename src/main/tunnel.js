@@ -44,6 +44,7 @@ const LOCAL_CONNECT_TIMEOUT_MS = 10000;
 // relay's 32-character hex id), bytes 17+ = the payload. Control frames stay JSON in both modes.
 const FRAME_TCP = 0x01;
 const FRAME_UDP = 0x02;
+const FRAME_VOICE_UDP = 0x03;
 const FRAME_HEADER_LEN = 17;
 const HEX_CONN_ID = /^[0-9a-f]{32}$/;
 // A rejected binary frame is logged at most this often, so a broken relay can't flood the console.
@@ -67,7 +68,7 @@ function isValidConnId(id) {
 function parseBinaryFrame(buf) {
   if (!Buffer.isBuffer(buf) || buf.length < FRAME_HEADER_LEN) return null;
   const kind = buf[0];
-  if (kind !== FRAME_TCP && kind !== FRAME_UDP) return null;
+  if (kind !== FRAME_TCP && kind !== FRAME_UDP && kind !== FRAME_VOICE_UDP) return null;
   return { kind, conn: buf.subarray(1, FRAME_HEADER_LEN).toString('hex'), payload: buf.subarray(FRAME_HEADER_LEN) };
 }
 
@@ -92,6 +93,7 @@ function isValidRelayMessage(msg) {
   switch (msg.type) {
     case 'port':
       return Number.isInteger(msg.port) && msg.port >= 1 && msg.port <= 65535
+        && (msg.voice_port === undefined || (Number.isInteger(msg.voice_port) && msg.voice_port >= 1 && msg.voice_port <= 65535))
         && (msg.bin === undefined || Number.isInteger(msg.bin));
     case 'connect':
       return isValidConnId(msg.conn) && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
@@ -103,11 +105,14 @@ function isValidRelayMessage(msg) {
     case 'name_error':
     case 'listing_error':
     case 'udp_error':
+    case 'voice_error':
       return msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 500);
     case 'udp':
+    case 'voice_udp':
       return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_UDP_B64_CHARS
         && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
     case 'udp_close':
+    case 'voice_udp_close':
       return isValidConnId(msg.conn);
     case 'name':
       return (msg.name === undefined || (typeof msg.name === 'string' && /^[a-z0-9-]{0,32}$/.test(msg.name)))
@@ -155,6 +160,8 @@ class Tunnel extends EventEmitter {
     this.reconnectDelay = 1000;
     this.wsStallTimer = null;
     this.udpSessions = new Map(); // connID -> { sock, idleTimer }
+    this.voiceSessions = new Map();
+    this.voicePublicPort = null;
     this.listing = null; // re-sent after every (re)registration
   }
 
@@ -176,13 +183,14 @@ class Tunnel extends EventEmitter {
    * after any drop of an established connection, the preferred one is tried
    * again first. `relayUrl` alone is the single-candidate form.
    */
-  start({ relayUrl, relayUrls, token, localPort, udpPort = null, client = null }) {
+  start({ relayUrl, relayUrls, token, localPort, udpPort = null, voicePort = null, client = null }) {
     this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
     this.urlIndex = 0;
     this.relayUrl = this.relayUrls[0];
     this.token = token;
     this.localPort = localPort;
     this.udpPort = udpPort;
+    this.voicePort = voicePort;
     this.client = client; // "desktop/1.7.0": goes into the relay's log so a support question can be answered
     this.manualStop = false;
     this.live = true;
@@ -217,6 +225,7 @@ class Tunnel extends EventEmitter {
       const reg = { type: 'register', token: this.token, bin: 1 };
       if (this.client) reg.client = this.client;
       if (this.udpPort) reg.udp = true;
+      if (this.voicePort) reg.voice = true;
       this._send(reg);
     });
 
@@ -277,6 +286,9 @@ class Tunnel extends EventEmitter {
         this.reconnectDelay = 1000;
         this.emit('status', 'online');
         this.emit('assigned', msg.port);
+        this.voicePublicPort = this.voicePort ? (msg.voice_port || null) : null;
+        this.emit('voiceAssigned', this.voicePublicPort);
+        if (this.voicePort && !msg.voice_port) this.emit('log', 'Voice chat is unavailable on this relay or requires Supporter Plus.');
         this.emit('log', `Tunnel is live on public port ${msg.port}.`);
         this._startPing();
         if (this.listing) this._send({ type: 'listing', listing: this.listing });
@@ -303,23 +315,24 @@ class Tunnel extends EventEmitter {
         this.emit('log', 'Relay: ' + (msg.message || 'Bedrock forwarding is unavailable.'));
         break;
 
-      case 'udp': {
-        if (!this.udpPort) break;
+      case 'voice_error':
+        this.emit('voiceError', msg.message || 'Voice chat forwarding is unavailable.');
+        this.emit('log', 'Relay: ' + (msg.message || 'Voice chat forwarding is unavailable.'));
+        break;
+
+      case 'udp':
+      case 'voice_udp': {
         let data;
         try { data = Buffer.from(msg.data, 'base64'); } catch { break; }
-        if (!data.length || data.length > MAX_UDP_DATAGRAM) break;
-        let s = this.udpSessions.get(msg.conn);
-        if (!s) {
-          if (this.udpSessions.size >= MAX_UDP_SESSIONS) break;
-          s = this._openUdpSession(msg.conn);
-        }
-        this._touchUdpSession(msg.conn, s);
-        s.sock.send(data, this.udpPort, '127.0.0.1');
+        this._receiveUdp(msg.conn, data, msg.type === 'voice_udp');
         break;
       }
 
       case 'udp_close':
         this._closeUdpSession(msg.conn, false);
+        break;
+      case 'voice_udp_close':
+        this._closeUdpSession(msg.conn, false, true);
         break;
 
       case 'error':
@@ -396,15 +409,20 @@ class Tunnel extends EventEmitter {
     }
 
     // UDP: the first datagram of a session names an id nobody has seen yet, exactly as the JSON udp frame does.
-    if (!this.udpPort) return;
-    if (frame.payload.length > MAX_UDP_DATAGRAM) { this._noteBadFrame('a datagram that is too big'); return; }
-    let session = this.udpSessions.get(frame.conn);
+    this._receiveUdp(frame.conn, frame.payload, frame.kind === FRAME_VOICE_UDP);
+  }
+
+  _receiveUdp(conn, data, voice = false) {
+    const port = voice ? this.voicePort : this.udpPort;
+    const sessions = voice ? this.voiceSessions : this.udpSessions;
+    if (!port || (voice && !this.voicePublicPort) || !data.length || data.length > MAX_UDP_DATAGRAM) return;
+    let session = sessions.get(conn);
     if (!session) {
-      if (this.udpSessions.size >= MAX_UDP_SESSIONS) return;
-      session = this._openUdpSession(frame.conn);
+      if (sessions.size >= MAX_UDP_SESSIONS) return;
+      session = this._openUdpSession(conn, voice);
     }
-    this._touchUdpSession(frame.conn, session);
-    session.sock.send(frame.payload, this.udpPort, '127.0.0.1');
+    this._touchUdpSession(conn, session);
+    session.sock.send(data, port, '127.0.0.1');
   }
 
   _noteBadFrame(reason) {
@@ -521,36 +539,40 @@ class Tunnel extends EventEmitter {
     this.emit('players', this.players.size);
   }
 
-  _openUdpSession(conn) {
+  _openUdpSession(conn, voice = false) {
     const sock = dgram.createSocket('udp4');
-    const s = { sock, idleTimer: null, raw: HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null };
-    this.udpSessions.set(conn, s);
+    const s = { sock, voice, idleTimer: null, raw: HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null };
+    (voice ? this.voiceSessions : this.udpSessions).set(conn, s);
     sock.on('message', (buf) => {
       if (buf.length > MAX_UDP_DATAGRAM) return;
       this._touchUdpSession(conn, s);
-      if (this.bin && s.raw) this._sendBinary(buildBinaryFrame(FRAME_UDP, s.raw, buf));
-      else this._send({ type: 'udp', conn, data: buf.toString('base64') });
+      if (this.bin && s.raw) this._sendBinary(buildBinaryFrame(voice ? FRAME_VOICE_UDP : FRAME_UDP, s.raw, buf));
+      else this._send({ type: voice ? 'voice_udp' : 'udp', conn, data: buf.toString('base64') });
     });
-    sock.on('error', () => this._closeUdpSession(conn, true));
+    sock.on('error', () => this._closeUdpSession(conn, true, voice));
     return s;
   }
 
   _touchUdpSession(conn, s) {
     clearTimeout(s.idleTimer);
-    s.idleTimer = setTimeout(() => this._closeUdpSession(conn, true), UDP_SESSION_IDLE_MS);
+    s.idleTimer = setTimeout(() => this._closeUdpSession(conn, true, s.voice), UDP_SESSION_IDLE_MS);
   }
 
-  _closeUdpSession(conn, notifyRelay) {
-    const s = this.udpSessions.get(conn);
+  _closeUdpSession(conn, notifyRelay, voice = false) {
+    const sessions = voice ? this.voiceSessions : this.udpSessions;
+    const s = sessions.get(conn);
     if (!s) return;
-    this.udpSessions.delete(conn);
+    sessions.delete(conn);
     clearTimeout(s.idleTimer);
     try { s.sock.close(); } catch { /* already closed */ }
-    if (notifyRelay) this._send({ type: 'udp_close', conn });
+    if (notifyRelay) this._send({ type: voice ? 'voice_udp_close' : 'udp_close', conn });
   }
 
   _teardownUdp() {
     for (const conn of [...this.udpSessions.keys()]) this._closeUdpSession(conn, false);
+    for (const conn of [...this.voiceSessions.keys()]) this._closeUdpSession(conn, false, true);
+    this.voicePublicPort = null;
+    this.emit('voiceAssigned', null);
   }
 
   /** Asks the relay for the custom address `name` (answered by 'name' or 'nameError'). */

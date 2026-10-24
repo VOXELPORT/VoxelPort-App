@@ -29,7 +29,7 @@ function fakeServer(t, { level = 'world', withNether = true } = {}) {
     fs.writeFileSync(path.join(serverDir, `${level}_nether`, 'level.dat'), crypto.randomBytes(500));
   }
   fs.writeFileSync(path.join(serverDir, 'ops.json'), '[{"name":"Steve"}]');
-  fs.writeFileSync(path.join(serverDir, 'server.jar'), 'not part of a backup');
+  fs.writeFileSync(path.join(serverDir, 'server.jar'), 'server executable');
   fs.mkdirSync(path.join(serverDir, 'plugins'), { recursive: true });
   fs.writeFileSync(path.join(serverDir, 'plugins', 'keep.yml'), 'a plugin file');
   return { root, serverDir, backupDir, level };
@@ -51,7 +51,7 @@ const make = (s, reason = 'manual', extra = {}) => backups.createBackup({ backup
 
 // ─── Making a backup ─────────────────────────────────────────────────────────
 
-test('a backup holds the world, the Nether and the player lists, and nothing else', async (t) => {
+test('a backup holds the world, the Nether, server jar and player lists', async (t) => {
   const s = fakeServer(t);
   const b = await make(s);
   const names = await listZipNames(path.join(s.backupDir, b.name));
@@ -61,9 +61,52 @@ test('a backup holds the world, the Nether and the player lists, and nothing els
   assert.ok(names.includes('ops.json'));
   assert.ok(names.includes(backups.META_NAME));
   assert.ok(!names.some((n) => n.includes('session.lock')), 'the lock the server holds is never saved');
-  assert.ok(!names.includes('server.jar') && !names.some((n) => n.startsWith('plugins/')), 'only world data');
+  assert.ok(names.includes('server.jar'), 'the server executable is saved');
+  assert.ok(!names.some((n) => n.startsWith('plugins/')), 'plugins are not included');
   assert.deepEqual(b.worlds.sort(), ['world', 'world_nether']);
   assert.ok(b.size > 0);
+});
+
+test('restoring includes the original jar and the safety backup can undo the jar change', async (t) => {
+  const s = fakeServer(t);
+  const jar = path.join(s.serverDir, 'server.jar');
+  fs.writeFileSync(jar, 'original server executable');
+  const b = await make(s);
+  const { meta } = await backups.readBackupInfo(path.join(s.backupDir, b.name));
+  assert.deepEqual(meta.serverFiles, ['server.jar']);
+  fs.writeFileSync(jar, 'updated server executable');
+  const result = await backups.restoreBackup({ ...s, name: b.name });
+  assert.equal(fs.readFileSync(jar, 'utf8'), 'original server executable');
+  await backups.restoreBackup({ ...s, name: result.safetyBackup });
+  assert.equal(fs.readFileSync(jar, 'utf8'), 'updated server executable');
+});
+
+test('a world-only backup leaves the currently installed jar alone', async (t) => {
+  const s = fakeServer(t);
+  const jar = path.join(s.serverDir, 'server.jar');
+  fs.unlinkSync(jar);
+  const b = await make(s);
+  fs.writeFileSync(jar, 'keep this installed executable');
+  await backups.restoreBackup({ ...s, name: b.name });
+  assert.equal(fs.readFileSync(jar, 'utf8'), 'keep this installed executable');
+});
+
+test('jar restore failure rolls back the world and current jar', async (t) => {
+  const s = fakeServer(t);
+  const b = await make(s);
+  const jar = path.join(s.serverDir, 'server.jar');
+  const region = path.join(s.serverDir, 'world', 'region', 'r.0.0.mca');
+  fs.writeFileSync(jar, 'current jar');
+  fs.writeFileSync(region, 'current world');
+  const original = fs.copyFileSync;
+  fs.copyFileSync = (from, to, ...rest) => {
+    if (String(from).includes('.vp-restore-') && String(from).endsWith('server.jar')) throw new Error('jar write failed');
+    return original(from, to, ...rest);
+  };
+  t.after(() => { fs.copyFileSync = original; });
+  await assert.rejects(backups.restoreBackup({ ...s, name: b.name }), /restore failed/);
+  assert.equal(fs.readFileSync(jar, 'utf8'), 'current jar');
+  assert.equal(fs.readFileSync(region, 'utf8'), 'current world');
 });
 
 test('the backup is named by time and why it was made, and shows up in the list, newest first', async (t) => {

@@ -6,6 +6,23 @@
 // run time and must appear in the translation too. Text that is the same in both languages (brand names,
 // "Paper", "RAM") is left out: it shows as it is. test/i18n.test.js checks that nothing is missing.
 (window.VP_LANGS = window.VP_LANGS || {}).hinglish = {
+  'VoxelPort ID · safe to share for supporter ranks': 'VoxelPort ID · supporter rank ke liye share kar sakte ho',
+  'Copy ID': 'ID copy karo',
+  'VoxelPort ID': 'Tumhari VoxelPort ID',
+  'Get your supporter rank': 'Apna supporter rank lo',
+  'Copy ID and open Discord': 'ID copy karke Discord kholo',
+  'To get your supporter rank, copy your ID, open a Discord support ticket and paste it there.': 'Supporter rank ke liye apni ID copy karo, Discord par support ticket kholo aur wahan paste karo.',
+  'ID copied. Paste it into a Discord support ticket to request your rank.': 'ID copy ho gayi. Rank ke liye ise Discord support ticket mein paste karo.',
+  'ID copied. Discord could not open; open it yourself and paste your ID into a support ticket.': 'ID copy ho gayi. Discord nahi khula; khud kholkar support ticket mein ID paste karo.',
+  'Could not copy ID. Try again.': 'ID copy nahi hui. Dobara try karo.',
+  'Voice UDP:': 'Voice ka UDP:',
+  'Voice chat · Supporter Plus': 'Voice chat · Supporter Plus ke liye',
+  'Forward voice chat': 'Voice chat forward karo',
+  'A separate permanent UDP port, alongside Java and Bedrock. Requires Supporter Plus and a voice plugin installed on your server.': 'Java aur Bedrock ke saath ek alag permanent UDP port. Supporter Plus rank aur server par voice plugin chahiye.',
+  'Voice plugin': 'Voice ka plugin',
+  'Local voice UDP port': 'Voice ka local UDP port',
+  'Your VoxelPort ID · share this with the operator': 'Tumhari VoxelPort ID · operator ko yeh do',
+  'Set your plugin to listen on this local port. After making the server public, use the Voice UDP address shown on the server screen as its public address. Save, then stop and make the tunnel public again to apply forwarding changes.': 'Plugin ko is local port par chalao. Server public karne ke baad server screen par dikhne wala Voice UDP address plugin ka public address banao. Save karo, phir tunnel band karke dobara public karo taaki forwarding changes lag jayein.',
   'Export error report': 'Error report export karo',
   'Discord help': 'Discord par madad',
   'Report saved. Review it for personal details, then attach it to a Discord support ticket.': 'Report save ho gayi. Personal details check karke Discord support ticket mein attach karo.',
@@ -237,7 +254,7 @@
   'Ready for Fabric mods.': 'Fabric mods ke liye taiyaar.',
 
   // ── Backups ───────────────────────────────────────────────────────────
-  'Your world is backed up automatically while the server runs, and once more when you stop it. If something goes wrong (a crash, a griefer, a mistake), put an earlier one back. A backup holds your world(s) and the player lists. Mods and plugins are not included: they can be downloaded again.': 'Server chalte waqt tumhari world ka backup apne aap hota hai, aur band karte waqt ek baar aur. Kuch galat ho jaye (crash, griefer, ya koi galti), to pichla backup wapas laga do. Backup mein tumhari world(s) aur player lists hoti hain. Mods aur plugins shaamil nahi hain: unhe dobara download kiya ja sakta hai.',
+  'Your world is backed up automatically while the server runs, and once more when you stop it. A backup holds your world(s), server.jar and player lists. Restoring also restores its server.jar when included; older backups leave your installed jar alone. Mods, plugins and their settings are not included.': 'Server chalte waqt world ka backup apne aap hota hai, aur band karte waqt ek baar aur. Backup mein world(s), server.jar aur player lists hoti hain. Restore karne par backup wali server.jar bhi wapas aati hai; purane backups abhi wali jar nahi badalte. Mods, plugins aur unki settings shaamil nahi hain.',
   'Back up now': 'Abhi backup lo',
   'Open backups folder': 'Backups folder kholo',
   'Back up automatically': 'Apne aap backup lo',

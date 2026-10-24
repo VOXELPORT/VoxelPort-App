@@ -28,6 +28,19 @@ function baseInput(overrides = {}) {
 
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
+test('voice plugin settings are saved per server and malformed ports are refused', () => {
+  const dir = tmpUserData();
+  const p = createProfile(dir, baseInput());
+  for (const plugin of ['simple', 'plasmo']) {
+    const voice = { enabled: true, plugin, port: 24454 };
+    updateProfile(dir, p.id, { voice });
+    assert.deepEqual(getProfile(dir, p.id).voice, voice);
+  }
+  for (const voice of [{enabled:true,plugin:'simple',port:0}, {enabled:true,plugin:'other',port:24454}, {enabled:'yes',plugin:'plasmo',port:24454}]) {
+    assert.throws(() => updateProfile(dir,p.id,{voice}), /Invalid server profile/);
+  }
+});
+
 test('createProfile persists a profile with a stable UUID id', () => {
   const dir = tmpUserData();
   const p = createProfile(dir, baseInput());

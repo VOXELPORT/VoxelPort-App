@@ -1,6 +1,6 @@
 'use strict';
 
-// World backups. A backup is one .zip with the server's world folders (and the small player lists), plus
+// Server backups. A backup is one .zip with the world folders, server.jar and player lists, plus
 // a voxelport-backup.json that says what it is. Restoring puts them back, after saving a "before restore"
 // copy of what is there now, so a restore can always be undone.
 //
@@ -19,6 +19,7 @@ const REASONS = ['auto', 'manual', 'stop', 'before-restore'];
 const NAME_RE = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})_(auto|manual|stop|before-restore)(?:-(\d+))?\.zip$/;
 // The small files worth keeping with the world: who is allowed in, who is an operator.
 const CONFIG_FILES = ['whitelist.json', 'ops.json', 'banned-players.json', 'banned-ips.json'];
+const SERVER_JAR = 'server.jar';
 // Held open by the running server, and recreated on start: never part of a backup.
 const SKIP_FILES = new Set(['session.lock']);
 
@@ -202,12 +203,14 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
 
   const files = [];
   for (const w of worlds) await collectFiles(path.join(serverDir, w), w, files);
-  for (const f of CONFIG_FILES) {
+  for (const f of [...CONFIG_FILES, SERVER_JAR]) {
     const abs = path.join(serverDir, f);
     try {
-      const st = fs.statSync(abs);
+      const st = fs.lstatSync(abs);
       if (st.isFile()) files.push({ abs, rel: f, size: st.size, mtime: st.mtime });
-    } catch { /* not there */ }
+    } catch (err) {
+      if (f === SERVER_JAR && err.code !== 'ENOENT') throw new BackupError('failed', `Could not back up server.jar: ${err.message}`);
+    }
   }
   const total = files.reduce((n, f) => n + f.size, 0);
 
@@ -225,6 +228,7 @@ async function createBackup({ backupDir, serverDir, reason, info = {}, onProgres
     reason,
     levelName: level,
     worlds,
+    serverFiles: files.some((f) => f.rel === SERVER_JAR) ? [SERVER_JAR] : [],
     ...(levels ? { levelNames: levels } : {}),
     serverType: info.serverType || null,
     version: info.version || null,
@@ -336,6 +340,10 @@ async function readBackupInfo(file) {
         return;
       }
       if (!entries.includes(`${meta.levelName}/level.dat`)) { reject(new BackupError('bad-backup', 'That backup has no world in it.')); return; }
+      if (meta.serverFiles !== undefined && (!Array.isArray(meta.serverFiles)
+        || meta.serverFiles.length > 1 || meta.serverFiles.some((f) => f !== SERVER_JAR || !entries.includes(f)))) {
+        reject(new BackupError('bad-backup', 'That backup has invalid server files.')); return;
+      }
       resolve({ meta, entries, uncompressed });
     });
     zip.readEntry();
@@ -443,10 +451,14 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
       await renameWithRetry(path.join(tmp, w), path.join(serverDir, w));
       placed.push(w);
     }
-    for (const f of CONFIG_FILES) {
+    for (const f of [...CONFIG_FILES, ...(meta.serverFiles || [])]) {
       const from = path.join(tmp, f);
       if (!fs.existsSync(from)) continue;
       const to = path.join(serverDir, f);
+      // Never follow a server-root symlink when replacing an executable or list.
+      try {
+        if (!fs.lstatSync(to).isFile()) throw new BackupError('unsafe', 'A server file is not a regular file, so it was not replaced.');
+      } catch (err) { if (err.code !== 'ENOENT') throw err; }
       if (fs.existsSync(to)) { fs.copyFileSync(to, path.join(old, f)); listsKept.push(f); } else listsAdded.push(f);
       fs.copyFileSync(from, to);
     }
@@ -463,7 +475,11 @@ async function restoreBackup({ backupDir, serverDir, name, info = {}, onProgress
   }
   rmQuiet(tmp);
   rmQuiet(old); // the "before restore" backup holds the previous world
-  return { levelName: meta.levelName, previousLevelName: previousLevel, safetyBackup: safety ? safety.name : null };
+  const restoredServer = (meta.serverFiles || []).includes(SERVER_JAR)
+    && ['vanilla', 'paper', 'fabric'].includes(meta.serverType)
+    && typeof meta.version === 'string' && /^[A-Za-z0-9._+-]{1,80}$/.test(meta.version)
+    ? { type: meta.serverType, version: meta.version, javaMajor: undefined } : null;
+  return { levelName: meta.levelName, previousLevelName: previousLevel, safetyBackup: safety ? safety.name : null, restoredServer };
 }
 
 // ─── Housekeeping ────────────────────────────────────────────────────────────

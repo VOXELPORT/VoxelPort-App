@@ -112,6 +112,39 @@ copyTokenBtn.addEventListener('click', async () => {
   setTimeout(() => { copyTokenBtn.textContent = t('Copy'); }, 1400);
 });
 
+for (const id of ['copySupporterIDBtn', 'setCopySupporterIDBtn', 'supportCopyIDBtn']) {
+  $(id).addEventListener('click', async () => {
+    try {
+      const result = await window.vp.copySupporterID();
+      if (!result || !result.ok) throw new Error('copy failed');
+      $(id).textContent = t('Copied');
+    } catch { $(id).textContent = t('Could not copy ID. Try again.'); }
+    setTimeout(() => { $(id).textContent = t('Copy ID'); }, 2500);
+  });
+}
+for (const [buttonID, statusID] of [
+  ['setShareSupporterIDBtn', 'setShareSupporterIDStatus'],
+  ['supportShareIDBtn', 'supportShareIDStatus'],
+]) {
+  $(buttonID).addEventListener('click', async () => {
+    $(buttonID).disabled = true;
+    try {
+      const result = await window.vp.copySupporterID();
+      if (!result || !result.ok) throw new Error('copy failed');
+      $(statusID).textContent = t('ID copied. Paste it into a Discord support ticket to request your rank.');
+      try { await window.vp.openDiscord(); }
+      catch { $(statusID).textContent = t('ID copied. Discord could not open; open it yourself and paste your ID into a support ticket.'); }
+    } catch { $(statusID).textContent = t('Could not copy ID. Try again.'); }
+    finally { $(buttonID).disabled = false; }
+  });
+}
+window.vp.on('tunnel:voice', ({ port, host, profileId }) => {
+  window.voiceEndpoint = port ? `${host}:${port}` : null;
+  window.voiceEndpointProfileId = port ? profileId : null;
+  $('srvVoice').classList.toggle('hidden', !port);
+  $('srvVoiceAddress').textContent = window.voiceEndpoint || '';
+  if (window.refreshVoiceHelp) window.refreshVoiceHelp();
+});
 window.vp.on('tunnel:status', (s) => {
   setStatus(s);
   if (s === 'stopped') setRunningUI(false);
@@ -296,6 +329,9 @@ function whenDomReady() {
   await whenDomReady();
   relayUrl.placeholder = info.defaultRelayUrl;
   tokenField.value = info.maskedToken;
+  $('supporterID').value = info.supporterID;
+  $('setSupporterID').value = info.supporterID;
+  $('supportPageID').value = info.supporterID;
   $('tokenWarn').classList.toggle('hidden', !info.tokenUnreadable);
   version.textContent = 'v' + info.version;
   log(t('Ready. Set your local port and click Start hosting.'));
