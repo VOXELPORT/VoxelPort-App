@@ -47,7 +47,7 @@ test('addFriends writes whitelist.json, turns on white-list and enforce-whitelis
   assert.equal(propVal(dir, 'white-list'), 'true');
   assert.equal(propVal(dir, 'enforce-whitelist'), 'true');
   assert.equal(r.restartNeeded, true); // added while stopped
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('addFriends reports already-present and invalid names, and does not duplicate', () => {
@@ -58,7 +58,7 @@ test('addFriends reports already-present and invalid names, and does not duplica
   assert.deepEqual(r.already, ['Steve']);
   assert.deepEqual(r.invalid.sort(), ['ab', 'name!']);
   assert.deepEqual(read(dir).map((e) => e.name), ['Steve', 'Alex']);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('addFriends on a running server sends whitelist commands and needs no restart', () => {
@@ -68,7 +68,7 @@ test('addFriends on a running server sends whitelist commands and needs no resta
   assert.ok(sent.includes('whitelist add Steve'));
   assert.ok(sent.includes('whitelist on'));
   assert.equal(r.restartNeeded, false);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('addFriends flags a cracked server so the UI can warn', () => {
@@ -76,8 +76,8 @@ test('addFriends flags a cracked server so the UI can warn', () => {
   const cracked = server({ cracked: true });
   assert.equal(addFriends({ serverDir: plain, text: 'Steve', running: false }).cracked, false);
   assert.equal(addFriends({ serverDir: cracked, text: 'Steve', running: false }).cracked, true);
-  fs.rmSync(plain, { recursive: true, force: true });
-  fs.rmSync(cracked, { recursive: true, force: true });
+  fs.rmSync(plain, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  fs.rmSync(cracked, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('removeFriend takes a name off the list and commands a running server', () => {
@@ -87,7 +87,7 @@ test('removeFriend takes a name off the list and commands a running server', () 
   removeFriend({ serverDir: dir, name: 'Steve', running: true, send: (c) => sent.push(c) });
   assert.deepEqual(read(dir).map((e) => e.name), ['Alex']);
   assert.ok(sent.includes('whitelist remove Steve'));
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('setEnabled turns the whitelist off but keeps the names', () => {
@@ -96,7 +96,7 @@ test('setEnabled turns the whitelist off but keeps the names', () => {
   setEnabled({ serverDir: dir, on: false, running: false });
   assert.equal(propVal(dir, 'white-list'), 'false');
   assert.deepEqual(read(dir).map((e) => e.name), ['Steve']); // names kept for turning back on
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('status reports enabled state, the friends and cracked', () => {
@@ -106,7 +106,7 @@ test('status reports enabled state, the friends and cracked', () => {
   assert.equal(s.enabled, true);
   assert.deepEqual(s.friends, ['Steve']);
   assert.equal(s.cracked, true);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('readWhitelist ignores malformed entries and duplicates', () => {
@@ -115,7 +115,7 @@ test('readWhitelist ignores malformed entries and duplicates', () => {
     { name: 'Steve', uuid: 'u1' }, { name: 'steve' }, { name: 'bad name' }, { nope: true }, 'x',
   ]));
   assert.deepEqual(readWhitelist(dir).map((e) => e.name), ['Steve']);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('isWhitelistOn reads the property', () => {
@@ -123,6 +123,6 @@ test('isWhitelistOn reads the property', () => {
   const off = server({ props: 'white-list=false\n' });
   assert.equal(isWhitelistOn(on), true);
   assert.equal(isWhitelistOn(off), false);
-  fs.rmSync(on, { recursive: true, force: true });
-  fs.rmSync(off, { recursive: true, force: true });
+  fs.rmSync(on, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  fs.rmSync(off, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });

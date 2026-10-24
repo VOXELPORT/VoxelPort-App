@@ -114,7 +114,7 @@ test('readPlan reads the plan from a real .mrpack', async () => {
   assert.equal(plan.minecraft, '1.21.1');
   assert.equal(plan.downloads.length, 1);
   assert.equal(plan.skipped.length, 1);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('readPlan rejects a zip with no modrinth.index.json', async () => {
@@ -128,7 +128,7 @@ test('readPlan rejects a zip with no modrinth.index.json', async () => {
     zip.outputStream.pipe(ws); zip.end();
   });
   await assert.rejects(readPlan(mr), (e) => e.code === 'not-mrpack');
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('installMods downloads each server mod (verified) and copies config overrides', async () => {
@@ -156,7 +156,7 @@ test('installMods downloads each server mod (verified) and copies config overrid
   assert.equal(fs.readFileSync(path.join(serverDir, 'config', 'pack.toml'), 'utf8'), 'server = true');
   assert.ok(!fs.existsSync(path.join(serverDir, 'options.txt')));
   assert.ok(!fs.existsSync(path.join(serverDir, 'saves')));
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('copyOverrides never writes outside the server folder', async () => {
@@ -176,5 +176,5 @@ test('copyOverrides never writes outside the server folder', async () => {
   const n = await copyOverrides(mr, serverDir);
   assert.equal(n, 1);
   assert.ok(fs.existsSync(path.join(serverDir, 'config', 'ok.toml')));
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });

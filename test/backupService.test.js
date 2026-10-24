@@ -20,7 +20,7 @@ const backups = require('../src/main/backups');
  */
 function rig(t, { status = 'online', active = true, answerSave = true, saveWaitMs = 40 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-svc-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const serverDir = path.join(root, 'server');
   fs.mkdirSync(path.join(serverDir, 'world', 'region'), { recursive: true });
   fs.writeFileSync(path.join(serverDir, 'server.properties'), 'level-name=world\n');
