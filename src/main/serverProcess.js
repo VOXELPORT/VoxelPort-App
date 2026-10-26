@@ -18,6 +18,8 @@ function stripLogPrefix(line) {
   return String(line).replace(LOG_PREFIX_RE, '').trimEnd();
 }
 
+const PLAYER_NAME_RE = /^[A-Za-z0-9_.*-]{1,32}$/;
+const PLAYER_ACTIONS = new Set(['kick', 'op', 'deop', 'ban', 'pardon']);
 const STOP_GRACE_MS = 20000;
 const MAX_COMMAND_LEN = 512;
 
@@ -28,7 +30,7 @@ const MAX_COMMAND_LEN = 512;
  * exec()/shell:true — item 28), and only ever manages a single child at a
  * time.
  *
- * Events: 'status' (state), 'log' (line), 'players' (count), 'exit' (code).
+ * Events: 'status' (state), 'log' (line), 'players' (count), 'names' (who is online), 'exit' (code).
  */
 class ServerProcess extends EventEmitter {
   /** `spawnImpl` is for tests. */
@@ -91,6 +93,7 @@ class ServerProcess extends EventEmitter {
       this.online.clear();
       this._setStatus(crashed ? 'crashed' : 'stopped');
       this.emit('players', 0);
+      this.emit('names', []);
       this.emit('exit', code);
     };
 
@@ -111,9 +114,16 @@ class ServerProcess extends EventEmitter {
     if (this.status === 'starting' && READY_RE.test(message)) this._setStatus('online');
 
     const joined = JOIN_RE.exec(message);
-    if (joined) { this.online.add(joined[1]); this.emit('players', this.online.size); }
+    if (joined) { this.online.add(joined[1]); this.emit('players', this.online.size); this.emit('names', [...this.online]); }
     const left = LEAVE_RE.exec(message);
-    if (left) { this.online.delete(left[1]); this.emit('players', this.online.size); }
+    if (left) { this.online.delete(left[1]); this.emit('players', this.online.size); this.emit('names', [...this.online]); }
+  }
+
+  /** A console player button (kick, op, ban...). The name must look like one a server prints, so it can never carry a second command. */
+  playerAction(action, name) {
+    if (!this.child || !PLAYER_ACTIONS.has(action) || typeof name !== 'string' || !PLAYER_NAME_RE.test(name)) return false;
+    this.sendCommand(`${action} ${name}`);
+    return true;
   }
 
   /**

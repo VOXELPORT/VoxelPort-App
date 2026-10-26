@@ -79,6 +79,23 @@ function findManagedJava(userDataDir, requiredMajor) {
   return null;
 }
 
+/** The majors of the Javas VoxelPort installed itself, lowest first (empty when there are none). */
+function listManagedJava(userDataDir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(javaRoot(userDataDir));
+  } catch {
+    return [];
+  }
+  return entries
+    .map((name) => /^temurin-(\d+)$/.exec(name))
+    .filter(Boolean)
+    .map((m) => ({ major: parseInt(m[1], 10), dir: path.join(javaRoot(userDataDir), m[0]) }))
+    .filter((j) => javaExecutableIn(j.dir))
+    .map((j) => j.major)
+    .sort((a, b) => a - b);
+}
+
 function adoptiumPlatform() {
   const os = { win32: 'windows', linux: 'linux', darwin: 'mac' }[process.platform];
   const arch = { x64: 'x64', arm64: 'aarch64' }[process.arch];
@@ -248,4 +265,4 @@ async function installJava({ userDataDir, major, onProgress }) {
   }
 }
 
-module.exports = { installJava, findManagedJava, javaExecutableIn, ALLOWED_HOSTS };
+module.exports = { installJava, findManagedJava, listManagedJava, javaExecutableIn, ALLOWED_HOSTS };

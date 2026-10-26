@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('vp', {
   // app:info deliberately never returns the raw device token — see token.js/main.js.
   info: () => ipcRenderer.invoke('app:info'),
+  versions: () => ipcRenderer.invoke('app:versions'),
   exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
   openDiscord: () => ipcRenderer.invoke('community:discord'),
   copyToken: () => ipcRenderer.invoke('token:copy'),
@@ -27,6 +28,7 @@ contextBridge.exposeInMainWorld('vp', {
       'server:status',
       'server:log',
       'server:players',
+      'server:playerNames',
       'server:exit',
       'install:progress',
       'java:progress',
@@ -81,6 +83,7 @@ contextBridge.exposeInMainWorld('vp', {
     stop: () => ipcRenderer.invoke('server:stop'),
     restart: () => ipcRenderer.invoke('server:restart'),
     command: (command) => ipcRenderer.invoke('server:command', { command }),
+    playerAction: (action, name) => ipcRenderer.invoke('server:playerAction', { action, name }),
     openFolder: (id) => ipcRenderer.invoke('server:openFolder', { id }),
     makePublic: (id) => ipcRenderer.invoke('server:makePublic', { id }),
     templates: () => ipcRenderer.invoke('server:templates'),
@@ -90,6 +93,13 @@ contextBridge.exposeInMainWorld('vp', {
     fix: (id, action) => ipcRenderer.invoke('server:fix', { id, action }),
 
     state: () => ipcRenderer.invoke('server:state'),
+  },
+
+  // The server's own folder, as a small file browser. Paths are relative to the server folder and checked in the main process.
+  files: {
+    list: (id, path) => ipcRenderer.invoke('files:list', { id, path }),
+    read: (id, path) => ipcRenderer.invoke('files:read', { id, path }),
+    write: (id, path, text) => ipcRenderer.invoke('files:write', { id, path, text }),
   },
 
   backups: {
@@ -141,6 +151,12 @@ contextBridge.exposeInMainWorld('vp', {
     get: () => ipcRenderer.invoke('name:get'),
     claim: (name) => ipcRenderer.invoke('name:claim', { name }),
     release: () => ipcRenderer.invoke('name:release'),
+  },
+
+  // Discord Rich Presence: "available" is false until the app has a Discord application id, and the option is then hidden.
+  presence: {
+    get: () => ipcRenderer.invoke('presence:get'),
+    set: (enabled) => ipcRenderer.invoke('presence:set', { enabled }),
   },
 
   region: {

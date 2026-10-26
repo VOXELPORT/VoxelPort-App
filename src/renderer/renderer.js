@@ -169,7 +169,8 @@ window.vp.on('app:state', applyAppState);
 // ─── "Copy invite message": a ready-to-paste text for friends (invite.js builds it) ─────────
 // The main button copies it in the language the app is in; the small link beside it in the other one.
 function wireInviteButtons(mainBtn, altBtn, getData) {
-  const mine = VPI18N.lang;
+  // Invite messages exist in English and Hinglish only; any other app language copies the English one.
+  const mine = VPI18N.lang === 'hinglish' ? 'hinglish' : 'en';
   const other = mine === 'en' ? 'hinglish' : 'en';
   const mainLabel = mainBtn.textContent;
   const altLabel = other === 'hinglish' ? t('Copy in Hinglish') : t('Copy in English');
@@ -315,15 +316,8 @@ function whenDomReady() {
   return new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
 }
 
-// The footer link switches to the other language (the window reloads; see i18n.js).
-(function setupLanguageLink() {
-  const link = $('langLink');
-  const other = VPI18N.lang === 'en' ? 'hinglish' : 'en';
-  link.textContent = VPI18N.LANGUAGES[other];
-  link.title = VPI18N.lang === 'en' ? 'Switch the app to Hinglish' : 'Switch the app to English';
-  link.addEventListener('click', (e) => { e.preventDefault(); VPI18N.setLanguage(other); });
-  window.vp.setLanguage(VPI18N.lang);
-})();
+// Tell the main process which language the window shows (see app-settings.js for changing it).
+window.vp.setLanguage(VPI18N.lang);
 
 (async function init() {
   const [info, state] = await Promise.all([window.vp.info(), window.vp.server.state()]);

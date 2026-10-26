@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,6 +7,7 @@
   <title>VoxelPort</title>
   <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="theme-dark.css" />
 </head>
 <body>
   <header class="head">
@@ -18,14 +19,25 @@
 
     <!-- LIBRARY (home screen) -->
     <section class="screen panel active" id="screen-library">
-      <div class="screen-title"><svg class="px px-grass" viewBox="0 0 16 16" width="40" height="40" shape-rendering="crispEdges" aria-hidden="true"><rect x="0" y="0" width="16.02" height="1.02" fill="#15120F"/><rect x="0" y="1" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="1" width="2.02" height="1.02" fill="#6DBE45"/><rect x="3" y="1" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="4" y="1" width="4.02" height="1.02" fill="#6DBE45"/><rect x="8" y="1" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="9" y="1" width="3.02" height="1.02" fill="#6DBE45"/><rect x="12" y="1" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="13" y="1" width="2.02" height="1.02" fill="#6DBE45"/><rect x="15" y="1" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="2" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="2" width="1.02" height="1.02" fill="#6DBE45"/><rect x="2" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="3" y="2" width="3.02" height="1.02" fill="#6DBE45"/><rect x="6" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="7" y="2" width="4.02" height="1.02" fill="#6DBE45"/><rect x="11" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="12" y="2" width="2.02" height="1.02" fill="#6DBE45"/><rect x="14" y="2" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="15" y="2" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="3" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="3" width="3.02" height="1.02" fill="#6DBE45"/><rect x="4" y="3" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="5" y="3" width="4.02" height="1.02" fill="#6DBE45"/><rect x="9" y="3" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="10" y="3" width="5.02" height="1.02" fill="#6DBE45"/><rect x="15" y="3" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="4" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="4" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="2" y="4" width="4.02" height="1.02" fill="#6DBE45"/><rect x="6" y="4" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="7" y="4" width="5.02" height="1.02" fill="#6DBE45"/><rect x="12" y="4" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="13" y="4" width="2.02" height="1.02" fill="#6DBE45"/><rect x="15" y="4" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="5" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="5" width="1.02" height="1.02" fill="#6DBE45"/><rect x="2" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="3" y="5" width="1.02" height="1.02" fill="#8B5A36"/><rect x="4" y="5" width="2.02" height="1.02" fill="#6DBE45"/><rect x="6" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="7" y="5" width="1.02" height="1.02" fill="#8B5A36"/><rect x="8" y="5" width="2.02" height="1.02" fill="#6DBE45"/><rect x="10" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="11" y="5" width="1.02" height="1.02" fill="#6DBE45"/><rect x="12" y="5" width="1.02" height="1.02" fill="#8B5A36"/><rect x="13" y="5" width="1.02" height="1.02" fill="#6DBE45"/><rect x="14" y="5" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="15" y="5" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="6" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="6" width="3.02" height="1.02" fill="#8B5A36"/><rect x="4" y="6" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="5" y="6" width="3.02" height="1.02" fill="#8B5A36"/><rect x="8" y="6" width="1.02" height="1.02" fill="#6B4226"/><rect x="9" y="6" width="2.02" height="1.02" fill="#8B5A36"/><rect x="11" y="6" width="1.02" height="1.02" fill="#4E9A2F"/><rect x="12" y="6" width="3.02" height="1.02" fill="#8B5A36"/><rect x="15" y="6" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="7" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="7" width="1.02" height="1.02" fill="#8B5A36"/><rect x="2" y="7" width="1.02" height="1.02" fill="#A27752"/><rect x="3" y="7" width="10.02" height="1.02" fill="#8B5A36"/><rect x="13" y="7" width="1.02" height="1.02" fill="#A27752"/><rect x="14" y="7" width="1.02" height="1.02" fill="#8B5A36"/><rect x="15" y="7" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="8" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="8" width="4.02" height="1.02" fill="#8B5A36"/><rect x="5" y="8" width="1.02" height="1.02" fill="#6B4226"/><rect x="6" y="8" width="2.02" height="1.02" fill="#8B5A36"/><rect x="8" y="8" width="1.02" height="1.02" fill="#A27752"/><rect x="9" y="8" width="6.02" height="1.02" fill="#8B5A36"/><rect x="15" y="8" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="9" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="9" width="1.02" height="1.02" fill="#8B5A36"/><rect x="2" y="9" width="1.02" height="1.02" fill="#6B4226"/><rect x="3" y="9" width="8.02" height="1.02" fill="#8B5A36"/><rect x="11" y="9" width="1.02" height="1.02" fill="#6B4226"/><rect x="12" y="9" width="3.02" height="1.02" fill="#8B5A36"/><rect x="15" y="9" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="10" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="10" width="3.02" height="1.02" fill="#8B5A36"/><rect x="4" y="10" width="1.02" height="1.02" fill="#A27752"/><rect x="5" y="10" width="4.02" height="1.02" fill="#8B5A36"/><rect x="9" y="10" width="1.02" height="1.02" fill="#6B4226"/><rect x="10" y="10" width="4.02" height="1.02" fill="#8B5A36"/><rect x="14" y="10" width="1.02" height="1.02" fill="#A27752"/><rect x="15" y="10" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="11" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="11" width="6.02" height="1.02" fill="#8B5A36"/><rect x="7" y="11" width="1.02" height="1.02" fill="#6B4226"/><rect x="8" y="11" width="7.02" height="1.02" fill="#8B5A36"/><rect x="15" y="11" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="12" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="12" width="1.02" height="1.02" fill="#8B5A36"/><rect x="2" y="12" width="1.02" height="1.02" fill="#A27752"/><rect x="3" y="12" width="8.02" height="1.02" fill="#8B5A36"/><rect x="11" y="12" width="1.02" height="1.02" fill="#A27752"/><rect x="12" y="12" width="3.02" height="1.02" fill="#8B5A36"/><rect x="15" y="12" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="13" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="13" width="4.02" height="1.02" fill="#8B5A36"/><rect x="5" y="13" width="1.02" height="1.02" fill="#6B4226"/><rect x="6" y="13" width="7.02" height="1.02" fill="#8B5A36"/><rect x="13" y="13" width="1.02" height="1.02" fill="#6B4226"/><rect x="14" y="13" width="1.02" height="1.02" fill="#8B5A36"/><rect x="15" y="13" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="14" width="1.02" height="1.02" fill="#15120F"/><rect x="1" y="14" width="7.02" height="1.02" fill="#8B5A36"/><rect x="8" y="14" width="1.02" height="1.02" fill="#A27752"/><rect x="9" y="14" width="6.02" height="1.02" fill="#8B5A36"/><rect x="15" y="14" width="1.02" height="1.02" fill="#15120F"/><rect x="0" y="15" width="16.02" height="1.02" fill="#15120F"/></svg><div><div class="label">Your worlds</div><h1>MY SERVERS</h1></div></div>
-      <div class="server-list" id="serverList"></div>
-      <div class="library-actions">
-        <button class="primary" id="addServerBtn">+ Add Server</button>
-        <button class="ghost" id="importModpackBtn">Import a Modpack</button>
-        <button class="ghost" id="importServerBtn">Import Existing Server</button>
+      <div class="library-header">
+        <div class="library-heading">
+          <div class="label">Your worlds</div>
+          <h1>My servers</h1>
+          <p class="hint" id="librarySummary">Create, manage and share your Minecraft worlds.</p>
+        </div>
+        <button class="primary hidden" id="addServerBtn" type="button">+ Add Server</button>
       </div>
-      <button class="back-link" id="manualModeLink">Tunnel a server I already run elsewhere ›</button>
+      <div class="server-list" id="serverList"></div>
+      <div class="library-tools">
+        <div class="library-imports">
+          <p class="hint">Already have a server?</p>
+          <div class="library-actions">
+            <button class="ghost" id="importServerBtn" type="button">Import Existing Server</button>
+            <button class="ghost" id="importModpackBtn" type="button">Import a Modpack</button>
+          </div>
+          <button class="back-link" id="manualModeLink" type="button">Tunnel a server I already run elsewhere ›</button>
+        </div>
+      </div>
     </section>
 
     <!-- MANUAL TUNNEL (existing flow, unchanged) -->
@@ -305,8 +317,9 @@
         <button id="srvBackupsBtn" class="ghost">Backups</button>
         <button id="srvFriendsBtn" class="ghost">Friends only</button>
         <button id="srvAddonsBtn" class="ghost hidden">Plugins</button>
+        <button id="srvFilesBtn" class="ghost">Files</button>
         <button id="srvFolderBtn" class="ghost">Open folder</button>
-        <button id="srvRemoveBtn" class="ghost">Remove from VoxelPort</button>
+        <button id="srvRemoveBtn" class="ghost">Delete server</button>
       </div>
 
       <section id="publicShare" class="share hidden">
@@ -358,11 +371,17 @@
 
       <div class="diagnosis hidden" id="diagnosis" role="alert"></div>
 
+      <div class="players-panel hidden" id="playersPanel">
+        <div class="set-group-title">Players online</div>
+        <div class="bk-list" id="playersList"></div>
+      </div>
+
       <div class="log console-log" id="srvLog" aria-live="polite"></div>
 
       <div class="cmd-row">
         <input id="cmdInput" type="text" placeholder="Type a server command…" />
         <button id="cmdSendBtn" class="ghost">Send</button>
+        <button id="cmdCopyBtn" class="ghost" type="button" title="Copy everything shown in the console">Copy log</button>
       </div>
     </section>
 
@@ -473,6 +492,30 @@
       </div>
     </section>
 
+    <!-- SERVER FILES: browse the server folder and edit its text settings files -->
+    <section class="screen panel" id="screen-files">
+      <button class="back-link" id="filesBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="flSubtitle">Server files</div><h1>FILES</h1></div></div>
+
+      <p class="hint">Browse your server's folder and edit its settings files (server.properties, ops.json, plugin configs...). Only plain text files can be opened. Jars, worlds and logs can be seen but not changed here.</p>
+      <div class="hint hidden" id="flRunningNote">The server is running. Most changes only apply after a restart.</div>
+
+      <div class="set-group" id="flBrowser">
+        <div class="files-crumbs" id="flCrumbs"></div>
+        <div class="bk-list" id="flList"></div>
+      </div>
+
+      <div class="set-group hidden" id="flEditor">
+        <div class="set-group-title" id="flFileName"></div>
+        <textarea id="flText" class="files-text" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+        <div class="bk-actions">
+          <button class="primary" id="flSaveBtn" type="button">Save</button>
+          <button class="ghost" id="flCloseBtn" type="button">Close file</button>
+        </div>
+      </div>
+      <div class="hint" id="flStatus" aria-live="polite"></div>
+    </section>
+
     <!-- PLUGINS & MODS: search Modrinth, install, remove -->
     <section class="screen panel" id="screen-addons">
       <button class="back-link" id="addonsBackBtn" type="button">‹ Back to server</button>
@@ -554,6 +597,33 @@
       </div>
     </section>
 
+    <!-- APP SETTINGS -->
+    <section class="screen panel" id="screen-app-settings">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">VoxelPort</div><h1>APP SETTINGS</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Language</div>
+        <label class="field">
+          <span class="label">App language</span>
+          <select id="appLangSelect" data-no-i18n></select>
+        </label>
+        <p class="hint">The app reloads when you change the language. Anything not translated yet shows in English.</p>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Versions</div>
+        <dl class="about-list" id="aboutList">
+          <div><dt>VoxelPort</dt><dd id="aboutApp">…</dd></div>
+          <div><dt>Java on this PC</dt><dd id="aboutSystemJava">…</dd></div>
+          <div><dt>Java installed by VoxelPort</dt><dd id="aboutManagedJava">…</dd></div>
+          <div><dt>System</dt><dd id="aboutPlatform">…</dd></div>
+        </dl>
+        <p class="hint">Each server uses the Java version its Minecraft version needs. VoxelPort downloads it for you when it is missing.</p>
+        <div><button class="ghost small" id="aboutCopyBtn" type="button">Copy version details</button></div>
+      </div>
+    </section>
+
   </main>
 
   <div id="noticeBanner" class="notice-banner hidden" role="status" aria-live="polite">
@@ -576,11 +646,24 @@
     <span id="version"></span>
     <a href="#" id="supportLink">♥ Support VoxelPort</a>
     <a href="https://www.voxelport.in" target="_blank" rel="noreferrer">voxelport.in</a>
-    <a href="#" id="langLink" data-no-i18n></a>
+    <a href="#" id="appSettingsLink">⚙ App settings</a>
     </div>
   </footer>
 
   <script src="lang/hinglish.js"></script>
+  <script src="lang/es.js"></script>
+  <script src="lang/pt.js"></script>
+  <script src="lang/fr.js"></script>
+  <script src="lang/de.js"></script>
+  <script src="lang/it.js"></script>
+  <script src="lang/ru.js"></script>
+  <script src="lang/pl.js"></script>
+  <script src="lang/tr.js"></script>
+  <script src="lang/id.js"></script>
+  <script src="lang/vi.js"></script>
+  <script src="lang/zh.js"></script>
+  <script src="lang/ja.js"></script>
+  <script src="lang/ko.js"></script>
   <script src="i18n.js"></script>
   <script src="invite.js"></script>
   <script src="addonsText.js"></script>
@@ -594,6 +677,8 @@
   <script src="settings.js"></script>
   <script src="backups-ui.js"></script>
   <script src="addons-ui.js"></script>
+  <script src="files-ui.js"></script>
   <script src="support.js"></script>
+  <script src="app-settings.js"></script>
 </body>
 </html>

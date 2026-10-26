@@ -9,7 +9,7 @@ const { Tunnel } = require('./tunnel');
 const { loadOrCreateToken, maskToken } = require('./token');
 const mcVersions = require('./mcVersions');
 const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaCheck');
-const { installJava, findManagedJava } = require('./javaInstall');
+const { installJava, findManagedJava, listManagedJava } = require('./javaInstall');
 const {
   getServerDir, downloadServerJar, writeEula, writeServerProperties,
   detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
@@ -40,6 +40,9 @@ function publishVoiceState(state) {
 }
 const modpackImport = require('./modpackImport');
 const whitelist = require('./whitelist');
+const serverFiles = require('./serverFiles');
+const { checkDeletable } = require('./serverRemoval');
+const { DiscordPresence } = require('./discordPresence');
 const { atomicWriteFileSync } = require('./atomicWrite');
 const support = require('./support');
 const { createReport, redact: redactDiagnostic } = require('./diagnostics');
@@ -128,15 +131,27 @@ function visibleCustomAddress() {
   return customAddress;
 }
 
-// App-wide preferences (currently just the relay region: auto / in / eu).
-let prefs = { region: 'auto' };
+// Discord Rich Presence needs a Discord "application id" (free, from discord.com/developers). While this is empty the option is
+// hidden and nothing is ever sent.
+const DISCORD_CLIENT_ID = '1506829006794657902';
+const presence = new DiscordPresence({ clientId: DISCORD_CLIENT_ID });
+
+/** Tells Discord what is running now: the active server and how many are on it, or nothing when no server runs. */
+function refreshPresence() {
+  const running = serverProc.status === 'online' && activeServerProfileId;
+  const profile = running ? serverProfiles.getProfile(userDataDir(), activeServerProfileId) : null;
+  presence.update(profile ? { type: profile.type, version: profile.version, players: serverProc.online.size } : null);
+}
+
+// App-wide preferences: the relay region (auto / in / eu) and whether to show on Discord what is being hosted.
+let prefs = { region: 'auto', presence: true };
 function prefsPath() {
   return path.join(userDataDir(), 'preferences.json');
 }
 function loadPrefs() {
   try {
     const v = JSON.parse(fs.readFileSync(prefsPath(), 'utf8'));
-    prefs = { region: normalizePreference(v && v.region) };
+    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false) };
   } catch { /* defaults */ }
 }
 function savePrefs() {
@@ -161,7 +176,7 @@ function createWindow() {
     height: 800,
     minWidth: 540,
     minHeight: 640,
-    backgroundColor: '#F3EBDC',
+    backgroundColor: '#181a1b',
     title: 'VoxelPort',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
     webPreferences: {
@@ -349,6 +364,7 @@ function wireServerProcess(p) {
   p.on('status', (s) => {
     send('server:status', s);
     broadcastState();
+    refreshPresence();
     if (s === 'online') {
       const profile = activeServerProfileId ? serverProfiles.getProfile(userDataDir(), activeServerProfileId) : null;
       if (profile) startTickPolling(profile);
@@ -378,8 +394,10 @@ function wireServerProcess(p) {
   p.on('players', (n) => {
     if (activeServerProfileId) backupService.onPlayers(activeServerProfileId, n);
     send('server:players', n);
+    refreshPresence();
     scheduleListingUpdate();
   });
+  p.on('names', (names) => send('server:playerNames', names));
   p.on('exit', (code) => {
     perf.stop();
     stopTickPolling();
@@ -477,6 +495,7 @@ if (!gotLock) {
     tokenUnreadable = loaded.unreadable;
     loadCustomAddress();
     loadPrefs();
+    presence.setEnabled(prefs.presence);
     createWindow();
     updater.start({ isPackaged: app.isPackaged, platform: process.platform, windowsStore: Boolean(process.windowsStore) });
 
@@ -508,6 +527,7 @@ const quitGate = createQuitGate({
   timeoutMs: STOP_WAIT_TIMEOUT_MS,
 });
 app.on('before-quit', (event) => quitGate.onBeforeQuit(event));
+app.on('will-quit', () => presence.dispose());
 
 app.on('window-all-closed', () => {
   // Windows and Linux: closing the window quits, and before-quit waits for the server. macOS keeps the app alive, so the
@@ -556,6 +576,18 @@ ipcMain.handle('supporterID:copy', guarded(g, () => {
 }));
 
 // ─── Auto-update ────────────────────────────────────────────────────────────
+
+// What the app settings screen shows: the app's own version and the Java that servers will run on.
+ipcMain.handle('app:versions', guarded(g, async () => {
+  const system = await checkJava();
+  return {
+    app: app.getVersion(),
+    electron: process.versions.electron,
+    platform: `${process.platform} ${process.arch}`,
+    systemJava: system.found && system.major !== null ? system.major : null,
+    managedJava: listManagedJava(userDataDir()),
+  };
+}));
 
 ipcMain.handle('app:setLanguage', guarded(g, (_evt, { lang }) => {
   uiLang = lang === 'hinglish' ? 'hinglish' : 'en';
@@ -785,13 +817,62 @@ ipcMain.handle('server:profiles:update', guarded(g, (_evt, { id, changes }) => {
   return updated;
 }));
 
-ipcMain.handle('server:profiles:delete', guarded(g, (_evt, { id }) => {
-  // "Remove from VoxelPort" only — never touches serverDir.
+// "Delete server": asks first, then moves the server's whole folder to the Recycle Bin and forgets the server. The question is
+// asked here, not in the page, so it cannot be skipped. A folder that is not clearly a server's own (home, Desktop, a folder
+// shared with another saved server...) is never deleted: the server is then only taken off the list.
+ipcMain.handle('server:profiles:delete', guarded(g, async (_evt, { id }) => {
   if (id === activeServerProfileId || id === publicServerProfileId) {
     return { ok: false, error: 'Stop and un-publish this server before removing it.' };
   }
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+
+  const keep = ['home', 'desktop', 'documents', 'downloads', 'appData', 'userData', 'temp'].map((name) => { try { return app.getPath(name); } catch { return null; } });
+  const others = serverProfiles.listProfiles(userDataDir()).filter((p) => p.id !== id).map((p) => p.serverDir);
+  const check = checkDeletable(profile.serverDir, { keep, otherServerDirs: others });
+  const folderGone = !check.ok && check.reason === 'missing';
+
+  const name = profile.name;
+  const canDelete = check.ok;
+  const buttons = canDelete
+    ? [say('Cancel', 'Cancel'), say('Only remove from the list', 'Sirf list se hatao'), say('Delete server and files', 'Server aur files delete karo')]
+    : [say('Cancel', 'Cancel'), say('Remove from the list', 'List se hatao')];
+  const why = {
+    'too-broad': say('This folder is too broad to delete safely.', 'Ye folder itna bada hai ki safely delete nahi ho sakta.'),
+    protected: say('This folder holds your personal or VoxelPort folders, so it will not be deleted.', 'Is folder mein tumhare personal ya VoxelPort ke folders hain, isliye ye delete nahi hoga.'),
+    shared: say('Another saved server uses this folder, so it will not be deleted.', 'Koi aur saved server ye folder use karta hai, isliye ye delete nahi hoga.'),
+    'not-a-server': say('This does not look like a Minecraft server folder, so it will not be deleted.', 'Ye Minecraft server ka folder nahi lagta, isliye delete nahi hoga.'),
+    missing: say('The folder is already gone.', 'Folder pehle se nahi hai.'),
+    'not-a-folder': say('The saved location is not a folder.', 'Saved location folder nahi hai.'),
+  }[check.reason];
+  const detail = canDelete
+    ? say(
+      'Delete server and files moves this whole folder to the Recycle Bin: the world, plugins, mods and settings.\n\n' + profile.serverDir
+        + '\n\nYou can restore it from the Recycle Bin until you empty it. Backups made by VoxelPort are kept.',
+      'Server aur files delete karo se ye poora folder Recycle Bin mein chala jayega: world, plugins, mods aur settings.\n\n' + profile.serverDir
+        + '\n\nRecycle Bin khaali karne tak tum ise wapas la sakte ho. VoxelPort ke banaye backups bache rahenge.',
+    )
+    : say((why || '') + '\n\nOnly the entry in VoxelPort is removed; no files are touched.', (why || '') + '\n\nSirf VoxelPort ki entry hatayi jayegi; koi file nahi chhuyi jayegi.');
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: canDelete ? 'warning' : 'question',
+    buttons,
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    message: say('Delete "' + name + '"?', '"' + name + '" delete karna hai?'),
+    detail,
+  });
+  if (response === 0) return { ok: false, cancelled: true };
+
+  if (canDelete && response === 2) {
+    try {
+      await shell.trashItem(profile.serverDir);
+    } catch {
+      return { ok: false, error: 'Could not move the server folder to the Recycle Bin. Nothing was removed.' };
+    }
+  }
   const removed = serverProfiles.deleteProfile(userDataDir(), id);
-  return { ok: removed };
+  return { ok: removed, deletedFiles: canDelete && response === 2, folderGone };
 }));
 
 ipcMain.handle('server:detectExisting', guarded(g, (_evt, { dir }) => {
@@ -891,9 +972,15 @@ ipcMain.handle('server:versions', guarded(g, (_evt, { type }) => mcVersions.list
 // A fresh suggested folder per install (not the old fixed single-server
 // path) so multiple installed servers never collide unless the user
 // explicitly chooses the same folder themselves.
+// The Microsoft Store build runs inside an MSIX package, which redirects writes under AppData to a private
+// copy: server folders created there were not found by the server or by the user. Keep them in the home folder.
+function serversRoot() {
+  return process.windowsStore ? path.join(os.homedir(), 'VoxelPort', 'servers') : path.join(userDataDir(), 'servers');
+}
+
 ipcMain.handle('server:defaultDir', guarded(g, () => {
   const slug = crypto.randomBytes(4).toString('hex');
-  return path.join(userDataDir(), 'servers', `server-${Date.now()}-${slug}`);
+  return path.join(serversRoot(), `server-${Date.now()}-${slug}`);
 }));
 
 ipcMain.handle('server:chooseFolder', guarded(g, async () => {
@@ -928,7 +1015,7 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   }
   if (!serverProfiles.KNOWN_TYPES.has(type)) throw new Error('Unknown server type.');
 
-  const dir = serverDir || path.join(getServerDir(userDataDir()), '..', 'servers', String(Date.now()));
+  const dir = serverDir || path.join(serversRoot(), String(Date.now()));
   assertFolderEmptyForInstall(dir); // before anything is downloaded or written
   fs.mkdirSync(dir, { recursive: true });
 
@@ -1073,6 +1160,27 @@ ipcMain.handle('server:command', guarded(g, (_evt, { command }) => {
   serverProc.sendCommand(command);
   return { ok: true };
 }));
+
+// Console buttons: kick / op / ban a player who is online. The name is checked in ServerProcess.
+ipcMain.handle('server:playerAction', guarded(g, (_evt, { action, name }) => {
+  return { ok: serverProc.playerAction(action, name) };
+}));
+
+// ─── Server files screen ───────────────────────────────────────────────────
+
+/** Runs a file-browser call for one profile's folder; a refused path comes back as a plain message, never a stack. */
+function withServerFiles(id, fn) {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile || !profile.serverDir) return { ok: false, error: 'Server profile not found.' };
+  try {
+    return { ok: true, ...fn(profile.serverDir) };
+  } catch (err) {
+    return { ok: false, error: err.userMessage || 'Could not do that.' };
+  }
+}
+ipcMain.handle('files:list', guarded(g, (_evt, { id, path: rel }) => withServerFiles(id, (dir) => serverFiles.listDir(dir, rel))));
+ipcMain.handle('files:read', guarded(g, (_evt, { id, path: rel }) => withServerFiles(id, (dir) => serverFiles.readTextFile(dir, rel))));
+ipcMain.handle('files:write', guarded(g, (_evt, { id, path: rel, text }) => withServerFiles(id, (dir) => serverFiles.writeTextFile(dir, rel, text))));
 
 ipcMain.handle('server:openFolder', guarded(g, (_evt, { id }) => {
   const profile = id ? serverProfiles.getProfile(userDataDir(), id) : null;
@@ -1402,7 +1510,7 @@ ipcMain.handle('modpack:install', guarded(g, async (_evt, { file, name, port, mi
   addonsBusy = true;
   try {
     const plan = await modpackImport.readPlan(file); // re-read: the file could have changed since it was chosen
-    const dir = serverDir || path.join(getServerDir(userDataDir()), '..', 'servers', String(Date.now()));
+    const dir = serverDir || path.join(serversRoot(), String(Date.now()));
     assertFolderEmptyForInstall(dir);
     fs.mkdirSync(dir, { recursive: true });
 
@@ -1486,6 +1594,18 @@ ipcMain.handle('region:get', guarded(g, () => ({
   active: tunnelRegion ? tunnelRegion.id : null,
   addressRegion: customAddress.name ? customAddress.region : null,
 })));
+
+// ─── Discord Rich Presence ────────────────────────────────────────────────
+
+ipcMain.handle('presence:get', guarded(g, () => ({ available: presence.available, enabled: prefs.presence })));
+ipcMain.handle('presence:set', guarded(g, (_evt, { enabled }) => {
+  if (!presence.available) return { ok: false, enabled: false };
+  prefs.presence = enabled === true;
+  savePrefs();
+  presence.setEnabled(prefs.presence);
+  refreshPresence();
+  return { ok: true, enabled: prefs.presence };
+}));
 
 ipcMain.handle('region:set', guarded(g, (_evt, { preference }) => {
   prefs.region = normalizePreference(preference);

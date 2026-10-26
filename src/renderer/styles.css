@@ -475,3 +475,14 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 .ad-item > button { flex: none; }
 
 .invite-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* Players online (console) and the server files screen */
+.players-panel { margin-bottom: 10px; }
+.player-name { font-family: var(--type); word-break: break-all; }
+.files-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; font-family: var(--type); }
+.files-crumbs button { font-family: inherit; font-size: .95rem; padding: 2px 6px; border: 2px solid var(--ink); background: var(--card); cursor: pointer; }
+.files-crumbs button:disabled { cursor: default; opacity: .7; }
+.files-crumbs .sep { opacity: .6; }
+.file-item.openable { cursor: pointer; }
+.file-item .file-size { font-size: .8rem; opacity: .7; white-space: nowrap; }
+.files-text { width: 100%; min-height: 320px; max-height: 60vh; box-sizing: border-box; font-family: var(--type); font-size: .9rem; line-height: 1.35; padding: 8px; border: 2.5px solid var(--ink); background: var(--card); color: inherit; resize: vertical; tab-size: 2; }

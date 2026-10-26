@@ -143,3 +143,39 @@ test('K3: chat and other text that only contains those words is not the server s
   assert.deepEqual(events.filter(([n]) => n === 'players'), []);
   assert.equal(proc.online.size, 0);
 });
+
+// ─── player names and the console's player buttons ──────────────────────────
+
+test('the names of who is online follow joins and leaves, and clear when the server ends', async () => {
+  const child = fakeChild();
+  const proc = new ServerProcess({ spawnImpl: () => child });
+  const lists = [];
+  proc.on('names', (v) => lists.push(v));
+  proc.start(START);
+  child.stdout.write('[12:00:00 INFO]: Steve joined the game\n');
+  child.stdout.write('[12:00:01 INFO]: Alex joined the game\n');
+  child.stdout.write('[12:00:02 INFO]: Steve left the game\n');
+  await tick();
+  child.emit('exit', 0);
+  assert.deepEqual(lists, [['Steve'], ['Steve', 'Alex'], ['Alex'], []]);
+});
+
+test('playerAction sends only known actions for names that look like a player name', () => {
+  const child = fakeChild();
+  const proc = new ServerProcess({ spawnImpl: () => child });
+  proc.start(START);
+  const written = [];
+  child.stdin.on('data', (d) => written.push(String(d)));
+  assert.equal(proc.playerAction('kick', 'Steve'), true);
+  assert.equal(proc.playerAction('ban', '.Bedrock_Alex'), true);
+  assert.equal(proc.playerAction('stop', 'Steve'), false);          // not a player action
+  assert.equal(proc.playerAction('kick', 'Steve\nstop'), false);    // a second command
+  assert.equal(proc.playerAction('kick', 'a b'), false);
+  assert.equal(proc.playerAction('kick', ''), false);
+  assert.equal(proc.playerAction('kick', 5), false);
+  assert.deepEqual(written, ['kick Steve\n', 'ban .Bedrock_Alex\n']);
+});
+
+test('playerAction does nothing when no server is running', () => {
+  assert.equal(new ServerProcess().playerAction('kick', 'Steve'), false);
+});

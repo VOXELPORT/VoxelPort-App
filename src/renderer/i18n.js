@@ -8,16 +8,31 @@
 //   t('{n} players', { n: 3 })             -> placeholders are written as {name}
 //
 // Text that is already in index.html is translated once when the page loads (applyToPage). The language
-// is chosen in the footer; changing it reloads the window, so nothing has to be re-translated live.
+// is chosen in the app settings; changing it reloads the window, so nothing has to be re-translated live.
 (function (root) {
-  const LANGUAGES = { en: 'English', hinglish: 'Hinglish' };
+  // Each language is named in itself, so a person can find theirs whatever language the app is in.
+  const LANGUAGES = {
+    en: 'English', hinglish: 'Hinglish', es: 'Español', pt: 'Português', fr: 'Français', de: 'Deutsch', it: 'Italiano',
+    ru: 'Русский', pl: 'Polski', tr: 'Türkçe', id: 'Bahasa Indonesia', vi: 'Tiếng Việt', zh: '简体中文', ja: '日本語', ko: '한국어',
+  };
+  // The <html lang> of each, and the system language prefix that picks it when nothing was chosen.
+  const HTML_LANG = {
+    en: 'en', hinglish: 'hi-Latn', es: 'es', pt: 'pt-BR', fr: 'fr', de: 'de', it: 'it', ru: 'ru', pl: 'pl', tr: 'tr',
+    id: 'id', vi: 'vi', zh: 'zh-Hans', ja: 'ja', ko: 'ko',
+  };
+  const SYSTEM_PREFIX = {
+    hinglish: 'hi', es: 'es', pt: 'pt', fr: 'fr', de: 'de', it: 'it', ru: 'ru', pl: 'pl', tr: 'tr', id: 'id', vi: 'vi',
+    zh: 'zh', ja: 'ja', ko: 'ko',
+  };
   const STORAGE_KEY = 'vp.lang';
   const dictionaries = root.VP_LANGS || (root.VP_LANGS = {});
 
-  /** The language to use: what the person chose, else Hinglish for a Hindi system, else English. */
+  /** The language to use: what the person chose, else the one matching their system language, else English. */
   function pickLanguage({ stored, browser } = {}) {
     if (stored && Object.prototype.hasOwnProperty.call(LANGUAGES, stored)) return stored;
-    return /^hi\b/i.test(String(browser || '')) ? 'hinglish' : 'en';
+    const system = String(browser || '').toLowerCase();
+    const match = Object.keys(SYSTEM_PREFIX).find((lang) => system === SYSTEM_PREFIX[lang] || system.startsWith(SYSTEM_PREFIX[lang] + '-'));
+    return match || 'en';
   }
 
   function fill(text, vars) {
@@ -46,7 +61,7 @@
   /** Translates the text and the placeholder/title attributes already in the page. */
   function applyToPage(doc) {
     if (current === 'en') return;
-    doc.documentElement.lang = 'hi-Latn';
+    doc.documentElement.lang = HTML_LANG[current] || 'en';
     const walker = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
     const nodes = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);

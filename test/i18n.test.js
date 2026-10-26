@@ -25,9 +25,9 @@ const SAME_IN_BOTH = new Set([
   'Modded (Fabric)', 'Creative Flat', 'Peaceful Chill', 'View distance (chunks)', 'Simulation distance (chunks)', 'Spawn protection (blocks)',
   'Memory (RAM) —', 'affiliate link', 'Off.', 'Relay: {message}', 'Local server port',
   'players', 'relay ping', 'region', 'SERVER SETTINGS', '★ Supporter perks', '♥ Tip jar',
-  'Plugins', 'PLUGINS', 'Mods', 'MODS',
+  'Plugins', 'PLUGINS', 'Mods', 'MODS', 'Files', 'FILES', '{n} KB', '{n} B',
   // Example usernames and a loader name read the same written in Roman script.
-  'Steve, Alex, Notch', 'Fabric modpack',
+  'Steve, Alex, Notch', 'Fabric modpack', 'VoxelPort', 'System', 'Versions',
 ]);
 
 // Messages the main process can send back; the screen runs them through t().
@@ -48,6 +48,12 @@ const MESSAGES_THE_APP_SENDS = [
   'Plugins and mods need a Paper or Fabric server.', 'Invalid project.', 'That one was not installed by VoxelPort.',
   'Stop the server first. A running server has its plugins and mods open.', 'Stop the server first to update one that is already installed.',
   "Couldn't install that.", "Couldn't remove that.",
+  // The server files screen: what the file browser says when it refuses.
+  'Could not read that folder.', 'Could not open that file.', 'Could not save that file.', 'Could not do that.', 'That path is not allowed.',
+  'Server folder not found.', 'That kind of file cannot be opened here.', 'That file does not exist.', 'That is not a file.',
+  'That file is too large to edit here (limit 512 KB).', 'That file is not plain text.', 'That file cannot be edited here.',
+  'Nothing to save.', 'That file is too large to save here (limit 512 KB).',
+  'Could not move the server folder to the Recycle Bin. Nothing was removed.',
   'Wait for the server to finish starting, then make it public.', 'The previous server is still shutting down — try again in a few seconds.',
 ];
 

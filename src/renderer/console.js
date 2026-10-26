@@ -20,6 +20,9 @@ const stopPublicBtn = $('stopPublicBtn');
 const srvLog = $('srvLog');
 const cmdInput = $('cmdInput');
 const cmdSendBtn = $('cmdSendBtn');
+const cmdCopyBtn = $('cmdCopyBtn');
+const playersPanel = $('playersPanel');
+const playersList = $('playersList');
 const srvSettingsBtn = $('srvSettingsBtn');
 const srvAltAddress = $('srvAltAddress');
 const srvBedrock = $('srvBedrock');
@@ -285,6 +288,7 @@ window.vp.on('server:diagnosis', ({ profileId, items }) => {
 
 srvSettingsBtn.addEventListener('click', () => { if (managingProfileId) window.openSettingsScreen(managingProfileId); });
 $('srvBackupsBtn').addEventListener('click', () => { if (managingProfileId) window.openBackupsScreen(managingProfileId); });
+$('srvFilesBtn').addEventListener('click', () => { if (managingProfileId) window.openFilesScreen(managingProfileId); });
 $('srvAddonsBtn').addEventListener('click', () => { if (managingProfileId) window.openAddonsScreen(managingProfileId); });
 window.onAppState.push(() => { if ($('screen-console').classList.contains('active')) renderManagementScreen(); });
 
@@ -293,6 +297,7 @@ window.openManagementScreen = async function openManagementScreen(id) {
   managingProfileId = id;
   window.managingProfileId = id; // other screens (Friends only) read the server being managed
   srvLog.innerHTML = '';
+  renderPlayers([]);
   const profile = await window.vp.server.get(id);
   if (!profile) { showScreen('screen-library'); return; }
   managingProfile = profile;
@@ -332,6 +337,7 @@ srvFolderBtn.addEventListener('click', () => window.vp.server.openFolder(managin
 srvRemoveBtn.addEventListener('click', async () => {
   if (!managingProfileId) return;
   const res = await window.vp.server.remove(managingProfileId);
+  if (res && res.cancelled) return; // the question was answered with Cancel
   if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove this server.')); return; }
   await window.refreshLibrary();
   showScreen('screen-library');
@@ -355,19 +361,86 @@ srvCopyBtn.addEventListener('click', async () => {
   } catch { /* ignore */ }
 });
 
+// Commands already sent, newest last: ArrowUp / ArrowDown walk through them like a terminal.
+const cmdHistory = [];
+let cmdHistoryAt = 0;
+let cmdDraft = '';
+const MAX_HISTORY = 50;
+
 function sendCommand() {
   const cmd = cmdInput.value.trim();
   if (!cmd) return;
   window.vp.server.command(cmd);
+  if (cmdHistory[cmdHistory.length - 1] !== cmd) cmdHistory.push(cmd);
+  if (cmdHistory.length > MAX_HISTORY) cmdHistory.shift();
+  cmdHistoryAt = cmdHistory.length;
   cmdInput.value = '';
 }
 cmdSendBtn.addEventListener('click', sendCommand);
-cmdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCommand(); });
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { sendCommand(); return; }
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  if (!cmdHistory.length) return;
+  e.preventDefault();
+  if (cmdHistoryAt === cmdHistory.length) cmdDraft = cmdInput.value;
+  cmdHistoryAt = Math.min(cmdHistory.length, Math.max(0, cmdHistoryAt + (e.key === 'ArrowUp' ? -1 : 1)));
+  cmdInput.value = cmdHistoryAt === cmdHistory.length ? cmdDraft : cmdHistory[cmdHistoryAt];
+});
+
+cmdCopyBtn.addEventListener('click', async () => {
+  const text = Array.from(srvLog.children).map((line) => line.textContent).join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    cmdCopyBtn.textContent = t('Copied');
+  } catch {
+    cmdCopyBtn.textContent = t('Could not copy');
+  }
+  setTimeout(() => { cmdCopyBtn.textContent = t('Copy log'); }, 1400);
+});
+
+// Who is online, with buttons that send the matching command. Names come from the server's log, so they are only ever
+// put in the page as text.
+const PLAYER_BUTTONS = [
+  { action: 'kick', label: () => t('Kick') },
+  { action: 'op', label: () => t('Make admin'), confirm: (name) => t('Make {name} an admin? Admins can run every command, including stopping the server.', { name }) },
+  { action: 'ban', label: () => t('Ban'), confirm: (name) => t('Ban {name}? They will not be able to join again until you unban them.', { name }) },
+];
+
+function renderPlayers(names) {
+  playersList.innerHTML = '';
+  playersPanel.classList.toggle('hidden', !names.length);
+  for (const name of names) {
+    const row = document.createElement('div');
+    row.className = 'bk-item';
+    const label = document.createElement('div');
+    label.className = 'bk-item-main';
+    const nameEl = document.createElement('strong');
+    nameEl.className = 'player-name';
+    nameEl.textContent = name;
+    label.appendChild(nameEl);
+    const actions = document.createElement('div');
+    actions.className = 'bk-item-actions';
+    for (const def of PLAYER_BUTTONS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ghost small';
+      btn.textContent = def.label();
+      btn.addEventListener('click', () => {
+        if (def.confirm && !window.confirm(def.confirm(name))) return;
+        window.vp.server.playerAction(def.action, name);
+      });
+      actions.appendChild(btn);
+    }
+    row.append(label, actions);
+    playersList.appendChild(row);
+  }
+}
+window.vp.on('server:playerNames', (names) => { if (isThisProfileActive()) renderPlayers(Array.isArray(names) ? names : []); });
 
 window.vp.on('server:status', () => renderManagementScreen());
 window.vp.on('server:log', (line) => { if (isThisProfileActive()) srvLogLine(line); });
 window.vp.on('server:players', (n) => { if (isThisProfileActive()) srvPlayers.textContent = String(n); });
-window.vp.on('server:exit', (code) => { if (isThisProfileActive()) srvLogLine(t('Server process exited (code {code}).', { code })); });
+window.vp.on('server:exit', (code) => { renderPlayers([]); if (isThisProfileActive()) srvLogLine(t('Server process exited (code {code}).', { code })); });
 
 // The relay tunnel is shared with the manual-hosting screen — reuse its events.
 window.vp.on('tunnel:assigned', ({ port, host }) => {
