@@ -435,4 +435,5 @@
   'Sign out': 'Wyloguj',
   'Not now': 'Nie teraz',
   'Discord account': 'Konto Discord',
+  'Your rank: {rank}': 'Twoja ranga: {rank}',
 };

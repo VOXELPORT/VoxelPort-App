@@ -436,4 +436,5 @@
   'Sign out': '退出登录',
   'Not now': '暂不',
   'Discord account': 'Discord 账号',
+  'Your rank: {rank}': '你的等级：{rank}',
 };

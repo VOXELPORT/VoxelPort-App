@@ -433,4 +433,5 @@
   'Sign out': 'Abmelden',
   'Not now': 'Nicht jetzt',
   'Discord account': 'Discord-Konto',
+  'Your rank: {rank}': 'Dein Rang: {rank}',
 };

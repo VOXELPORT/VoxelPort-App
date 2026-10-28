@@ -23,8 +23,8 @@ async function fakeAccounts(over = {}) {
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       const send = (status, obj) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
-      if (req.url === '/api/app/exchange') { const b = JSON.parse(body); log.exchange.push(b); return send(over.exchangeStatus || 200, over.exchange || { session: 'session-token-abcdefghijklmnopqrstuvwxyz0123456789', member: true, reason: null, discordName: 'Player', graceUntil: null, serverNow: 5000, inviteUrl: 'https://discord.gg/x' }); }
-      if (req.url === '/api/app/status') return req.headers.authorization === 'Bearer session-token-abcdefghijklmnopqrstuvwxyz0123456789' && !over.reject ? send(200, { member: true, reason: null, discordName: 'Player', graceUntil: null, serverNow: 9000 }) : send(401, { error: 'Sign in again.' });
+      if (req.url === '/api/app/exchange') { const b = JSON.parse(body); log.exchange.push(b); return send(over.exchangeStatus || 200, over.exchange || { session: 'session-token-abcdefghijklmnopqrstuvwxyz0123456789', member: true, reason: null, discordName: 'Player', plan: { id: 'free', name: 'Free' }, rank: 'free', graceUntil: null, serverNow: 5000, inviteUrl: 'https://discord.gg/x' }); }
+      if (req.url === '/api/app/status') return req.headers.authorization === 'Bearer session-token-abcdefghijklmnopqrstuvwxyz0123456789' && !over.reject ? send(200, { member: true, reason: null, discordName: 'Player', plan: { id: 'plus', name: 'Plus' }, rank: 'supporter_plus', graceUntil: null, serverNow: 9000 }) : send(401, { error: 'Sign in again.' });
       if (req.url === '/api/app/config') return send(200, { graceUntil: 123456, serverNow: 7000, inviteUrl: 'https://discord.gg/x' });
       if (req.url === '/api/app/signout') { log.signouts++; return send(200, { ok: true }); }
       send(404, {});
@@ -182,4 +182,20 @@ test('the browser returning with an error ends the sign-in at once and closes th
 
 test('a first-time Discord user gets ten minutes to finish signing in', () => {
   assert.equal(require('../src/main/appAccount').DEFAULT_SIGN_IN_TIMEOUT_MS, 10 * 60 * 1000);
+});
+
+test('the plan and rank from the server are kept, refreshed and remembered across runs', async () => {
+  const accounts = await fakeAccounts();
+  const { account, dir, done } = make(accounts);
+  try {
+    assert.equal(account.snapshot().standing, null);
+    await account.signIn();
+    assert.deepEqual(account.snapshot().standing, { plan: { id: 'free', name: 'Free' }, rank: 'free' });
+    await account.refreshStatus();
+    assert.deepEqual(account.snapshot().standing, { plan: { id: 'plus', name: 'Plus' }, rank: 'supporter_plus' });
+    const again = createAppAccount({ baseUrl: accounts.baseUrl, userDataDir: dir, safeStorage, deviceToken: DEVICE, now: () => 2000, openExternal: async () => {} });
+    assert.deepEqual(again.snapshot().standing, { plan: { id: 'plus', name: 'Plus' }, rank: 'supporter_plus' });
+    await again.signOut();
+    assert.equal(again.snapshot().standing, null);
+  } finally { done(); await accounts.close(); }
 });

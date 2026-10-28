@@ -9,6 +9,8 @@
   const banner = $('discordBanner');
   const accountStatus = $('setDiscordStatus');
   const accountActions = $('setDiscordActions');
+  const accountRank = $('setDiscordRank');
+  const RANKS = { free: 'Free', supporter: 'Supporter', supporter_plus: 'Supporter+' };
   let state = null;
   let signingIn = false;
   let notice = '';
@@ -87,6 +89,9 @@
   function renderSettings() {
     if (!accountStatus || !state) return;
     accountStatus.textContent = state.discordName ? window.t('Signed in as {name}', { name: state.discordName }) : window.t('Not signed in with Discord.');
+    // The rank the relays give this account (Supporter+ also unlocks voice chat), with the plan it comes from.
+    const rank = state.discordName && state.rank ? (RANKS[state.rank] || state.rank) + (state.planName && !['Free', 'Supporter'].includes(state.planName) ? ` (${state.planName})` : '') : '';
+    accountRank.textContent = rank ? window.t('Your rank: {rank}', { rank }) : '';
     const extra = state.linkError ? [el('p', { className: 'hint', textContent: state.linkError })] : [];
     accountActions.replaceChildren(...extra, state.discordName
       ? button(window.t('Sign out'), async () => { try { state = await window.vp.discordSignOut(); } catch { /* keep the old state */ } render(); })

@@ -434,4 +434,5 @@
   'Sign out': 'Keluar',
   'Not now': 'Nanti saja',
   'Discord account': 'Akun Discord',
+  'Your rank: {rank}': 'Peringkat Anda: {rank}',
 };

@@ -437,4 +437,5 @@
   'Sign out': 'Cerrar sesión',
   'Not now': 'Ahora no',
   'Discord account': 'Cuenta de Discord',
+  'Your rank: {rank}': 'Tu rango: {rank}',
 };

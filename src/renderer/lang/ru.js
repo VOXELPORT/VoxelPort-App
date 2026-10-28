@@ -436,4 +436,5 @@
   'Sign out': 'Выйти',
   'Not now': 'Не сейчас',
   'Discord account': 'Аккаунт Discord',
+  'Your rank: {rank}': 'Ваш ранг: {rank}',
 };

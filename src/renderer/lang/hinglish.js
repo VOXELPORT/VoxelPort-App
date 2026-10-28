@@ -453,4 +453,5 @@
   'Sign out': 'Sign out karo',
   'Not now': 'Abhi nahi',
   'Discord account': 'Discord ka account',
+  'Your rank: {rank}': 'Tumhara rank: {rank}',
 };

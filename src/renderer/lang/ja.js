@@ -436,4 +436,5 @@
   'Sign out': 'サインアウト',
   'Not now': '今はしない',
   'Discord account': 'Discord アカウント',
+  'Your rank: {rank}': 'あなたのランク: {rank}',
 };

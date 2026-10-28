@@ -436,4 +436,5 @@
   'Sign out': 'Çıkış yap',
   'Not now': 'Şimdi değil',
   'Discord account': 'Discord hesabı',
+  'Your rank: {rank}': 'Rütben: {rank}',
 };

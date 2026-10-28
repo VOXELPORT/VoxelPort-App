@@ -436,4 +436,5 @@
   'Sign out': 'Đăng xuất',
   'Not now': 'Để sau',
   'Discord account': 'Tài khoản Discord',
+  'Your rank: {rank}': 'Cấp bậc của bạn: {rank}',
 };

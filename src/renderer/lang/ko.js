@@ -436,4 +436,5 @@
   'Sign out': '로그아웃',
   'Not now': '나중에',
   'Discord account': 'Discord 계정',
+  'Your rank: {rank}': '내 등급: {rank}',
 };

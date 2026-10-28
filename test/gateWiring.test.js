@@ -31,3 +31,9 @@ test('the first-run wall only covers the app when the accounts service could be 
   assert.match(source, /reachable: !!snap\.config/);
   assert.match(ui, /state\.reachable/);
 });
+
+test('the main process hands the rank to the screen and the screen shows it', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'discord-ui.js'), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(source, /rank: snap\.standing/);
+  assert.match(ui, /Your rank: \{rank\}/);
+});

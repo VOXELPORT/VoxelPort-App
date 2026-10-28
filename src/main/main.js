@@ -226,8 +226,8 @@ function currentGate() {
 }
 function discordState() {
   const gate = currentGate();
-  const snap = appAccount ? appAccount.snapshot() : { config: null, discordName: null };
-  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError };
+  const snap = appAccount ? appAccount.snapshot() : { config: null, discordName: null, standing: null };
+  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, rank: snap.standing ? snap.standing.rank : null, planName: snap.standing ? snap.standing.plan.name : null, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError };
 }
 async function refreshDiscord() {
   if (!appAccount) return;

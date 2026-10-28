@@ -23,7 +23,8 @@ const RETURN_PAGE = '<!doctype html><meta charset="utf-8"><title>VoxelPort</titl
 function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, deviceToken, fetchImpl = fetch, now = Date.now, signInTimeoutMs = DEFAULT_SIGN_IN_TIMEOUT_MS }) {
   const file = path.join(userDataDir, 'app-session.json');
   const canEncrypt = () => !!(safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable());
-  const state = { session: null, config: null, status: null, statusError: null, lastGood: null, discordName: null };
+  const state = { session: null, config: null, status: null, statusError: null, lastGood: null, discordName: null, standing: null };
+  const readStanding = (j) => { if (j && j.plan && typeof j.plan.id === 'string' && typeof j.rank === 'string') state.standing = { plan: { id: j.plan.id, name: String(j.plan.name || '') }, rank: j.rank }; };
   let flow = null;
 
   function load() {
@@ -33,12 +34,13 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
       else if (typeof record.session === 'string') state.session = record.session;
       if (record.lastGood && typeof record.lastGood.member === 'boolean') state.lastGood = { member: record.lastGood.member, at: Number(record.lastGood.at) || 0 };
       if (typeof record.discordName === 'string') state.discordName = record.discordName;
+      readStanding(record.standing);
     } catch { /* no saved session, or it cannot be read right now: the person simply signs in again */ }
   }
   function save() {
     fs.mkdirSync(userDataDir, { recursive: true });
     const secret = canEncrypt() ? { enc: safeStorage.encryptString(state.session).toString('base64') } : { session: state.session };
-    atomicWriteFileSync(file, JSON.stringify({ ...secret, lastGood: state.lastGood, discordName: state.discordName }), { mode: 0o600 });
+    atomicWriteFileSync(file, JSON.stringify({ ...secret, lastGood: state.lastGood, discordName: state.discordName, standing: state.standing }), { mode: 0o600 });
   }
   const url = (p) => `${baseUrl}${p}`;
   async function call(method, p, { body, session } = {}) {
@@ -80,6 +82,7 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
       state.session = j.session; state.discordName = j.discordName || null;
       state.status = { member: !!j.member, reason: j.reason || null }; state.statusError = null;
       state.lastGood = { member: !!j.member, at: now() };
+      readStanding(j);
       readConfig(j);
       try { save(); } catch { /* signed in for this run even if it cannot be remembered */ }
       return { ok: true, member: !!j.member, reason: j.reason || null, linkError: j.linkError, discordName: state.discordName };
@@ -108,6 +111,7 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
       else {
         state.status = { member: !!r.json.member, reason: r.json.reason || null }; state.statusError = null;
         state.lastGood = { member: !!r.json.member, at: now() }; state.discordName = r.json.discordName || state.discordName;
+        readStanding(r.json);
         readConfig(r.json);
         try { save(); } catch { /* best effort */ }
       }
@@ -125,13 +129,13 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
 
   async function signOut() {
     const session = state.session;
-    state.session = null; state.status = null; state.statusError = null; state.lastGood = null; state.discordName = null;
+    state.session = null; state.status = null; state.statusError = null; state.lastGood = null; state.discordName = null; state.standing = null;
     try { fs.rmSync(file, { force: true }); } catch { /* nothing to remove */ }
     if (session) { try { await call('POST', '/api/app/signout', { body: {}, session }); } catch { /* the server forgets it on its own schedule */ } }
   }
 
   load();
-  return { signIn, cancelSignIn: () => flow && flow.cancel(), refreshStatus, refreshConfig, signOut, snapshot: () => ({ session: !!state.session, config: state.config, status: state.status, statusError: state.statusError, lastGood: state.lastGood, discordName: state.discordName }) };
+  return { signIn, cancelSignIn: () => flow && flow.cancel(), refreshStatus, refreshConfig, signOut, snapshot: () => ({ session: !!state.session, config: state.config, status: state.status, statusError: state.statusError, lastGood: state.lastGood, discordName: state.discordName, standing: state.standing }) };
 }
 
 module.exports = { createAppAccount, DEFAULT_SIGN_IN_TIMEOUT_MS };
