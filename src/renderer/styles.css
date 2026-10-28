@@ -486,3 +486,18 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 .file-item.openable { cursor: pointer; }
 .file-item .file-size { font-size: .8rem; opacity: .7; white-space: nowrap; }
 .files-text { width: 100%; min-height: 320px; max-height: 60vh; box-sizing: border-box; font-family: var(--type); font-size: .9rem; line-height: 1.35; padding: 8px; border: 2.5px solid var(--ink); background: var(--card); color: inherit; resize: vertical; tab-size: 2; }
+
+/* Discord membership: first-run screen, banner and account row */
+.discord-gate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--paper); padding: 24px; }
+.discord-card { max-width: 440px; border: 2.5px solid var(--ink); background: var(--card); padding: 22px 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+.discord-card h1 { margin: 0; font-family: var(--display); font-size: 1.9rem; line-height: 1.05; letter-spacing: .03em; }
+.discord-card p { margin: 0; color: var(--ink-2); }
+.discord-why { font-weight: 700; color: var(--red); }
+.discord-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.discord-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 16px; background: var(--gold); color: var(--ink); border-bottom: 2.5px solid var(--ink); font-weight: 700; }
+.discord-banner .hint { margin: 0; }
+body.discord-locked main, body.discord-locked header.head { visibility: hidden; }
+.discord-banner { color: #15120F; }
+.discord-banner button.ghost { color: #15120F; background: rgba(255, 255, 255, .6); border-color: #15120F; }
+.discord-banner .hint { color: #15120F; }
+html[data-theme="dark"] .discord-banner button.ghost, .discord-banner button.ghost { color: #15120F; background: rgba(255, 255, 255, .7); border: 2px solid #15120F; }

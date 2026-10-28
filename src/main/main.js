@@ -21,6 +21,8 @@ const serverProfiles = require('./serverProfiles');
 const { isSafeRelayUrl } = require('./relayUrlSafety');
 const { isApprovedExternalUrl } = require('./externalLinkSafety');
 const { guarded } = require('./ipcSenders');
+const { evaluateGate, recordInstall } = require('./discordGate');
+const { createAppAccount } = require('./appAccount');
 const serverSettings = require('./serverSettings');
 const { explainCrash } = require('./crashExplain');
 const {
@@ -57,6 +59,12 @@ const backupsLib = require('./backups');
 // "Use VoxelPort's relay" — the region (India / Europe) is picked per
 // tunnel by regions.js. Any other URL is a self-hosted relay used as-is.
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
+// Where "Continue with Discord" and the membership check live. The override is for local testing only.
+const ACCOUNTS_URL = (!app.isPackaged && process.env.VOXELPORT_ACCOUNTS_URL) || 'https://accounts.voxelport.in';
+const DISCORD_RECHECK_MS = 24 * 3600 * 1000;
+let gateRecord = { installedAt: 0, existingInstall: false };
+let appAccount = null;
+let discordLinkError = null;
 const PUBLIC_HOST = REGIONS.in.publicHost;
 const STOP_WAIT_TIMEOUT_MS = 25000; // a little past ServerProcess's own 20s force-kill grace
 
@@ -208,6 +216,24 @@ function createWindow() {
     if (isApprovedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+}
+
+// Whether this install may host publicly right now (see discordGate.js). Never throws: with no account module yet,
+// it behaves as a signed-out install.
+function currentGate() {
+  const snap = appAccount ? appAccount.snapshot() : { session: false, config: null, status: null, statusError: null, lastGood: null };
+  return evaluateGate({ existingInstall: gateRecord.existingInstall, session: snap.session, config: snap.config, status: snap.status, statusError: snap.statusError, lastGood: snap.lastGood, now: Date.now() });
+}
+function discordState() {
+  const gate = currentGate();
+  const snap = appAccount ? appAccount.snapshot() : { config: null, discordName: null };
+  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError };
+}
+async function refreshDiscord() {
+  if (!appAccount) return;
+  await appAccount.refreshConfig();
+  await appAccount.refreshStatus();
+  send('discord:state', discordState());
 }
 
 function send(channel, payload) {
@@ -489,10 +515,14 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    gateRecord = recordInstall(userDataDir(), Date.now()); // before the token exists, so an existing install is recognised
     const loaded = loadOrCreateToken(userDataDir(), safeStorage);
     deviceToken = loaded.token;
     tokenEncryptedAtRest = loaded.encryptedAtRest;
     tokenUnreadable = loaded.unreadable;
+    appAccount = createAppAccount({ baseUrl: ACCOUNTS_URL, userDataDir: userDataDir(), safeStorage, deviceToken, openExternal: (url) => shell.openExternal(url) });
+    refreshDiscord().catch(() => {});
+    setInterval(() => refreshDiscord().catch(() => {}), DISCORD_RECHECK_MS).unref();
     loadCustomAddress();
     loadPrefs();
     presence.setEnabled(prefs.presence);
@@ -554,11 +584,15 @@ ipcMain.handle('community:discord', guarded(g, () => shell.openExternal('https:/
 
 // ─── App info / token (item 12/13) ─────────────────────────────────────────
 
+// The relay and the accounts dashboard both identify a server by the first 12 characters of sha256(token);
+// that is all anyone needs to see. Ownership is proven by the device token, never by this ID.
+const shortId = () => crypto.createHash('sha256').update(deviceToken).digest('hex').slice(0, 12);
+
 ipcMain.handle('app:info', guarded(g, () => ({
   publicHost: PUBLIC_HOST,
   defaultRelayUrl: DEFAULT_RELAY_URL,
   maskedToken: maskToken(deviceToken),
-  supporterID: crypto.createHash('sha256').update(deviceToken).digest('hex'),
+  supporterID: shortId(),
   tokenEncryptedAtRest,
   tokenUnreadable,
   version: app.getVersion(),
@@ -570,8 +604,24 @@ ipcMain.handle('token:copy', guarded(g, () => {
   clipboard.writeText(deviceToken);
   return { ok: true };
 }));
+ipcMain.handle('discord:state', guarded(g, () => discordState()));
+ipcMain.handle('discord:signIn', guarded(g, async () => {
+  const result = await appAccount.signIn();
+  discordLinkError = result.ok ? result.linkError || null : null;
+  send('discord:state', discordState());
+  return { ...result, state: discordState() };
+}));
+ipcMain.handle('discord:cancel', guarded(g, () => { if (appAccount) appAccount.cancelSignIn(); return { ok: true }; }));
+ipcMain.handle('discord:recheck', guarded(g, async () => { await refreshDiscord(); return discordState(); }));
+ipcMain.handle('discord:signOut', guarded(g, async () => { await appAccount.signOut(); discordLinkError = null; send('discord:state', discordState()); return discordState(); }));
+ipcMain.handle('discord:openInvite', guarded(g, () => {
+  const url = discordState().inviteUrl;
+  if (typeof url !== 'string' || !/^https:\/\/discord\.gg\/[A-Za-z0-9-]{2,32}$/.test(url)) return { ok: false };
+  shell.openExternal(url);
+  return { ok: true };
+}));
 ipcMain.handle('supporterID:copy', guarded(g, () => {
-  clipboard.writeText(crypto.createHash('sha256').update(deviceToken).digest('hex'));
+  clipboard.writeText(shortId());
   return { ok: true };
 }));
 
@@ -675,6 +725,11 @@ async function chooseRegion() {
 }
 
 async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = null, voicePort = null }) {
+  // Joining the VoxelPort Discord is required to host publicly. Private and LAN play never reach this function.
+  if (!currentGate().allowed) {
+    send('discord:state', discordState());
+    return { ok: false, error: 'discord_required' };
+  }
   const port = Number(localPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     send('tunnel:error', 'Enter a valid local port (1–65535).');

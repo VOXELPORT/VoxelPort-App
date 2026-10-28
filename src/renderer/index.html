@@ -15,6 +15,9 @@
     <div class="tagline">Host any Minecraft server · no port forwarding</div>
   </header>
 
+  <div id="discordBanner" class="discord-banner hidden" role="status"></div>
+  <section id="discordGate" class="discord-gate hidden" role="dialog" aria-modal="true" aria-labelledby="discordGateTitle"></section>
+
   <main id="app">
 
     <!-- LIBRARY (home screen) -->
@@ -446,6 +449,12 @@
       </div>
 
       <div class="set-group">
+        <div class="set-group-title">Discord account</div>
+        <p class="hint" id="setDiscordStatus" role="status"></p>
+        <div id="setDiscordActions"></div>
+      </div>
+
+      <div class="set-group">
         <div class="set-group-title">Voice chat · Supporter Plus</div>
         <p class="hint">Your Supporter Plus rank syncs automatically when your server is public. VoxelPort sets up voice chat for Paper and Fabric. Share only your server joining address.</p>
         <p class="hint" id="setVoiceStatus" role="status"></p>
@@ -680,5 +689,6 @@
   <script src="files-ui.js"></script>
   <script src="support.js"></script>
   <script src="app-settings.js"></script>
+  <script src="discord-ui.js"></script>
 </body>
 </html>

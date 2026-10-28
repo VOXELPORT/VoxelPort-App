@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('vp', {
   openDiscord: () => ipcRenderer.invoke('community:discord'),
   copyToken: () => ipcRenderer.invoke('token:copy'),
   copySupporterID: () => ipcRenderer.invoke('supporterID:copy'),
+  discordState: () => ipcRenderer.invoke('discord:state'),
+  discordSignIn: () => ipcRenderer.invoke('discord:signIn'),
+  discordCancel: () => ipcRenderer.invoke('discord:cancel'),
+  discordRecheck: () => ipcRenderer.invoke('discord:recheck'),
+  discordSignOut: () => ipcRenderer.invoke('discord:signOut'),
+  discordOpenInvite: () => ipcRenderer.invoke('discord:openInvite'),
   voiceState: () => ipcRenderer.invoke('voice:state'),
 
   start: (opts) => ipcRenderer.invoke('tunnel:start', opts),
@@ -19,6 +25,7 @@ contextBridge.exposeInMainWorld('vp', {
   on: (channel, cb) => {
     const allowed = [
       'tunnel:status',
+      'discord:state',
       'tunnel:assigned',
       'tunnel:voice',
       'tunnel:players',
