@@ -283,7 +283,7 @@
 
   'Keep it free': '让它保持免费',
   'SUPPORT VOXELPORT': '支持 VOXELPORT',
-  'VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort 没有广告、没有账号，也没有付费方案。如果它帮你省去了折腾路由器的麻烦，一点小小的打赏（哪怕 ₹20）就能帮助中继保持在线。',
+  'VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort 没有广告,也没有付费套餐。如果它帮你省去了路由器的烦恼,一点小小的打赏(哪怕 ₹20)就能帮助中继保持在线。',
   'Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)': '使用任意 UPI 应用扫码（GPay、PhonePe、Paytm、BHIM）',
   'UPI QR code for trazhub@upi': 'trazhub@upi 的 UPI 二维码',
   'Tip from outside India (GitHub Sponsors)': '印度境外打赏（GitHub Sponsors）',

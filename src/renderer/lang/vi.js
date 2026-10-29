@@ -283,7 +283,7 @@
 
   'Keep it free': 'Giữ cho nó miễn phí',
   'SUPPORT VOXELPORT': 'ỦNG HỘ VOXELPORT',
-  'VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort không có quảng cáo, không có tài khoản và không có gói trả phí. Nếu nó giúp bạn khỏi phải vật lộn với router, một khoản ủng hộ nhỏ (dù chỉ ₹20) sẽ giúp relay luôn trực tuyến.',
+  'VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort không có quảng cáo và không có gói trả phí. Nếu nó giúp bạn khỏi đau đầu với router, một khoản tip nhỏ (dù chỉ ₹20) giúp relay luôn trực tuyến.',
   'Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)': 'Quét bằng bất kỳ ứng dụng UPI nào (GPay, PhonePe, Paytm, BHIM)',
   'UPI QR code for trazhub@upi': 'Mã QR UPI cho trazhub@upi',
   'Tip from outside India (GitHub Sponsors)': 'Ủng hộ từ ngoài Ấn Độ (GitHub Sponsors)',

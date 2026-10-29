@@ -284,7 +284,7 @@
 
   'Keep it free': 'Mantenlo gratis',
   'SUPPORT VOXELPORT': 'APOYA A VOXELPORT',
-  'VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort no tiene anuncios, cuentas ni plan de pago. Si te ahorró una pelea con tu router, una pequeña propina (incluso ₹20) ayuda a mantener el relay en línea.',
+  'VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort no tiene anuncios ni plan de pago. Si te ahorró una pelea con el router, una pequeña propina (incluso ₹20) ayuda a mantener el relay en línea.',
   'Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)': 'Escanea con cualquier app UPI (GPay, PhonePe, Paytm, BHIM)',
   'UPI QR code for trazhub@upi': 'Código QR UPI de trazhub@upi',
   'Tip from outside India (GitHub Sponsors)': 'Propina desde fuera de la India (GitHub Sponsors)',

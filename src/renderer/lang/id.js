@@ -281,7 +281,7 @@
 
   'Keep it free': 'Jaga tetap gratis',
   'SUPPORT VOXELPORT': 'DUKUNG VOXELPORT',
-  'VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort tanpa iklan, tanpa akun, dan tanpa paket berbayar. Kalau ia menyelamatkanmu dari pusingnya mengurus router, tip kecil (bahkan ₹20) membantu menjaga relay tetap online.',
+  'VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort tidak punya iklan dan tidak ada paket berbayar. Jika ini menyelamatkanmu dari repotnya router, tip kecil (bahkan ₹20) membantu menjaga relay tetap online.',
   'Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)': 'Pindai dengan aplikasi UPI mana pun (GPay, PhonePe, Paytm, BHIM)',
   'UPI QR code for trazhub@upi': 'Kode QR UPI untuk trazhub@upi',
   'Tip from outside India (GitHub Sponsors)': 'Beri tip dari luar India (GitHub Sponsors)',

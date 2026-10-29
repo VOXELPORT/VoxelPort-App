@@ -297,7 +297,7 @@
   // ── Support ───────────────────────────────────────────────────────────
   'Keep it free': 'Ise free rakhne mein madad',
   'SUPPORT VOXELPORT': 'VOXELPORT KO SUPPORT KARO',
-  'VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort mein koi ads, accounts ya paid plan nahi hai. Agar isne tumhe router se ladne se bachaya, to ek chhota sa tip (₹20 bhi) relay ko online rakhne mein madad karta hai.',
+  'VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort mein koi ads nahi hain aur koi paid plan nahi hai. Agar isne tumhe router ki jhanjhat se bachaya, to ek chhoti si tip (₹20 bhi) relay ko online rakhne mein madad karti hai.',
   'Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)': 'Kisi bhi UPI app se scan karo (GPay, PhonePe, Paytm, BHIM)',
   'UPI QR code for trazhub@upi': 'trazhub@upi ka UPI QR code',
   'Tip from outside India (GitHub Sponsors)': 'India ke bahar se tip do (GitHub Sponsors)',

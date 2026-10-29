@@ -283,7 +283,7 @@
 
   'Keep it free': '무료로 유지하기',
   'SUPPORT VOXELPORT': 'VOXELPORT 후원하기',
-  'VoxelPort has no ads, no accounts and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort에는 광고도, 계정도, 유료 요금제도 없습니다. 공유기와 씨름하지 않아도 되었다면, 작은 후원(₹20이라도)이 릴레이를 계속 운영하는 데 도움이 됩니다.',
+  'VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.': 'VoxelPort에는 광고도 유료 플랜도 없습니다. 공유기와의 씨름에서 벗어나게 해 드렸다면, 작은 팁(₹20이라도)이 릴레이를 온라인으로 유지하는 데 도움이 됩니다.',
   'Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)': 'UPI 앱(GPay, PhonePe, Paytm, BHIM)으로 스캔하세요',
   'UPI QR code for trazhub@upi': 'trazhub@upi UPI QR 코드',
   'Tip from outside India (GitHub Sponsors)': '인도 외 지역에서 후원 (GitHub Sponsors)',
