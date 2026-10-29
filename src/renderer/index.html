@@ -13,6 +13,7 @@
   <header class="head">
     <div class="brand"><img class="brand-icon" src="icon.svg" width="40" height="40" alt="" /><span class="brand-word">VOXEL<span>PORT</span></span></div>
     <div class="tagline">Host any Minecraft server · no port forwarding</div>
+    <span id="rankBadge" class="rank-badge hidden"></span>
   </header>
 
   <div id="discordBanner" class="discord-banner hidden" role="status"></div>
@@ -449,13 +450,6 @@
       </div>
 
       <div class="set-group">
-        <div class="set-group-title">Discord account</div>
-        <p class="hint" id="setDiscordStatus" role="status"></p>
-        <p class="hint" id="setDiscordRank"></p>
-        <div id="setDiscordActions"></div>
-      </div>
-
-      <div class="set-group">
         <div class="set-group-title">Voice chat · Supporter Plus</div>
         <p class="hint">Your Supporter Plus rank syncs automatically when your server is public. VoxelPort sets up voice chat for Paper and Fabric. Share only your server joining address.</p>
         <p class="hint" id="setVoiceStatus" role="status"></p>
@@ -619,6 +613,13 @@
           <select id="appLangSelect" data-no-i18n></select>
         </label>
         <p class="hint">The app reloads when you change the language. Anything not translated yet shows in English.</p>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Discord account</div>
+        <p class="hint" id="setDiscordStatus" role="status"></p>
+        <p class="hint" id="setDiscordRank"></p>
+        <div id="setDiscordActions"></div>
       </div>
 
       <div class="set-group">

@@ -10,6 +10,7 @@
   const accountStatus = $('setDiscordStatus');
   const accountActions = $('setDiscordActions');
   const accountRank = $('setDiscordRank');
+  const rankBadge = $('rankBadge');
   const RANKS = { free: 'Free', supporter: 'Supporter', supporter_plus: 'Supporter+' };
   let state = null;
   let signingIn = false;
@@ -92,6 +93,10 @@
     // The rank the relays give this account (Supporter+ also unlocks voice chat), with the plan it comes from.
     const rank = state.discordName && state.rank ? (RANKS[state.rank] || state.rank) + (state.planName && !['Free', 'Supporter'].includes(state.planName) ? ` (${state.planName})` : '') : '';
     accountRank.textContent = rank ? window.t('Your rank: {rank}', { rank }) : '';
+    // The badge in the header appears for a Supporter or Supporter+, so it is the first thing you see.
+    const earned = state.discordName && state.rank && state.rank !== 'free';
+    rankBadge.textContent = earned ? '★ ' + (RANKS[state.rank] || state.rank) : '';
+    rankBadge.classList.toggle('hidden', !earned);
     const extra = state.linkError ? [el('p', { className: 'hint', textContent: state.linkError })] : [];
     accountActions.replaceChildren(...extra, state.discordName
       ? button(window.t('Sign out'), async () => { try { state = await window.vp.discordSignOut(); } catch { /* keep the old state */ } render(); })

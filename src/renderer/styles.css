@@ -501,3 +501,5 @@ body.discord-locked main, body.discord-locked header.head { visibility: hidden; 
 .discord-banner button.ghost { color: #15120F; background: rgba(255, 255, 255, .6); border-color: #15120F; }
 .discord-banner .hint { color: #15120F; }
 html[data-theme="dark"] .discord-banner button.ghost, .discord-banner button.ghost { color: #15120F; background: rgba(255, 255, 255, .7); border: 2px solid #15120F; }
+
+.rank-badge { margin-left: 10px; padding: 2px 9px; border: 2px solid var(--ink); background: var(--gold); color: #15120F; font-weight: 700; font-size: .8rem; letter-spacing: .02em; }
