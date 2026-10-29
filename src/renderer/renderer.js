@@ -104,15 +104,18 @@ copyBtn.addEventListener('click', async () => {
   } catch { /* ignore */ }
 });
 
-copyTokenBtn.addEventListener('click', async () => {
-  // The raw token never reaches the renderer — main.js writes it straight
-  // to the OS clipboard (item 12).
-  await window.vp.copyToken();
-  copyTokenBtn.textContent = t('Copied');
-  setTimeout(() => { copyTokenBtn.textContent = t('Copy'); }, 1400);
-});
+// The token is copied from two places: the tunnel screen and App Settings.
+for (const button of [copyTokenBtn, $('appCopyTokenBtn')]) {
+  button.addEventListener('click', async () => {
+    // The raw token never reaches the renderer — main.js writes it straight
+    // to the OS clipboard (item 12).
+    await window.vp.copyToken();
+    button.textContent = t('Copied');
+    setTimeout(() => { button.textContent = t('Copy'); }, 1400);
+  });
+}
 
-for (const id of ['copySupporterIDBtn', 'setCopySupporterIDBtn', 'supportCopyIDBtn']) {
+for (const id of ['copySupporterIDBtn', 'setCopySupporterIDBtn', 'supportCopyIDBtn', 'appCopySupporterIDBtn']) {
   $(id).addEventListener('click', async () => {
     try {
       const result = await window.vp.copySupporterID();
@@ -327,6 +330,8 @@ window.vp.setLanguage(VPI18N.lang);
   $('supporterID').value = info.supporterID;
   $('setSupporterID').value = info.supporterID;
   $('supportPageID').value = info.supporterID;
+  $('appTokenField').value = info.maskedToken;
+  $('appSupporterID').value = info.supporterID;
   $('tokenWarn').classList.toggle('hidden', !info.tokenUnreadable);
   version.textContent = 'v' + info.version;
   log(t('Ready. Set your local port and click Start hosting.'));

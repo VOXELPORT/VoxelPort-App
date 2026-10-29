@@ -623,6 +623,19 @@
       </div>
 
       <div class="set-group">
+        <div class="set-group-title">Device token</div>
+        <label class="field">
+          <span class="label">Device token</span>
+          <div class="folder-row">
+            <input id="appTokenField" type="text" readonly />
+            <button id="appCopyTokenBtn" class="ghost" type="button">Copy</button>
+          </div>
+          <span class="hint">Generated automatically. Treat it like a password — anyone with it can reconnect as this install.</span>
+        </label>
+        <label class="field"><span class="label">VoxelPort ID · safe to share for supporter ranks</span><div class="folder-row"><input id="appSupporterID" type="text" readonly><button id="appCopySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+      </div>
+
+      <div class="set-group">
         <div class="set-group-title">Versions</div>
         <dl class="about-list" id="aboutList">
           <div><dt>VoxelPort</dt><dd id="aboutApp">…</dd></div>
