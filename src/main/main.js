@@ -728,7 +728,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   // Joining the VoxelPort Discord is required to host publicly. Private and LAN play never reach this function.
   if (!currentGate().allowed) {
     send('discord:state', discordState());
-    return { ok: false, error: 'discord_required' };
+    return { ok: false, error: say('Join the VoxelPort Discord first: press Continue with Discord at the top of the app.', 'Pehle VoxelPort Discord join karo: app ke upar Continue with Discord dabao.') };
   }
   const port = Number(localPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -1115,6 +1115,11 @@ ipcMain.handle('server:start', guarded(g, (_evt, { id }) => startServerProfile(i
  * one automatic restart after a server reported needing a newer Java.
  */
 async function startServerProfile(id, { retried = false } = {}) {
+  // Joining the VoxelPort Discord is required to use the app: a server is not started until that is done.
+  if (!currentGate().allowed) {
+    send('discord:state', discordState());
+    return { ok: false, error: say('Join the VoxelPort Discord first: press Continue with Discord at the top of the app.', 'Pehle VoxelPort Discord join karo: app ke upar Continue with Discord dabao.') };
+  }
   if (preparingJava) return { ok: false, error: 'Already getting Java ready for a server — one moment.' };
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };

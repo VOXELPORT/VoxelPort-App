@@ -17,7 +17,8 @@ test('every public start goes through startTunnelInternal, which checks the Disc
   assert.ok(starts[0] > begin && starts[0] < end, 'and it must be inside startTunnelInternal');
   const gateAt = body.indexOf('currentGate()');
   assert.ok(gateAt >= 0 && begin + gateAt < starts[0], 'the gate is consulted before the tunnel starts');
-  assert.match(body, /discord_required/);
+  assert.match(body, /Continue with Discord/, 'the person is told what to do, in words');
+  assert.ok(!/error: 'discord_required'/.test(body), 'no internal code is shown as the error');
 });
 
 test('the install record is taken before the device token is created', () => {
@@ -36,4 +37,17 @@ test('the main process hands the rank to the screen and the screen shows it', ()
   const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'discord-ui.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.match(source, /rank: snap\.standing/);
   assert.match(ui, /Your rank: \{rank\}/);
+});
+
+test('starting a server is gated too: no way to start the Minecraft server without passing the Discord check', () => {
+  const begin = source.indexOf('async function startServerProfile');
+  assert.ok(begin > 0, 'startServerProfile exists');
+  const end = source.indexOf('\n}\n', begin);
+  const body = source.slice(begin, end);
+  const starts = [...source.matchAll(/\bserverProc\.start\(/g)].map((m) => m.index);
+  assert.equal(starts.length, 1, 'there must be exactly one place that starts the server process');
+  assert.ok(starts[0] > begin && starts[0] < end, 'and it must be inside startServerProfile');
+  const gateAt = body.indexOf('currentGate()');
+  assert.ok(gateAt >= 0 && begin + gateAt < starts[0], 'the gate is consulted before the server starts');
+  assert.match(body, /Continue with Discord/);
 });
