@@ -61,7 +61,7 @@ const backupsLib = require('./backups');
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
 // Where "Continue with Discord" and the membership check live. The override is for local testing only.
 const ACCOUNTS_URL = (!app.isPackaged && process.env.VOXELPORT_ACCOUNTS_URL) || 'https://accounts.voxelport.in';
-const DISCORD_RECHECK_MS = 24 * 3600 * 1000;
+const DISCORD_RECHECK_MS = 15 * 60 * 1000;
 let gateRecord = { installedAt: 0, existingInstall: false };
 let appAccount = null;
 let discordLinkError = null;
@@ -228,6 +228,13 @@ function discordState() {
   const gate = currentGate();
   const snap = appAccount ? appAccount.snapshot() : { config: null, discordName: null, standing: null };
   return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, rank: snap.standing ? snap.standing.rank : null, planName: snap.standing ? snap.standing.plan.name : null, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError };
+}
+// Coming back to the window re-checks (at most once a minute), so a new plan, a changed rank or a removed account shows at once.
+let lastDiscordRefresh = 0;
+function refreshDiscordSoon() {
+  if (Date.now() - lastDiscordRefresh < 60 * 1000) return;
+  lastDiscordRefresh = Date.now();
+  refreshDiscord().catch(() => {});
 }
 async function refreshDiscord() {
   if (!appAccount) return;
@@ -527,6 +534,7 @@ if (!gotLock) {
     loadPrefs();
     presence.setEnabled(prefs.presence);
     createWindow();
+    mainWindow.on('focus', refreshDiscordSoon);
     updater.start({ isPackaged: app.isPackaged, platform: process.platform, windowsStore: Boolean(process.windowsStore) });
 
     app.on('activate', () => {

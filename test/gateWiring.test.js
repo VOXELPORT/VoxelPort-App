@@ -27,6 +27,12 @@ test('the install record is taken before the device token is created', () => {
   assert.ok(record > 0 && token > 0 && record < token);
 });
 
+test('the app re-checks its Discord status when the window is focused again and every 15 minutes, so a new plan or a removed account shows quickly', () => {
+  assert.match(source, /const DISCORD_RECHECK_MS = 15 \* 60 \* 1000;/);
+  assert.match(source, /mainWindow\.on\('focus', refreshDiscordSoon\)/);
+  assert.match(source, /function refreshDiscordSoon\(\)/);
+});
+
 test('the first-run wall only covers the app when the accounts service could be reached', () => {
   const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'discord-ui.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.match(source, /reachable: !!snap\.config/);

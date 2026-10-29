@@ -1,6 +1,6 @@
 {
   "name": "voxelport-app",
-  "version": "1.15.4",
+  "version": "1.15.5",
   "description": "VoxelPort — host any Minecraft server over the internet with no port forwarding.",
   "author": "VoxelPort",
   "license": "MIT",

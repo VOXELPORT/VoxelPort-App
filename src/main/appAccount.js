@@ -42,6 +42,11 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
     const secret = canEncrypt() ? { enc: safeStorage.encryptString(state.session).toString('base64') } : { session: state.session };
     atomicWriteFileSync(file, JSON.stringify({ ...secret, lastGood: state.lastGood, discordName: state.discordName, standing: state.standing }), { mode: 0o600 });
   }
+  // Forgets the signed-in account on this machine: nothing it showed (name, rank) may be left on screen.
+  function forgetAccount() {
+    state.session = null; state.status = null; state.statusError = null; state.lastGood = null; state.discordName = null; state.standing = null;
+    try { fs.rmSync(file, { force: true }); } catch { /* nothing to remove */ }
+  }
   const url = (p) => `${baseUrl}${p}`;
   async function call(method, p, { body, session } = {}) {
     const res = await fetchImpl(url(p), { method, headers: { 'content-type': 'application/json', ...(session ? { authorization: `Bearer ${session}` } : {}) }, body: body && JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(15000) });
@@ -106,7 +111,7 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
     if (!state.session) return { statusError: null, status: null };
     try {
       const r = await call('GET', '/api/app/status', { session: state.session });
-      if (r.status === 401) { state.statusError = 'unauthorized'; state.status = null; }
+      if (r.status === 401) { forgetAccount(); state.statusError = 'unauthorized'; } // the server no longer knows this session (signed out elsewhere, or the account was removed)
       else if (!r.ok) state.statusError = 'unreachable';
       else {
         state.status = { member: !!r.json.member, reason: r.json.reason || null }; state.statusError = null;
@@ -129,8 +134,7 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
 
   async function signOut() {
     const session = state.session;
-    state.session = null; state.status = null; state.statusError = null; state.lastGood = null; state.discordName = null; state.standing = null;
-    try { fs.rmSync(file, { force: true }); } catch { /* nothing to remove */ }
+    forgetAccount();
     if (session) { try { await call('POST', '/api/app/signout', { body: {}, session }); } catch { /* the server forgets it on its own schedule */ } }
   }
 

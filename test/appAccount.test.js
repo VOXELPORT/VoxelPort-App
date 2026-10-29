@@ -142,13 +142,17 @@ test('status refresh keeps the last good answer, and maps a rejected session and
   } finally { done(); }
 });
 
-test('a rejected session is reported as unauthorized and keeps the saved file for a clean re-sign-in', async () => {
+test('a rejected session is reported, and the name, rank and saved session it left behind are cleared so nothing stale is shown', async () => {
   const accounts = await fakeAccounts({ reject: true });
-  const { account, done } = make(accounts);
+  const { account, dir, done } = make(accounts);
   try {
     await account.signIn();
+    assert.equal(account.snapshot().discordName, 'Player');
+    assert.ok(account.snapshot().standing);
     assert.equal((await account.refreshStatus()).statusError, 'unauthorized');
-    assert.equal(account.snapshot().statusError, 'unauthorized');
+    const snap = account.snapshot();
+    assert.deepEqual([snap.session, snap.discordName, snap.standing, snap.status, snap.lastGood], [false, null, null, null, null]);
+    assert.equal(fs.existsSync(path.join(dir, 'app-session.json')), false);
   } finally { done(); await accounts.close(); }
 });
 
