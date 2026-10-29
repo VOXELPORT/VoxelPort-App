@@ -437,4 +437,12 @@
   'Not now': 'Şimdi değil',
   'Discord account': 'Discord hesabı',
   'Your rank: {rank}': 'Rütben: {rank}',
+  'Web control': 'Web kontrolü',
+  'Let friends start and stop my server from the web': 'Arkadaşlarım sunucumu web üzerinden başlatıp durdurabilsin',
+  'Server friends can start': 'Arkadaşların başlatabileceği sunucu',
+  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Arkadaşlarını accounts.voxelport.in üzerinde Remote control bölümünden ekle. Sunucunu başlatabilir, durdurabilir, yeniden başlatabilir ve konsolu izleyebilirler (oyuncu IP adresleri gizlenir). Komut çalıştıramaz ve dosyalarını açamazlar. Yalnızca bu bilgisayarda VoxelPort açıkken çalışır.',
+  'Sign in with Discord to use web control.': 'Web kontrolünü kullanmak için Discord ile giriş yap.',
+  'Web control is on. Friends can reach this PC.': 'Web kontrolü açık. Arkadaşların bu bilgisayara ulaşabilir.',
+  'Connecting to the web…': 'Web’e bağlanılıyor…',
+  'Create a server first.': 'Önce bir sunucu oluştur.',
 };

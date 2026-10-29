@@ -437,4 +437,12 @@
   'Not now': 'Để sau',
   'Discord account': 'Tài khoản Discord',
   'Your rank: {rank}': 'Cấp bậc của bạn: {rank}',
+  'Web control': 'Điều khiển qua web',
+  'Let friends start and stop my server from the web': 'Cho phép bạn bè bật và tắt máy chủ của tôi qua web',
+  'Server friends can start': 'Máy chủ bạn bè có thể bật',
+  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Thêm bạn bè tại accounts.voxelport.in trong mục Remote control. Họ có thể bật, tắt, khởi động lại máy chủ và xem console (địa chỉ IP người chơi được ẩn). Họ không thể chạy lệnh hay mở tệp của bạn. Chỉ hoạt động khi VoxelPort đang chạy trên máy này.',
+  'Sign in with Discord to use web control.': 'Đăng nhập bằng Discord để dùng điều khiển qua web.',
+  'Web control is on. Friends can reach this PC.': 'Điều khiển qua web đang bật. Bạn bè có thể truy cập máy này.',
+  'Connecting to the web…': 'Đang kết nối với web…',
+  'Create a server first.': 'Hãy tạo máy chủ trước.',
 };

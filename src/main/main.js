@@ -1,12 +1,13 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { Tunnel } = require('./tunnel');
 const { loadOrCreateToken, maskToken } = require('./token');
+const { createRemoteControl } = require('./remoteControl');
 const mcVersions = require('./mcVersions');
 const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaCheck');
 const { installJava, findManagedJava, listManagedJava } = require('./javaInstall');
@@ -152,14 +153,14 @@ function refreshPresence() {
 }
 
 // App-wide preferences: the relay region (auto / in / eu) and whether to show on Discord what is being hosted.
-let prefs = { region: 'auto', presence: true };
+let prefs = { region: 'auto', presence: true, webControl: { enabled: false, profileId: null } };
 function prefsPath() {
   return path.join(userDataDir(), 'preferences.json');
 }
 function loadPrefs() {
   try {
     const v = JSON.parse(fs.readFileSync(prefsPath(), 'utf8'));
-    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false) };
+    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false), webControl: normalizeWebControl(v && v.webControl) };
   } catch { /* defaults */ }
 }
 function savePrefs() {
@@ -241,6 +242,67 @@ async function refreshDiscord() {
   await appAccount.refreshConfig();
   await appAccount.refreshStatus();
   send('discord:state', discordState());
+  syncWebControl();
+}
+
+// ─── Web control: friends press Start/Stop on the accounts site, this PC does it ─────────────────────
+const WEB_STATUSES = ['online', 'starting', 'stopping', 'stopped', 'crashed'];
+function normalizeWebControl(v) {
+  return { enabled: !!(v && v.enabled === true), profileId: v && typeof v.profileId === 'string' && v.profileId.length <= 80 ? v.profileId : null };
+}
+let remoteControl = null;
+function webControlAllowed() {
+  const snap = appAccount ? appAccount.snapshot() : null;
+  if (!snap || !snap.session) return false;
+  const gate = currentGate();
+  return !!(gate.allowed && gate.banner === 'none' && !gate.mustSignIn);
+}
+const webControlActions = {
+  async start() {
+    if (serverProc.child) return { ok: false, error: 'The server is already running.' };
+    const id = prefs.webControl.profileId;
+    if (!id || !serverProfiles.getProfile(userDataDir(), id)) return { ok: false, error: 'No server is chosen for web control in the app.' };
+    const r = await startServerProfile(id);
+    return r && r.ok ? { ok: true, message: 'Starting' } : { ok: false, error: (r && r.error) || 'Could not start.' };
+  },
+  async stop() {
+    if (!serverProc.child) return { ok: false, error: 'The server is not running.' };
+    stopRequested = true;
+    serverProc.stop();
+    return { ok: true, message: 'Stopping' };
+  },
+  async restart() {
+    const r = await restartActiveServer();
+    return r && r.ok ? { ok: true, message: 'Restarting' } : { ok: false, error: (r && r.error) || 'Could not restart.' };
+  },
+  async kick(name) {
+    if (!serverProc.child || !serverProc.online.has(name)) return { ok: false, error: 'That player is not online.' };
+    return serverProc.playerAction('kick', name) ? { ok: true, message: 'Kicked' } : { ok: false, error: 'Could not kick.' };
+  },
+  status() {
+    return { status: WEB_STATUSES.includes(serverProc.status) ? serverProc.status : 'stopped', players: [...serverProc.online], lines: recentLines.slice(-100) };
+  },
+};
+function syncWebControl() {
+  const want = !!(prefs.webControl && prefs.webControl.enabled && appAccount);
+  if (remoteControl && (!want || !remoteControl.snapshot().running)) { remoteControl.stop(); remoteControl = null; }
+  if (want && !remoteControl && webControlAllowed()) {
+    remoteControl = createRemoteControl({
+      request: (method, p, body) => appAccount.request(method, p, body),
+      getVpId: () => (deviceToken ? shortId() : ''),
+      actions: webControlActions,
+      isAllowed: webControlAllowed,
+      onEvent: (e) => {
+        send('webcontrol:event', e);
+        try { if (Notification.isSupported()) new Notification({ title: 'VoxelPort', body: e.ok ? `A friend used web control: ${e.action}${e.arg ? ' ' + e.arg : ''}.` : `A friend tried ${e.action}, but it did not work.` }).show(); } catch { /* the toast in the window is enough */ }
+      },
+    });
+    remoteControl.start().catch(() => {});
+  }
+}
+function webControlState() {
+  const profiles = serverProfiles.listProfiles(userDataDir()).map((p) => ({ id: p.id, name: p.name }));
+  return { enabled: prefs.webControl.enabled, profileId: prefs.webControl.profileId, profiles, running: !!(remoteControl && remoteControl.snapshot().running), allowed: webControlAllowed() };
 }
 
 function send(channel, payload) {
@@ -534,6 +596,7 @@ if (!gotLock) {
     loadPrefs();
     presence.setEnabled(prefs.presence);
     createWindow();
+    syncWebControl();
     mainWindow.on('focus', refreshDiscordSoon);
     updater.start({ isPackaged: app.isPackaged, platform: process.platform, windowsStore: Boolean(process.windowsStore) });
 
@@ -565,7 +628,7 @@ const quitGate = createQuitGate({
   timeoutMs: STOP_WAIT_TIMEOUT_MS,
 });
 app.on('before-quit', (event) => quitGate.onBeforeQuit(event));
-app.on('will-quit', () => presence.dispose());
+app.on('will-quit', () => { presence.dispose(); if (remoteControl) remoteControl.stop(); });
 
 app.on('window-all-closed', () => {
   // Windows and Linux: closing the window quits, and before-quit waits for the server. macOS keeps the app alive, so the
@@ -618,6 +681,14 @@ ipcMain.handle('discord:signIn', guarded(g, async () => {
   discordLinkError = result.ok ? result.linkError || null : null;
   send('discord:state', discordState());
   return { ...result, state: discordState() };
+}));
+ipcMain.handle('webcontrol:get', guarded(g, () => webControlState()));
+ipcMain.handle('webcontrol:set', guarded(g, (_evt, { enabled, profileId }) => {
+  const pid = typeof profileId === 'string' && serverProfiles.getProfile(userDataDir(), profileId) ? profileId : null;
+  prefs.webControl = { enabled: !!enabled && !!pid, profileId: pid };
+  savePrefs();
+  syncWebControl();
+  return webControlState();
 }));
 ipcMain.handle('discord:cancel', guarded(g, () => { if (appAccount) appAccount.cancelSignIn(); return { ok: true }; }));
 ipcMain.handle('discord:recheck', guarded(g, async () => { await refreshDiscord(); return discordState(); }));
@@ -1214,7 +1285,8 @@ ipcMain.handle('server:stop', guarded(g, () => {
 }));
 
 // Stop the running server, wait for it to exit, then start the same profile again (voice setup and plugin changes need this).
-ipcMain.handle('server:restart', guarded(g, async () => {
+ipcMain.handle('server:restart', guarded(g, () => restartActiveServer()));
+async function restartActiveServer() {
   const id = activeServerProfileId;
   if (!serverProc.child || !id) return { ok: false, error: 'The server is not running.' };
   stopRequested = true;
@@ -1222,7 +1294,7 @@ ipcMain.handle('server:restart', guarded(g, async () => {
   await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
   if (serverProc.child) return { ok: false, error: 'The server is still shutting down — try again in a few seconds.' };
   return startServerProfile(id);
-}));
+}
 
 ipcMain.handle('server:command', guarded(g, (_evt, { command }) => {
   serverProc.sendCommand(command);

@@ -437,4 +437,12 @@
   'Not now': '暂不',
   'Discord account': 'Discord 账号',
   'Your rank: {rank}': '你的等级：{rank}',
+  'Web control': '网页控制',
+  'Let friends start and stop my server from the web': '允许朋友通过网页启动和停止我的服务器',
+  'Server friends can start': '朋友可以启动的服务器',
+  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': '请在 accounts.voxelport.in 的 Remote control 中添加朋友。他们可以启动、停止和重启你的服务器并查看控制台(玩家 IP 地址已隐藏),但不能执行命令或打开你的文件。仅在此电脑上运行 VoxelPort 时有效。',
+  'Sign in with Discord to use web control.': '请使用 Discord 登录以使用网页控制。',
+  'Web control is on. Friends can reach this PC.': '网页控制已开启,朋友可以连接到这台电脑。',
+  'Connecting to the web…': '正在连接网络…',
+  'Create a server first.': '请先创建服务器。',
 };

@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('vp', {
   discordCancel: () => ipcRenderer.invoke('discord:cancel'),
   discordRecheck: () => ipcRenderer.invoke('discord:recheck'),
   discordSignOut: () => ipcRenderer.invoke('discord:signOut'),
+  webControlGet: () => ipcRenderer.invoke('webcontrol:get'),
+  webControlSet: (opts) => ipcRenderer.invoke('webcontrol:set', opts),
   discordOpenInvite: () => ipcRenderer.invoke('discord:openInvite'),
   voiceState: () => ipcRenderer.invoke('voice:state'),
 
@@ -26,6 +28,7 @@ contextBridge.exposeInMainWorld('vp', {
     const allowed = [
       'tunnel:status',
       'discord:state',
+      'webcontrol:event',
       'tunnel:assigned',
       'tunnel:voice',
       'tunnel:players',

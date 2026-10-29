@@ -622,6 +622,17 @@
         <div id="setDiscordActions"></div>
       </div>
 
+      <div class="set-group" id="webControlGroup">
+        <div class="set-group-title">Web control</div>
+        <label class="toggle-row"><input type="checkbox" id="webControlOn" /> <span>Let friends start and stop my server from the web</span></label>
+        <label class="field">
+          <span class="label">Server friends can start</span>
+          <select id="webControlProfile"></select>
+        </label>
+        <p class="hint" id="webControlStatus" role="status"></p>
+        <p class="hint">Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.</p>
+      </div>
+
       <div class="set-group">
         <div class="set-group-title">Device token</div>
         <label class="field">
@@ -705,5 +716,6 @@
   <script src="support.js"></script>
   <script src="app-settings.js"></script>
   <script src="discord-ui.js"></script>
+  <script src="webcontrol-ui.js"></script>
 </body>
 </html>

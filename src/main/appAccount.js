@@ -132,6 +132,13 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
     return state.config;
   }
 
+  // Signed-in calls for the rest of the app (web control). A rejected session means the account is gone from this PC.
+  async function request(method, p, body) {
+    if (!state.session) return { ok: false, status: 401, json: {} };
+    const r = await call(method, p, { body, session: state.session });
+    if (r.status === 401) { forgetAccount(); }
+    return r;
+  }
   async function signOut() {
     const session = state.session;
     forgetAccount();
@@ -139,7 +146,7 @@ function createAppAccount({ baseUrl, userDataDir, safeStorage, openExternal, dev
   }
 
   load();
-  return { signIn, cancelSignIn: () => flow && flow.cancel(), refreshStatus, refreshConfig, signOut, snapshot: () => ({ session: !!state.session, config: state.config, status: state.status, statusError: state.statusError, lastGood: state.lastGood, discordName: state.discordName, standing: state.standing }) };
+  return { signIn, request, cancelSignIn: () => flow && flow.cancel(), refreshStatus, refreshConfig, signOut, snapshot: () => ({ session: !!state.session, config: state.config, status: state.status, statusError: state.statusError, lastGood: state.lastGood, discordName: state.discordName, standing: state.standing }) };
 }
 
 module.exports = { createAppAccount, DEFAULT_SIGN_IN_TIMEOUT_MS };
