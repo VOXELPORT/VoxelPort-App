@@ -136,10 +136,10 @@ test('start() keeps polling until stop(), stops by itself when blocked, and back
 
 test('the owner’s computer user name in file paths never reaches friends', () => {
   const out = cleanLines([
-    'Loading from C:\Users\Trazverse\AppData\Roaming\VoxelPort\servers\smp',
+    String.raw`Loading from C:\Users\Trazverse\AppData\Roaming\VoxelPort\servers\smp`,
     'at /home/alice/servers/smp/plugins/x.jar',
     'at /Users/bob/Library/Application Support/VoxelPort',
   ]);
   assert.ok(!out.join('\n').match(/Trazverse|alice|bob/));
-  assert.ok(out[0].includes('C:\Users\[user]\AppData'));
+  assert.ok(out[0].includes(String.raw`C:\Users\[user]\AppData`), out[0]);
 });
