@@ -58,13 +58,16 @@
   }
 
   function renderGate() {
-    // The wall only covers the app when the accounts service has answered at least once; if it is down, private play still works.
-    const show = !!state && !state.allowed && state.newInstall && state.reachable;
+    // The full login page covers the app for everyone who is not signed in, whatever the age of the install. It only waits
+    // until the accounts service has answered once: if it is down there is nothing to sign in to, and a small banner is shown instead.
+    const show = !!state && !state.allowed && state.reachable;
     gate.classList.toggle('hidden', !show);
     document.body.classList.toggle('discord-locked', show);
     if (!show) { gate.replaceChildren(); return; }
     const why = explanation(state);
-    gate.replaceChildren(el('div', { className: 'discord-card' },
+    const brand = el('div', { className: 'discord-brand' }, el('img', { src: 'icon.svg', width: 64, height: 64, alt: '' }),
+      el('span', { className: 'brand-word' }, 'VOXEL', el('span', {}, 'PORT')));
+    gate.replaceChildren(el('div', { className: 'discord-card' }, brand,
       el('h1', { id: 'discordGateTitle', textContent: window.t('Join the VoxelPort Discord to continue') }),
       el('p', { textContent: window.t("Everyone who uses VoxelPort joins our Discord server. It's where we share updates, giveaways and help.") }),
       why ? el('p', { className: 'discord-why', textContent: why }) : '',
@@ -75,9 +78,9 @@
   }
 
   function renderBanner() {
-    // Existing installs only: new installs get the full screen. While grace lasts the banner can be set aside for this run.
+    // The full login page is the normal way in; this banner is for the grace period (if one is set) and for when the accounts service cannot be reached.
     const inGrace = !!state && state.banner === 'grace' && !bannerDismissed;
-    const blocked = !!state && (!state.newInstall || !state.reachable) && state.banner === 'blocked';
+    const blocked = !!state && !state.allowed && !state.reachable && state.banner === 'blocked';
     banner.classList.toggle('hidden', !(inGrace || blocked));
     if (!(inGrace || blocked)) { banner.replaceChildren(); return; }
     const text = state.banner === 'grace' && state.graceDaysLeft != null

@@ -503,3 +503,13 @@ body.discord-locked main, body.discord-locked header.head { visibility: hidden; 
 html[data-theme="dark"] .discord-banner button.ghost, .discord-banner button.ghost { color: #15120F; background: rgba(255, 255, 255, .7); border: 2px solid #15120F; }
 
 .rank-badge { margin-left: 10px; padding: 2px 9px; border: 2px solid var(--ink); background: var(--gold); color: #15120F; font-weight: 700; font-size: .8rem; letter-spacing: .02em; }
+
+/* The full login page */
+.discord-gate { background: radial-gradient(rgba(21, 18, 15, .12) 1.1px, transparent 1.4px) 0 0 / 13px 13px, var(--paper); }
+.discord-card { width: min(480px, 100%); align-items: center; text-align: center; padding: 30px 28px 32px; box-shadow: var(--shadow); }
+.discord-card h1 { font-size: 2rem; }
+.discord-brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 4px; }
+.discord-brand .brand-word { font-family: var(--display); font-size: 2.3rem; letter-spacing: .03em; line-height: 1; color: var(--ink); }
+.discord-brand .brand-word span { color: var(--grass-dk); }
+.discord-actions { justify-content: center; }
+.discord-card .primary { font-size: 1.05rem; padding: 13px 24px; min-width: 260px; }
