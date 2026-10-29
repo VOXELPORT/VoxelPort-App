@@ -21,6 +21,9 @@ const IPV4 = /\/?\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g;
 const IPV6_FULL = /\[?\b(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}\b\]?(?::\d{1,5})?/g;
 // Only addresses written with "::" are matched, so times such as 12:07:00 are left alone.
 const IPV6_SHORT = /\[?(?:[A-Fa-f0-9]{1,4}:){0,6}:(?::?[A-Fa-f0-9]{1,4}){0,6}(?=[\s\]\/,;)]|$)\]?(?::\d{1,5})?/g;
+// The computer's user name shows up in file paths; friends have no need to see it.
+const WIN_USER = /([A-Za-z]:[\\/]+Users[\\/]+)[^\\/\s]+/gi;
+const UNIX_USER = /(\/(?:home|Users)\/)[^/\s]+/g;
 const TOKEN = /\bvp_[A-Za-z0-9_-]{6,}/g;
 const HEX_RUN = /\b[A-Fa-f0-9]{24,}\b/g;
 const LONG_RUN = /[A-Za-z0-9+/_-]{32,}={0,2}/g;
@@ -33,7 +36,7 @@ const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 function cleanLines(lines) {
   if (!Array.isArray(lines)) return [];
   return lines.filter((l) => typeof l === 'string').slice(-MAX_LINES).map((line) => {
-    let s = line.replace(ANSI, '').replace(CONTROL, '');
+    let s = line.replace(ANSI, '').replace(CONTROL, '').replace(WIN_USER, '$1[user]').replace(UNIX_USER, '$1[user]');
     s = s.replace(IPV4, '[ip]').replace(/::ffff:\[ip\]/gi, '[ip]').replace(IPV6_FULL, '[ip]').replace(IPV6_SHORT, (m) => (m.includes('::') ? '[ip]' : m));
     s = s.replace(TOKEN, '[secret]').replace(HEX_RUN, '[secret]').replace(LONG_RUN, (m) => (UUID.test(m) ? m : '[secret]'));
     return s.slice(0, MAX_LINE);
