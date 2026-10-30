@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { Tunnel } = require('./tunnel');
-const { loadOrCreateToken, maskToken } = require('./token');
+const { loadOrCreateToken, replaceToken, maskToken } = require('./token');
 const mcVersions = require('./mcVersions');
 const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaCheck');
 const { installJava, findManagedJava, listManagedJava } = require('./javaInstall');
@@ -224,10 +224,15 @@ function currentGate() {
   const snap = appAccount ? appAccount.snapshot() : { session: false, config: null, status: null, statusError: null, lastGood: null };
   return evaluateGate({ existingInstall: gateRecord.existingInstall, session: snap.session, config: snap.config, status: snap.status, statusError: snap.statusError, lastGood: snap.lastGood, now: Date.now() });
 }
+// The address backup this account holds: only the last 4 characters of its id are for showing, and whether it is this PC's own.
+function backupInfo(snap) {
+  const b = snap && snap.identityBackup;
+  return b ? { id: b.vpId.slice(-4), updatedAt: b.updatedAt, thisPc: b.vpId === shortId() } : null;
+}
 function discordState() {
   const gate = currentGate();
   const snap = appAccount ? appAccount.snapshot() : { config: null, discordName: null, standing: null };
-  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, rank: snap.standing ? snap.standing.rank : null, planName: snap.standing ? snap.standing.plan.name : null, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError };
+  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, rank: snap.standing ? snap.standing.rank : null, planName: snap.standing ? snap.standing.plan.name : null, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError, backup: backupInfo(snap) };
 }
 // Coming back to the window re-checks (at most once a minute), so a new plan, a changed rank or a removed account shows at once.
 let lastDiscordRefresh = 0;
@@ -622,6 +627,55 @@ ipcMain.handle('discord:signIn', guarded(g, async () => {
 ipcMain.handle('discord:cancel', guarded(g, () => { if (appAccount) appAccount.cancelSignIn(); return { ok: true }; }));
 ipcMain.handle('discord:recheck', guarded(g, async () => { await refreshDiscord(); return discordState(); }));
 ipcMain.handle('discord:signOut', guarded(g, async () => { await appAccount.signOut(); discordLinkError = null; send('discord:state', discordState()); return discordState(); }));
+// ─── Address backup (end-to-end encrypted, kept on the person's Discord account) ──────────────────────────
+
+const BACKUP_ERRORS = {
+  too_short: 'Use at least 12 characters.',
+  too_simple: 'Choose something less repetitive.',
+  wrong_passphrase: "That passphrase doesn't open the backup.",
+  not_found: 'There is no backup on your account.',
+  signed_out: 'Please sign in with Discord again.',
+  unauthorized: 'Please sign in with Discord again.',
+};
+let backupBusy = false;
+// One backup action at a time; the result is { ok, message } or { ok: false, error } in text the screen runs through t().
+async function backupAction(run) {
+  if (!appAccount || backupBusy) return { ok: false, error: "That didn't work. Check your connection and try again." };
+  backupBusy = true;
+  try {
+    const result = await run();
+    send('discord:state', discordState());
+    return result;
+  } catch {
+    return { ok: false, error: "That didn't work. Check your connection and try again." };
+  } finally { backupBusy = false; }
+}
+const backupFailure = (code) => ({ ok: false, error: BACKUP_ERRORS[code] || "That didn't work. Check your connection and try again." });
+const publicAddressLive = () => Boolean((tunnel && tunnel.isLive()) || (retiringTunnel && retiringTunnel.isLive()));
+const passphraseOf = (v) => (typeof v === 'string' ? v : '');
+
+ipcMain.handle('identity:save', guarded(g, (_e, passphrase) => backupAction(async () => {
+  const r = await appAccount.saveBackup(passphraseOf(passphrase));
+  return r.ok ? { ok: true, message: "Backed up. Remember your passphrase: VoxelPort can't recover it." } : backupFailure(r.error);
+})));
+ipcMain.handle('identity:restore', guarded(g, (_e, passphrase) => backupAction(async () => {
+  // This PC's address is the device token of the running public address: swapping it under a live tunnel would split the two.
+  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore your address.' };
+  const r = await appAccount.restoreBackup(passphraseOf(passphrase));
+  if (!r.ok) return backupFailure(r.error);
+  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore your address.' }; // started while the backup was being opened
+  try { replaceToken(userDataDir(), r.token, safeStorage); } catch { return backupFailure('failed'); }
+  deviceToken = r.token;
+  tokenUnreadable = false;
+  tokenEncryptedAtRest = !!(safeStorage && safeStorage.isEncryptionAvailable());
+  appAccount.setDeviceToken(deviceToken);
+  refreshDiscord().catch(() => {});
+  return { ok: true, message: 'Restored. Make your server public to get your address back.' };
+})));
+ipcMain.handle('identity:delete', guarded(g, () => backupAction(async () => {
+  const r = await appAccount.deleteBackup();
+  return r.ok ? { ok: true, message: 'Backup deleted.' } : backupFailure(r.error);
+})));
 ipcMain.handle('discord:openInvite', guarded(g, () => {
   const url = discordState().inviteUrl;
   if (typeof url !== 'string' || !/^https:\/\/discord\.gg\/[A-Za-z0-9-]{2,32}$/.test(url)) return { ok: false };

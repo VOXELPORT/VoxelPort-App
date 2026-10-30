@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('vp', {
   discordRecheck: () => ipcRenderer.invoke('discord:recheck'),
   discordSignOut: () => ipcRenderer.invoke('discord:signOut'),
   discordOpenInvite: () => ipcRenderer.invoke('discord:openInvite'),
+  identitySave: (passphrase) => ipcRenderer.invoke('identity:save', passphrase),
+  identityRestore: (passphrase) => ipcRenderer.invoke('identity:restore', passphrase),
+  identityDelete: () => ipcRenderer.invoke('identity:delete'),
   voiceState: () => ipcRenderer.invoke('voice:state'),
 
   start: (opts) => ipcRenderer.invoke('tunnel:start', opts),

@@ -11,6 +11,10 @@
   const accountActions = $('setDiscordActions');
   const accountRank = $('setDiscordRank');
   const rankBadge = $('rankBadge');
+  const backupGroup = $('setBackupGroup');
+  const backupStatus = $('setBackupStatus');
+  const backupActions = $('setBackupActions');
+  const backupForm = $('setBackupForm');
   const RANKS = { free: 'Free', supporter: 'Supporter', supporter_plus: 'Supporter+' };
   let state = null;
   let signingIn = false;
@@ -106,7 +110,96 @@
       : signingIn ? button(window.t('Cancel'), cancel) : button(window.t('Continue with Discord'), signIn));
   }
 
-  function render() { renderGate(); renderBanner(); renderSettings(); }
+  // ─── Address backup ───────────────────────────────────────────────────────────────────────────────
+  // The passphrase goes to the main process and nowhere else; the address code itself never comes to this page.
+  // The two fields live as long as the page, so a state update while someone types does not wipe them.
+  const FAILED = "That didn't work. Check your connection and try again.";
+  let backupMode = null; // null | 'save' | 'restore'
+  let backupBusy = false;
+  let backupNote = { text: '', bad: false }; // shown once: it goes as soon as the person does something else
+  const passField = el('input', { type: 'password', autocomplete: 'off', spellcheck: false });
+  const againField = el('input', { type: 'password', autocomplete: 'off', spellcheck: false });
+  const formError = el('p', { className: 'hint', role: 'alert' });
+  const formHelp = el('p', { className: 'hint' });
+  const passLabel = el('label', { className: 'field' }, el('span', { className: 'label' }), passField);
+  const againLabel = el('label', { className: 'field' }, el('span', { className: 'label' }), againField);
+  const submitButton = el('button', { type: 'submit', className: 'primary' });
+  const cancelButton = el('button', { type: 'button', className: 'ghost', onclick: () => closeBackupForm() });
+  backupForm.append(formHelp, passLabel, againLabel, formError, el('div', { className: 'discord-actions' }, submitButton, cancelButton));
+
+  function closeBackupForm() { backupMode = null; passField.value = ''; againField.value = ''; formError.textContent = ''; renderBackup(); }
+  function openBackupForm(mode) {
+    backupMode = mode; backupNote = { text: '', bad: false }; formError.textContent = ''; passField.value = ''; againField.value = '';
+    renderBackup();
+    passField.focus();
+  }
+  // The same rules the main process enforces (12 characters, 5 different ones), so the person hears it before anything is sent.
+  function passphraseProblem(raw) {
+    const p = String(raw).normalize('NFC');
+    if (p.length < 12) return window.t('Use at least 12 characters.');
+    if (new Set(p.split('')).size < 5) return window.t('Choose something less repetitive.');
+    return '';
+  }
+  async function submitBackup(event) {
+    event.preventDefault();
+    if (backupBusy) return;
+    const saving = backupMode === 'save';
+    const passphrase = passField.value;
+    // Restoring has no length rule of its own (the backup says if it opens), only that something was typed.
+    const problem = saving ? passphraseProblem(passphrase) || (passphrase !== againField.value ? window.t("The two passphrases don't match.") : '') : (passphrase ? '' : window.t('Use at least 12 characters.'));
+    if (problem) { formError.textContent = problem; return; }
+    backupBusy = true; formError.textContent = ''; renderBackup();
+    let result;
+    try { result = await (saving ? window.vp.identitySave(passphrase) : window.vp.identityRestore(passphrase)); } catch { result = { ok: false, error: FAILED }; }
+    backupBusy = false;
+    if (result.ok) { backupNote = { text: window.t(result.message), bad: false }; closeBackupForm(); return; }
+    // A wrong passphrase or a refusal keeps the form open for another try.
+    formError.textContent = window.t(result.error);
+    renderBackup();
+  }
+  async function deleteBackup() {
+    if (backupBusy) return;
+    backupBusy = true; backupNote = { text: '', bad: false }; renderBackup();
+    let result;
+    try { result = await window.vp.identityDelete(); } catch { result = { ok: false, error: FAILED }; }
+    backupBusy = false;
+    backupNote = { text: window.t(result.ok ? result.message : result.error), bad: !result.ok };
+    renderBackup();
+  }
+  backupForm.addEventListener('submit', submitBackup);
+
+  function renderBackup() {
+    const signedIn = !!state && !!state.discordName;
+    backupGroup.classList.toggle('hidden', !signedIn);
+    if (!signedIn) { backupMode = null; passField.value = ''; againField.value = ''; backupNote = { text: '', bad: false }; return; }
+    const info = state.backup;
+    let status = '';
+    if (info && info.thisPc) status = window.t('Your address is backed up to your Discord account.');
+    else if (info) status = window.t('Your Discord account has a backed-up address (ending {id}) that is not the one on this PC. Restore it to use that address here.', { id: info.id });
+    backupStatus.textContent = backupNote.text || status;
+    backupStatus.setAttribute('role', backupNote.bad ? 'alert' : 'status');
+    const open = backupMode !== null;
+    backupForm.classList.toggle('hidden', !open);
+    backupActions.classList.toggle('hidden', open);
+    if (open) {
+      const saving = backupMode === 'save';
+      formHelp.textContent = window.t(saving ? "Choose a passphrase of at least 12 characters. Only you know it: VoxelPort can't recover it, and without it the backup can't be opened." : 'Type the passphrase you chose when you backed up your address. This PC will then use that address, and the one it has now is left behind.');
+      passLabel.firstChild.textContent = window.t('Passphrase');
+      againLabel.firstChild.textContent = window.t('Type it again');
+      passField.setAttribute('aria-label', window.t('Passphrase')); againField.setAttribute('aria-label', window.t('Type it again'));
+      againLabel.classList.toggle('hidden', !saving);
+      submitButton.textContent = backupBusy ? window.t('Working…') : window.t(saving ? 'Back up my address' : 'Restore');
+      cancelButton.textContent = window.t('Cancel');
+      for (const node of [submitButton, cancelButton, passField, againField]) node.disabled = backupBusy;
+      return;
+    }
+    const buttons = [button(window.t('Back up my address'), () => openBackupForm('save'))];
+    if (info && !info.thisPc) buttons.push(button(window.t('Restore my address'), () => openBackupForm('restore')));
+    if (info) buttons.push(button(window.t('Delete backup'), deleteBackup));
+    backupActions.replaceChildren(...(backupBusy ? [el('span', { className: 'hint', textContent: window.t('Working…') })] : buttons));
+  }
+
+  function render() { renderBackup(); renderGate(); renderBanner(); renderSettings(); }
 
   window.vp.on('discord:state', (next) => { state = next; render(); });
   window.vp.discordState().then((first) => { state = first; render(); }).catch(() => {});
