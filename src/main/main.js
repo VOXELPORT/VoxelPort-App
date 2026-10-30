@@ -708,6 +708,13 @@ ipcMain.handle('app:setLanguage', guarded(g, (_evt, { lang }) => {
 
 ipcMain.handle('update:state', guarded(g, () => ({ readyToInstall: updater.readyToInstall })));
 
+// The Settings "Check for updates" button. A finished download also shows the "ready to install" banner again.
+ipcMain.handle('update:check', guarded(g, async () => {
+  const result = await updater.checkNow();
+  if (result.status === 'downloaded') send('update:downloaded', result.version);
+  return result;
+}));
+
 // Applying a downloaded update quits and relaunches the app — never do that
 // silently while a managed server is running or the tunnel is public
 // without asking first, same as any other switch/stop in this app.

@@ -457,4 +457,11 @@
   'There is no backup on your account.': 'Não há backup na sua conta.',
   'That didn\'t work. Check your connection and try again.': 'Não deu certo. Verifique sua conexão e tente de novo.',
   'Stop the public address first, then restore.': 'Pare primeiro o endereço público e depois restaure.',
+  'Check for updates': 'Verificar atualizações',
+  'Checking…': 'Verificando…',
+  'You\'re up to date (v{version}).': 'Você está atualizado (v{version}).',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'O VoxelPort v{version} está sendo baixado. Você será avisado quando estiver pronto para instalar.',
+  'Updates come from the Microsoft Store.': 'As atualizações vêm da Microsoft Store.',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': 'As atualizações não são automáticas neste sistema. Baixe a versão mais recente em voxelport.in/download.',
+  'Couldn\'t check for updates. Check your connection and try again.': 'Não foi possível verificar atualizações. Verifique sua conexão e tente novamente.',
 };

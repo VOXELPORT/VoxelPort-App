@@ -458,4 +458,11 @@
   'There is no backup on your account.': '你的账号上没有备份。',
   'That didn\'t work. Check your connection and try again.': '没成功。请检查网络后重试。',
   'Stop the public address first, then restore.': '请先停止公开地址，再恢复。',
+  'Check for updates': '检查更新',
+  'Checking…': '正在检查…',
+  'You\'re up to date (v{version}).': '已是最新版本（v{version}）。',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version} 正在下载，可以安装时会通知你。',
+  'Updates come from the Microsoft Store.': '更新由 Microsoft Store 提供。',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': '此系统不会自动更新。请从 voxelport.in/download 获取最新版本。',
+  'Couldn\'t check for updates. Check your connection and try again.': '无法检查更新。请检查网络连接后重试。',
 };

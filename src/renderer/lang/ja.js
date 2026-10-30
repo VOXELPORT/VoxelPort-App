@@ -458,4 +458,11 @@
   'There is no backup on your account.': 'アカウントにバックアップがありません。',
   'That didn\'t work. Check your connection and try again.': 'うまくいきませんでした。接続を確認してもう一度お試しください。',
   'Stop the public address first, then restore.': '先に公開アドレスを停止してから、復元してください。',
+  'Check for updates': '更新を確認',
+  'Checking…': '確認中…',
+  'You\'re up to date (v{version}).': '最新の状態です（v{version}）。',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version}をダウンロード中です。インストールできるようになったらお知らせします。',
+  'Updates come from the Microsoft Store.': '更新は Microsoft Store から届きます。',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': 'このシステムでは更新は自動ではありません。最新版は voxelport.in/download から入手してください。',
+  'Couldn\'t check for updates. Check your connection and try again.': '更新を確認できませんでした。接続を確認して、もう一度お試しください。',
 };

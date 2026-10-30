@@ -475,4 +475,11 @@
   'There is no backup on your account.': 'Tumhare account par koi backup nahi hai.',
   'That didn\'t work. Check your connection and try again.': 'Ye nahi hua. Apna connection check karke dobara try karo.',
   'Stop the public address first, then restore.': 'Pehle public address band karo, phir restore karo.',
+  'Check for updates': 'Update check karo',
+  'Checking…': 'Check ho raha hai…',
+  'You\'re up to date (v{version}).': 'Tum up to date ho (v{version}).',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version} download ho raha hai. Install ke liye taiyaar hote hi bata diya jayega.',
+  'Updates come from the Microsoft Store.': 'Updates Microsoft Store se aate hain.',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': 'Is system par updates apne aap nahi aate. Sabse nayi version voxelport.in/download se lo.',
+  'Couldn\'t check for updates. Check your connection and try again.': 'Update check nahi ho paya. Apna connection check karke dobara try karo.',
 };

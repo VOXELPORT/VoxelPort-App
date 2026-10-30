@@ -456,4 +456,11 @@
   'There is no backup on your account.': 'Tidak ada cadangan di akunmu.',
   'That didn\'t work. Check your connection and try again.': 'Gagal. Periksa koneksimu lalu coba lagi.',
   'Stop the public address first, then restore.': 'Hentikan alamat publik dulu, lalu pulihkan.',
+  'Check for updates': 'Periksa pembaruan',
+  'Checking…': 'Memeriksa…',
+  'You\'re up to date (v{version}).': 'Kamu sudah memakai versi terbaru (v{version}).',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version} sedang diunduh. Kamu akan diberi tahu saat siap dipasang.',
+  'Updates come from the Microsoft Store.': 'Pembaruan datang dari Microsoft Store.',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': 'Pembaruan tidak otomatis di sistem ini. Unduh versi terbaru dari voxelport.in/download.',
+  'Couldn\'t check for updates. Check your connection and try again.': 'Tidak bisa memeriksa pembaruan. Periksa koneksimu dan coba lagi.',
 };

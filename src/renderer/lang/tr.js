@@ -458,4 +458,11 @@
   'There is no backup on your account.': 'Hesabında yedek yok.',
   'That didn\'t work. Check your connection and try again.': 'Olmadı. Bağlantını kontrol edip tekrar dene.',
   'Stop the public address first, then restore.': 'Önce herkese açık adresi durdur, sonra geri yükle.',
+  'Check for updates': 'Güncellemeleri denetle',
+  'Checking…': 'Denetleniyor…',
+  'You\'re up to date (v{version}).': 'Güncelsin (v{version}).',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version} indiriliyor. Yüklemeye hazır olduğunda haber verilecek.',
+  'Updates come from the Microsoft Store.': 'Güncellemeler Microsoft Store üzerinden gelir.',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': 'Bu sistemde güncellemeler otomatik değildir. En yeni sürümü voxelport.in/download adresinden indir.',
+  'Couldn\'t check for updates. Check your connection and try again.': 'Güncellemeler denetlenemedi. Bağlantını kontrol edip tekrar dene.',
 };

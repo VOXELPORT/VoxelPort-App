@@ -458,4 +458,11 @@
   'There is no backup on your account.': '계정에 백업이 없어요.',
   'That didn\'t work. Check your connection and try again.': '안 됐어요. 연결을 확인하고 다시 시도하세요.',
   'Stop the public address first, then restore.': '먼저 공개 주소를 중지한 다음 복원하세요.',
+  'Check for updates': '업데이트 확인',
+  'Checking…': '확인하는 중…',
+  'You\'re up to date (v{version}).': '최신 버전입니다(v{version}).',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version}을(를) 다운로드하는 중입니다. 설치할 준비가 되면 알려드립니다.',
+  'Updates come from the Microsoft Store.': '업데이트는 Microsoft Store에서 제공됩니다.',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': '이 시스템에서는 업데이트가 자동이 아닙니다. voxelport.in/download에서 최신 버전을 받으세요.',
+  'Couldn\'t check for updates. Check your connection and try again.': '업데이트를 확인하지 못했습니다. 연결을 확인하고 다시 시도하세요.',
 };

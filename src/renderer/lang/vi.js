@@ -458,4 +458,11 @@
   'There is no backup on your account.': 'Tài khoản của bạn không có bản sao lưu nào.',
   'That didn\'t work. Check your connection and try again.': 'Không được. Hãy kiểm tra kết nối rồi thử lại.',
   'Stop the public address first, then restore.': 'Hãy dừng địa chỉ công khai trước, rồi khôi phục.',
+  'Check for updates': 'Kiểm tra cập nhật',
+  'Checking…': 'Đang kiểm tra…',
+  'You\'re up to date (v{version}).': 'Bạn đang dùng bản mới nhất (v{version}).',
+  'VoxelPort v{version} is downloading. You will be told when it is ready to install.': 'VoxelPort v{version} đang được tải xuống. Bạn sẽ được báo khi sẵn sàng cài đặt.',
+  'Updates come from the Microsoft Store.': 'Bản cập nhật đến từ Microsoft Store.',
+  'Updates aren\'t automatic on this system. Get the newest version from voxelport.in/download.': 'Trên hệ thống này, bản cập nhật không tự động. Hãy tải bản mới nhất tại voxelport.in/download.',
+  'Couldn\'t check for updates. Check your connection and try again.': 'Không thể kiểm tra cập nhật. Hãy kiểm tra kết nối và thử lại.',
 };
