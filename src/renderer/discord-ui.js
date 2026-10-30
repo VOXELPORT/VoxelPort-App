@@ -183,12 +183,14 @@
     backupActions.classList.toggle('hidden', open);
     if (open) {
       const saving = backupMode === 'save';
-      formHelp.textContent = window.t(saving ? "Choose a passphrase of at least 12 characters. Only you know it: VoxelPort can't recover it, and without it the backup can't be opened." : 'Type the passphrase you chose when you backed up your address. This PC will then use that address, and the one it has now is left behind.');
+      formHelp.textContent = saving
+        ? window.t("Choose a passphrase of at least 12 characters. Only you know it: VoxelPort can't recover it, and without it the backup can't be opened.")
+        : window.t('Type the passphrase you chose when you backed up your address. This PC will then use that address, and the one it has now is left behind.');
       passLabel.firstChild.textContent = window.t('Passphrase');
       againLabel.firstChild.textContent = window.t('Type it again');
       passField.setAttribute('aria-label', window.t('Passphrase')); againField.setAttribute('aria-label', window.t('Type it again'));
       againLabel.classList.toggle('hidden', !saving);
-      submitButton.textContent = backupBusy ? window.t('Working…') : window.t(saving ? 'Back up my address' : 'Restore');
+      submitButton.textContent = backupBusy ? window.t('Working…') : saving ? window.t('Back up my address') : window.t('Restore');
       cancelButton.textContent = window.t('Cancel');
       for (const node of [submitButton, cancelButton, passField, againField]) node.disabled = backupBusy;
       return;
