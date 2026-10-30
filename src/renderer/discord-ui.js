@@ -123,7 +123,7 @@
   const formHelp = el('p', { className: 'hint' });
   const passLabel = el('label', { className: 'field' }, el('span', { className: 'label' }), passField);
   const againLabel = el('label', { className: 'field' }, el('span', { className: 'label' }), againField);
-  const submitButton = el('button', { type: 'submit', className: 'primary' });
+  const submitButton = el('button', { type: 'button', className: 'primary', onclick: () => submitBackup() });
   const cancelButton = el('button', { type: 'button', className: 'ghost', onclick: () => closeBackupForm() });
   backupForm.append(formHelp, passLabel, againLabel, formError, el('div', { className: 'discord-actions' }, submitButton, cancelButton));
 
@@ -140,8 +140,7 @@
     if (new Set(p.split('')).size < 5) return window.t('Choose something less repetitive.');
     return '';
   }
-  async function submitBackup(event) {
-    event.preventDefault();
+  async function submitBackup() {
     if (backupBusy) return;
     const saving = backupMode === 'save';
     const passphrase = passField.value;
@@ -166,7 +165,8 @@
     backupNote = { text: window.t(result.ok ? result.message : result.error), bad: !result.ok };
     renderBackup();
   }
-  backupForm.addEventListener('submit', submitBackup);
+  // The page has no <form> (its security policy allows none), so Enter in a field sends it.
+  for (const field of [passField, againField]) field.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); submitBackup(); } });
 
   function renderBackup() {
     const signedIn = !!state && !!state.discordName;

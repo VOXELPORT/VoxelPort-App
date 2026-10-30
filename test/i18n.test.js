@@ -54,6 +54,8 @@ const MESSAGES_THE_APP_SENDS = [
   'That file is too large to edit here (limit 512 KB).', 'That file is not plain text.', 'That file cannot be edited here.',
   'Nothing to save.', 'That file is too large to save here (limit 512 KB).',
   'Could not move the server folder to the Recycle Bin. Nothing was removed.',
+  // Address backup: what the main process answers.
+  "Backed up. Remember your passphrase: VoxelPort can't recover it.", "Restored. Make your server public to get your address back.", "Backup deleted.", "That passphrase doesn't open the backup.", "There is no backup on your account.", "That didn't work. Check your connection and try again.", "Stop the public address first, then restore.", "Use at least 12 characters.", "Choose something less repetitive.",
   'Wait for the server to finish starting, then make it public.', 'The previous server is still shutting down — try again in a few seconds.',
 ];
 

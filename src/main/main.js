@@ -660,10 +660,10 @@ ipcMain.handle('identity:save', guarded(g, (_e, passphrase) => backupAction(asyn
 })));
 ipcMain.handle('identity:restore', guarded(g, (_e, passphrase) => backupAction(async () => {
   // This PC's address is the device token of the running public address: swapping it under a live tunnel would split the two.
-  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore your address.' };
+  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore.' };
   const r = await appAccount.restoreBackup(passphraseOf(passphrase));
   if (!r.ok) return backupFailure(r.error);
-  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore your address.' }; // started while the backup was being opened
+  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore.' }; // started while the backup was being opened
   try { replaceToken(userDataDir(), r.token, safeStorage); } catch { return backupFailure('failed'); }
   deviceToken = r.token;
   tokenUnreadable = false;
