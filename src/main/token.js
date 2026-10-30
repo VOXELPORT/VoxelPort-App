@@ -136,10 +136,23 @@ function persist(file, token, safeStorage) {
   }
 }
 
+/**
+ * Swaps the stored token for another one (restoring an address from the person's Discord backup). The file that is there
+ * now is copied aside first, exactly like an unreadable one, so the address this PC had can still be recovered by hand.
+ * Throws if the new token is not valid or cannot be written; the old file is only replaced by a complete new one.
+ */
+function replaceToken(userDataDir, token, safeStorage) {
+  if (!isValidToken(token)) throw new Error('invalid token');
+  const file = tokenFile(userDataDir);
+  fs.mkdirSync(userDataDir, { recursive: true });
+  if (fs.existsSync(file)) keepUnreadableCopy(userDataDir, file, null);
+  persist(file, token, safeStorage);
+}
+
 /** Never logs or returns the real token — only for the "•••• last 4" style UI hint. */
 function maskToken(token) {
   if (!isValidToken(token)) return '••••••••';
   return '••••••••' + token.slice(-4);
 }
 
-module.exports = { loadOrCreateToken, generateDeviceToken, isValidToken, maskToken };
+module.exports = { loadOrCreateToken, replaceToken,generateDeviceToken, isValidToken, maskToken };
