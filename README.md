@@ -11,7 +11,7 @@
 </p>
 
 <h3 align="center">
-  Host a Minecraft server from your PC. Friends join with plain Minecraft.<br />
+  Host a Minecraft server from your PC or your Android phone. Friends join with plain Minecraft.<br />
   No port forwarding · friends need no account · hosts sign in with <a href="https://discord.gg/JAUfmey2fP">Discord</a> once.
 </h3>
 
@@ -21,9 +21,6 @@
 
 <p align="center">
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Linux.tar.gz"><img src="https://img.shields.io/badge/Download-Linux-F6CB2F?style=for-the-badge&logo=linux&logoColor=black&labelColor=15120F" alt="Download for Linux" height="40" /></a>
-</p>
-
-<p align="center">
   <a href="https://voxelport.in/guides/host-minecraft-server-android-phone"><img src="https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black&labelColor=15120F" alt="Install the Android app" height="40" /></a>
 </p>
 
