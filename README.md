@@ -12,7 +12,7 @@
 
 <h3 align="center">
   Host a Minecraft server from your PC. Friends join with plain Minecraft.<br />
-  No port forwarding · no signup · a friendly <a href="https://discord.gg/JAUfmey2fP">Discord</a> if you want help.
+  No port forwarding · friends need no account · hosts sign in with <a href="https://discord.gg/JAUfmey2fP">Discord</a> once.
 </h3>
 
 <p align="center">
@@ -23,6 +23,10 @@
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Linux.tar.gz"><img src="https://img.shields.io/badge/Download-Linux-F6CB2F?style=for-the-badge&logo=linux&logoColor=black&labelColor=15120F" alt="Download for Linux" height="40" /></a>
 </p>
 
+<p align="center">
+  <a href="https://voxelport.in/guides/host-minecraft-server-android-phone"><img src="https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black&labelColor=15120F" alt="Install the Android app" height="40" /></a>
+</p>
+
 <p align="center"><sub>macOS coming soon · <a href="https://voxelport.in">voxelport.in</a></sub></p>
 
 ---
@@ -31,7 +35,7 @@
 
 | | |
 |:-:|---|
-| **1** | **Install** the app from the [Microsoft Store](https://apps.microsoft.com/detail/9NGRX9CFNBD6) — no account needed. |
+| **1** | **Install** the app from the [Microsoft Store](https://apps.microsoft.com/detail/9NGRX9CFNBD6) and sign in with Discord once. Friends never need an account. |
 | **2** | **Create** a new server (Vanilla, Paper or Fabric) or **import** one you already have. |
 | **3** | Press **Start**, then **Make public**. You get an address like `play.voxelport.in:26137`. |
 | **4** | Friends paste it into **Multiplayer → Add Server**. Done. |
@@ -79,7 +83,10 @@
 - ☕ **Automatic Java** — installs the correct Eclipse Temurin (Java 25 for Minecraft 26.1+) and fixes "needs a newer Java" errors on its own.
 - 📦 **Any server** — Vanilla, Paper, Fabric, modpacks, or any server jar you already have.
 - 🚀 **Low ping** — your server connects straight to the relay, with an automatic Cloudflare fallback if your network blocks the direct route.
-- 🔒 **No account** — a private device key is created on first run and encrypted on your PC.
+- 🔁 **Address backup** — lock your address with a passphrase and save it to your Discord account. On a new PC or phone, sign in and restore the same address. VoxelPort cannot read the backup and cannot recover a forgotten passphrase.
+- 📱 **Android app** — host from your phone too ([install guide](https://voxelport.in/guides/host-minecraft-server-android-phone), [source](https://github.com/VOXELPORT/voxelport-mobile)), with the same Discord sign-in and the same address backup.
+- 🔄 **Check for updates** — a button in Settings tells you whether you are up to date.
+- 🔒 **Discord sign-in, no password** — hosts sign in with Discord and join our server once. VoxelPort never sees your Discord password or email. A private device key is created on first run and encrypted on your PC.
 - 💚 **Free & open source** — MIT-licensed, like the [relay](https://github.com/VOXELPORT/relay).
 
 ## ❓ FAQ
@@ -93,7 +100,19 @@ No. They join with normal Minecraft: Java Edition using the address the app give
 <details>
 <summary><b>Does it update itself?</b></summary>
 
-Yes on Windows — the Microsoft Store keeps VoxelPort up to date for you. On Linux, download the new release when one comes out.
+Yes on Windows. The Microsoft Store keeps its version up to date (Microsoft reviews each update, so it can arrive about a day after a release), and the direct installer updates itself. **Settings → Check for updates** tells you where you stand. On Linux, download the new release when one comes out.
+</details>
+
+<details>
+<summary><b>Do I need a Discord account?</b></summary>
+
+To host with the app, yes: you sign in with Discord and join our server once. Discord asks for your permission on its own page, and VoxelPort only receives your permanent Discord ID, your display name and whether you are in the server, never your email, your password or an access token. Friends who just play need nothing.
+</details>
+
+<details>
+<summary><b>How do I keep my address on a new PC or phone?</b></summary>
+
+Open **Address backup** in Settings, choose a passphrase of at least 12 characters and back up. On the new device, sign in with Discord and restore. The backup is locked on your device, so VoxelPort cannot read it or recover a forgotten passphrase. The PC and Android apps share the same backup.
 </details>
 
 <details>
@@ -107,7 +126,7 @@ On your PC, in the folder you choose for each server. The relay only forwards tr
 ```bash
 npm install
 npm start      # run the app
-npm test       # 80 tests
+npm test       # the full test suite
 ```
 
 Architecture, code layout, packaging and releases: **[DEVELOPMENT.md](DEVELOPMENT.md)** · Security model: **[SECURITY.md](SECURITY.md)**
