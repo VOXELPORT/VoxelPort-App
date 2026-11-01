@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('vp', {
     chooseFolder: () => ipcRenderer.invoke('server:chooseFolder'),
     detectExisting: (dir) => ipcRenderer.invoke('server:detectExisting', { dir }),
     install: (config) => ipcRenderer.invoke('server:install', config),
+    changeVersion: (id, version) => ipcRenderer.invoke('server:changeVersion', { id, version }),
     import: (input) => ipcRenderer.invoke('server:import', input),
 
     list: () => ipcRenderer.invoke('server:profiles:list'),

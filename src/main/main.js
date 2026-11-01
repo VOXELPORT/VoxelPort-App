@@ -14,6 +14,7 @@ const {
   getServerDir, downloadServerJar, writeEula, writeServerProperties,
   detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
 } = require('./serverInstall');
+const { readJarMinecraftVersion } = require('./jarVersion');
 const { ServerProcess } = require('./serverProcess');
 const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
@@ -1144,12 +1145,28 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   fs.mkdirSync(dir, { recursive: true });
 
   send('install:progress', { phase: 'resolving' });
-  const { url, checksum } = await mcVersions.resolveDownload(type, version);
+  const resolved = await mcVersions.resolveDownload(type, version);
+  const { url, checksum, build } = resolved;
 
   send('install:progress', { phase: 'downloading', received: 0, total: 0 });
-  await downloadServerJar(url, path.join(dir, 'server.jar'), (p) => {
+  const jarPath = path.join(dir, 'server.jar');
+  await downloadServerJar(url, jarPath, (p) => {
     send('install:progress', { phase: 'downloading', ...p });
   }, checksum);
+
+  // Verify the jar really is the selected Minecraft version (locked decision 3):
+  // read version.json from inside it. Fabric launcher jars carry none, so a null
+  // result means "can't verify from the jar", which we accept only for Fabric.
+  send('install:progress', { phase: 'verifying' });
+  const jarVersion = await readJarMinecraftVersion(jarPath).catch(() => null);
+  if (jarVersion && jarVersion !== version) {
+    fs.rmSync(jarPath, { force: true });
+    throw new Error(`Downloaded server is Minecraft ${jarVersion}, not the ${version} you selected. Nothing was installed.`);
+  }
+  if (!jarVersion && type !== 'fabric') {
+    fs.rmSync(jarPath, { force: true });
+    throw new Error(`Couldn't read the Minecraft version from the downloaded ${type} server to confirm it is ${version}. Nothing was installed.`);
+  }
 
   writeEula(dir);
   writeServerProperties(dir, { port: portNum, extra: template ? template.properties : {} });
@@ -1157,6 +1174,7 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   let profile = serverProfiles.createProfile(userDataDir(), {
     name: name || (template ? template.label : `${type[0].toUpperCase()}${type.slice(1)} server`),
     type, version, serverDir: dir, port: portNum, minRamMb: minRam, maxRamMb: maxRam,
+    build: build != null ? String(build) : undefined,
     template: template ? template.id : undefined,
   });
 
@@ -1172,6 +1190,78 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   }
   send('install:progress', { phase: 'done' });
   return { ok: true, profile, warning };
+}));
+
+/**
+ * Changes an existing server's Minecraft version: backs the server up first,
+ * downloads and verifies the new jar, swaps it in, updates the stored version
+ * and build, and warns about things that may now be incompatible (Bedrock /
+ * Geyser, mods/plugins built for the old version). The server must be stopped.
+ * The world and configs are left untouched; only server.jar is replaced, and
+ * only after the new jar is confirmed to be the requested version.
+ */
+ipcMain.handle('server:changeVersion', guarded(g, async (_evt, { id, version }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (typeof version !== 'string' || !version.trim()) return { ok: false, error: 'Choose a Minecraft version.' };
+  if (version === profile.version) return { ok: false, error: `This server is already on Minecraft ${version}.` };
+  if (serverProc.child && activeServerProfileId === id) {
+    return { ok: false, error: 'Stop the server before changing its Minecraft version.' };
+  }
+  if (backupService.isBusy(id)) return { ok: false, error: 'A backup or restore is running for this server. Try again in a moment.' };
+
+  const dir = profile.serverDir;
+  const jarPath = path.join(dir, 'server.jar');
+
+  // 1. Back up first, so nothing is lost if the switch goes wrong (never skip this).
+  send('install:progress', { phase: 'backing-up' });
+  try {
+    const backup = await backupService.create(id, 'manual');
+    if (backup && backup.ok === false) throw new Error(backup.error || 'backup failed');
+  } catch (err) {
+    return { ok: false, error: `Couldn't back the server up first, so nothing was changed (${err.message}).` };
+  }
+
+  // 2. Resolve + download the new version to a side path, then verify it before swapping.
+  send('install:progress', { phase: 'resolving' });
+  let resolved;
+  try {
+    resolved = await mcVersions.resolveDownload(profile.type, version);
+  } catch (err) {
+    return { ok: false, error: `Minecraft ${version} isn't available for ${profile.type}: ${err.message}. The server is unchanged.` };
+  }
+  const stagedPath = path.join(dir, '.server.jar.new');
+  send('install:progress', { phase: 'downloading', received: 0, total: 0 });
+  try {
+    await downloadServerJar(resolved.url, stagedPath, (p) => send('install:progress', { phase: 'downloading', ...p }), resolved.checksum);
+  } catch (err) {
+    fs.rmSync(stagedPath, { force: true });
+    return { ok: false, error: `Download failed: ${err.message}. The server is unchanged.` };
+  }
+
+  send('install:progress', { phase: 'verifying' });
+  const jarVersion = await readJarMinecraftVersion(stagedPath).catch(() => null);
+  if ((jarVersion && jarVersion !== version) || (!jarVersion && profile.type !== 'fabric')) {
+    fs.rmSync(stagedPath, { force: true });
+    const got = jarVersion ? `Minecraft ${jarVersion}` : `an unverifiable ${profile.type} jar`;
+    return { ok: false, error: `Downloaded ${got}, not the ${version} you selected. The server is unchanged.` };
+  }
+
+  // 3. Swap the verified jar in and record the new version + build.
+  fs.renameSync(stagedPath, jarPath);
+  const updated = serverProfiles.updateProfile(userDataDir(), id, {
+    version,
+    build: resolved.build != null ? String(resolved.build) : undefined,
+  });
+
+  // 4. Warn about things that may need attention after a version change.
+  const warnings = [];
+  if (profile.bedrock) warnings.push('This server has Bedrock support (Geyser): re-enable it in Settings so Geyser matches the new version.');
+  if (profile.type === 'fabric') warnings.push('Check that your mods support Minecraft ' + version + '.');
+  else warnings.push('Check that your plugins support Minecraft ' + version + '.');
+
+  send('install:progress', { phase: 'done' });
+  return { ok: true, profile: updated, warning: warnings.join(' ') };
 }));
 
 // ─── Single managed server process (item 6) ─────────────────────────────────
