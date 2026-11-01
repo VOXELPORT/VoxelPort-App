@@ -141,7 +141,7 @@ nameClaimBtn.addEventListener('click', async () => {
   if (!res || !res.ok) { setNameMsg(t((res && res.error) || 'Could not set that address.'), true); return; }
   editingName = false;
   customAddress = { name: res.name, address: res.address };
-  setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
   srvLogLine(t('Your address is now {address} — it can take a minute to work everywhere.', { address: res.address }));
   renderAddress();
 });
@@ -159,7 +159,7 @@ $('nameRemoveBtn').addEventListener('click', async () => {
   const res = await window.vp.name.release();
   if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove the address.')); return; }
   customAddress = { name: '', address: '' };
-  setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
   renderAddress();
 });
 
@@ -181,7 +181,7 @@ window.currentInviteData = currentInviteData;
 wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), currentInviteData);
 
 window.vp.on('tunnel:name', (n) => {
-  if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
   customAddress = n;
   editingName = false;
   renderAddress();
