@@ -3,6 +3,8 @@
 // Tiếng Việt. Each key is the exact English text used in the app (see i18n.js); {name} marks a value filled
 // in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).vi = {
+  'Bedrock needs an updated relay.': 'Bedrock cần một relay đã được cập nhật.',
+  'Restart your server once to activate this Bedrock address.': 'Khởi động lại máy chủ một lần để kích hoạt địa chỉ Bedrock này.',
   'My servers': 'Máy chủ của tôi',
   'Create, manage and share your Minecraft worlds.': 'Tạo, quản lý và chia sẻ các thế giới Minecraft của bạn.',
   'Already have a server?': 'Bạn đã có máy chủ?',

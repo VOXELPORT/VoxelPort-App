@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const readline = require('readline');
 const { EventEmitter } = require('events');
+const { bedrockJvmArgs } = require('./bedrock');
 
 // A server line is "[time] [thread/LEVEL]: message" (Vanilla) or "[time LEVEL]: message" (Paper). What the server means is
 // the whole message after that, never a piece of it: chat is "<name> text", so a player typing "Bob joined the game" can
@@ -43,7 +44,9 @@ class ServerProcess extends EventEmitter {
     this.stopTimer = null;
   }
 
-  start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb, javaPath = 'java' }) {
+  // bedrock: { localPort, publicHost?, publicPort? }; omit the public pair until
+  // assigned. JVM properties are fixed at launch, so a new assignment needs a restart.
+  start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb, javaPath = 'java', bedrock }) {
     if (this.child) return; // only one managed process, ever
     if (typeof serverDir !== 'string' || !path.isAbsolute(serverDir)) {
       this.emit('log', 'Refusing to start: invalid server folder.');
@@ -62,6 +65,14 @@ class ServerProcess extends EventEmitter {
       this._setStatus('crashed');
       return;
     }
+    let bedrockArgs = [];
+    if (bedrock !== undefined && bedrock !== null) {
+      try { bedrockArgs = bedrockJvmArgs(bedrock); } catch (err) {
+        this.emit('log', `Refusing to start: ${err.message}`);
+        this._setStatus('crashed');
+        return;
+      }
+    }
 
     this.online.clear();
     this._setStatus('starting');
@@ -76,6 +87,7 @@ class ServerProcess extends EventEmitter {
       '-Dfile.encoding=UTF-8',
       '-Dstdout.encoding=UTF-8',
       '-Dstderr.encoding=UTF-8',
+      ...bedrockArgs,
       '-jar', jarName,
       'nogui',
     ], { cwd: serverDir, shell: false });

@@ -3,6 +3,8 @@
 // Türkçe. Each key is the exact English text used in the app (see i18n.js); {name} marks a value filled
 // in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).tr = {
+  'Bedrock needs an updated relay.': 'Bedrock için güncel bir röle gerekiyor.',
+  'Restart your server once to activate this Bedrock address.': 'Bu Bedrock adresini etkinleştirmek için sunucunu bir kez yeniden başlat.',
   'My servers': 'Sunucularım',
   'Create, manage and share your Minecraft worlds.': 'Minecraft dünyalarını oluştur, yönet ve paylaş.',
   'Already have a server?': 'Zaten bir sunucun var mı?',

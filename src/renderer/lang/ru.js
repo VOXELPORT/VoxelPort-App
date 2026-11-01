@@ -3,6 +3,8 @@
 // Русский. Each key is the exact English text used in the app (see i18n.js); {name} marks a value filled
 // in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).ru = {
+  'Bedrock needs an updated relay.': 'Для Bedrock нужен обновлённый релей.',
+  'Restart your server once to activate this Bedrock address.': 'Перезапустите сервер один раз, чтобы активировать этот адрес Bedrock.',
   'My servers': 'Мои серверы',
   'Create, manage and share your Minecraft worlds.': 'Создавайте миры Minecraft, управляйте ими и делитесь с друзьями.',
   'Already have a server?': 'Уже есть сервер?',

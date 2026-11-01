@@ -4,6 +4,8 @@
 // in at run time and must appear in the translation too. A string missing here shows in English.
 // test/i18n.test.js checks the placeholders and that no entry is left over.
 (window.VP_LANGS = window.VP_LANGS || {}).es = {
+  'Bedrock needs an updated relay.': 'Bedrock necesita un relay actualizado.',
+  'Restart your server once to activate this Bedrock address.': 'Reinicia tu servidor una vez para activar esta dirección de Bedrock.',
   'My servers': 'Mis servidores',
   'Create, manage and share your Minecraft worlds.': 'Crea, gestiona y comparte tus mundos de Minecraft.',
   'Already have a server?': '¿Ya tienes un servidor?',

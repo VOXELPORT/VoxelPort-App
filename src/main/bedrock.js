@@ -2,8 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isIP } = require('net');
 const { downloadServerJar } = require('./serverInstall');
 const { atomicWriteFileSync } = require('./atomicWrite');
+const { parseProperties } = require('./serverSettings');
 
 /**
  * One-click Bedrock support: Geyser (translates Bedrock ↔ Java) plus
@@ -14,9 +16,9 @@ const { atomicWriteFileSync } = require('./atomicWrite');
  *          matched to the server's Minecraft version.
  * Vanilla can't load plugins or mods, so it isn't supported.
  *
- * Geyser's default config listens for Bedrock on UDP 19132 and switches to
- * Floodgate authentication by itself when Floodgate is installed, so no
- * config editing is needed.
+ * Startup uses Geyser's hosting-provider JVM properties to enable NetherNet
+ * with a separate TCP signaling / UDP WebRTC endpoint. Existing Geyser and
+ * Floodgate configuration files are never rewritten for startup.
  */
 
 const GEYSER_API = 'https://download.geysermc.org/v2/projects';
@@ -188,15 +190,15 @@ async function checkGeyserCompatible(type, mcVersion, fetchImpl = fetch) {
   }
 }
 
-/** The UDP port Geyser listens on (from its config once it has run), default 19132. */
-function bedrockPort(serverDir) {
+/** A configured Bedrock port, before applying VoxelPort's startup overrides. */
+function configuredBedrockPort(serverDir) {
   for (const rel of [['plugins', 'Geyser-Spigot', 'config.yml'], ['config', 'Geyser-Fabric', 'config.yml']]) {
     try {
-      const text = fs.readFileSync(path.join(serverDir, ...rel), 'utf8');
+      const text = fs.readFileSync(path.join(serverDir, ...rel), 'utf8').replace(/\r\n?/g, '\n') + '\n';
       const block = /^bedrock:\s*\n((?:[ \t]+.*\n|[ \t]*\n|#.*\n)*)/m.exec(text);
-      const m = block && /^[ \t]+port:[ \t]*(\d{1,5})\b/m.exec(block[1]);
+      const m = block && /^[ \t]+port:[ \t]*(?:(\d{1,5})|'(\d{1,5})'|"(\d{1,5})")[ \t]*(?:#.*)?$/m.exec(block[1]);
       if (m) {
-        const port = Number(m[1]);
+        const port = Number(m[1] || m[2] || m[3]);
         if (port >= 1 && port <= 65535) return port;
       }
     } catch { /* not generated yet */ }
@@ -204,4 +206,79 @@ function bedrockPort(serverDir) {
   return DEFAULT_BEDROCK_PORT;
 }
 
-module.exports = { bedrockSupported, resolveBedrockJars, resolveGeyserForVersion, checkGeyserCompatible, installBedrockSupport, removeBedrockSupport, bedrockPort, DEFAULT_BEDROCK_PORT };
+function validateBedrockPort(port, name) {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid Bedrock ${name} port (expected 1-65535).`);
+}
+
+/**
+ * Without options, preserves the legacy config/default lookup. With options,
+ * chooses one local TCP+UDP port, preferring the configured port, then 19132
+ * upward, excluding Java, enabled query and voice ports. No files are changed
+ * and no sockets are reserved; pass the same result to the process and tunnel.
+ */
+function bedrockPort(serverDir, options) {
+  if (options === undefined) return configuredBedrockPort(serverDir);
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Invalid Bedrock port options.');
+  const used = new Set();
+  for (const key of ['javaPort', 'queryPort', 'voicePort']) {
+    if (options[key] !== undefined) {
+      validateBedrockPort(options[key], key);
+      used.add(options[key]);
+    }
+  }
+  let properties = new Map();
+  try { properties = parseProperties(fs.readFileSync(path.join(serverDir, 'server.properties'), 'utf8')); } catch { /* not generated yet */ }
+  const propertyPort = (key) => {
+    const raw = (properties.get(key) || '').trim();
+    const port = /^\d{1,5}$/.test(raw) ? Number(raw) : 0;
+    return port >= 1 && port <= 65535 ? port : 25565;
+  };
+  if (options.javaPort === undefined) used.add(propertyPort('server-port'));
+  if (options.queryPort === undefined && (properties.get('enable-query') || '').trim().toLowerCase() === 'true') {
+    used.add(propertyPort('query.port'));
+  }
+  const configured = configuredBedrockPort(serverDir);
+  if (!used.has(configured)) return configured;
+  let port = DEFAULT_BEDROCK_PORT;
+  while (used.has(port)) port++;
+  return port;
+}
+
+/** A single DNS/IP host, never a URL, address list, or host with an embedded port. */
+function advertiseHost(host) {
+  if (typeof host !== 'string' || !host || host.length > 253 || /[\s%]/.test(host)) throw new Error('Invalid Bedrock public host.');
+  const address = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  if (isIP(address) === 6) return `[${address}]`;
+  if (isIP(host) === 4) return host;
+  if (/^\d+(?:\.\d+){3}$/.test(host) || !host.replace(/\.$/, '').split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))) {
+    throw new Error('Invalid Bedrock public host.');
+  }
+  return host;
+}
+
+/**
+ * Fixed JVM argv for { localPort, publicHost?, publicPort? }. The parent owns
+ * the per-profile public assignment cache; both public fields are omitted
+ * until assigned and take effect on the next Java start, not make-public.
+ * Official properties: https://geysermc.org/wiki/geyser/geyser-command-line-arguments-and-system-properties/
+ */
+function bedrockJvmArgs(options) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Invalid Bedrock startup options.');
+  const { localPort, publicHost, publicPort } = options;
+  validateBedrockPort(localPort, 'local');
+  const args = [
+    '-DgeyserTransport=nethernet',
+    '-DgeyserUdpAddress=0.0.0.0',
+    `-DgeyserUdpPort=${localPort}`,
+    `-DgeyserSignalingPort=${localPort}`,
+    `-DgeyserWebrtcPort=${localPort}`,
+    '-DgeyserSignalingMode=builtin',
+  ];
+  if (publicHost !== undefined || publicPort !== undefined) {
+    validateBedrockPort(publicPort, 'public');
+    args.push(`-DgeyserAdvertiseAddresses=${advertiseHost(publicHost)}:${publicPort}`);
+  }
+  return args;
+}
+
+module.exports = { bedrockSupported, resolveBedrockJars, resolveGeyserForVersion, checkGeyserCompatible, installBedrockSupport, removeBedrockSupport, bedrockPort, bedrockJvmArgs, DEFAULT_BEDROCK_PORT };

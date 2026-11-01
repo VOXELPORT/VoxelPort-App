@@ -3,6 +3,8 @@
 // Français. Each key is the exact English text used in the app (see i18n.js); {name} marks a value filled
 // in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).fr = {
+  'Bedrock needs an updated relay.': 'Bedrock nécessite un relais à jour.',
+  'Restart your server once to activate this Bedrock address.': 'Redémarrez votre serveur une fois pour activer cette adresse Bedrock.',
   'My servers': 'Mes serveurs',
   'Create, manage and share your Minecraft worlds.': 'Créez, gérez et partagez vos mondes Minecraft.',
   'Already have a server?': 'Vous avez déjà un serveur ?',

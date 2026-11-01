@@ -3,6 +3,8 @@
 // 简体中文。Each key is the exact English text used in the app (see i18n.js); {name} marks a value filled
 // in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).zh = {
+  'Bedrock needs an updated relay.': 'Bedrock 需要更新后的中继。',
+  'Restart your server once to activate this Bedrock address.': '请重启一次服务器以启用此 Bedrock 地址。',
   'My servers': '我的服务器',
   'Create, manage and share your Minecraft worlds.': '创建、管理并分享你的 Minecraft 世界。',
   'Already have a server?': '已经有服务器了？',

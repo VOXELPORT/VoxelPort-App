@@ -3,6 +3,8 @@
 // Bahasa Indonesia. Each key is the exact English text used in the app (see i18n.js); {name} marks a value
 // filled in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).id = {
+  'Bedrock needs an updated relay.': 'Bedrock memerlukan relay yang sudah diperbarui.',
+  'Restart your server once to activate this Bedrock address.': 'Mulai ulang servermu sekali untuk mengaktifkan alamat Bedrock ini.',
   'My servers': 'Server saya',
   'Create, manage and share your Minecraft worlds.': 'Buat, kelola, dan bagikan dunia Minecraft-mu.',
   'Already have a server?': 'Sudah punya server?',

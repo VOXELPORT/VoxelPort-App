@@ -3,6 +3,8 @@
 // 한국어. Each key is the exact English text used in the app (see i18n.js); {name} marks a value filled
 // in at run time and must appear in the translation too. A string missing here shows in English.
 (window.VP_LANGS = window.VP_LANGS || {}).ko = {
+  'Bedrock needs an updated relay.': 'Bedrock에는 업데이트된 릴레이가 필요합니다.',
+  'Restart your server once to activate this Bedrock address.': '이 Bedrock 주소를 활성화하려면 서버를 한 번 다시 시작하세요.',
   'My servers': '내 서버',
   'Create, manage and share your Minecraft worlds.': '마인크래프트 월드를 만들고, 관리하고, 공유하세요.',
   'Already have a server?': '이미 서버가 있나요?',

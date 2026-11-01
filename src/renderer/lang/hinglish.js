@@ -6,6 +6,8 @@
 // run time and must appear in the translation too. Text that is the same in both languages (brand names,
 // "Paper", "RAM") is left out: it shows as it is. test/i18n.test.js checks that nothing is missing.
 (window.VP_LANGS = window.VP_LANGS || {}).hinglish = {
+  'Bedrock needs an updated relay.': 'Bedrock ke liye updated relay chahiye.',
+  'Restart your server once to activate this Bedrock address.': 'Ye Bedrock address chalu karne ke liye apna server ek baar restart karo.',
   'My servers': 'Mere servers',
   'Create, manage and share your Minecraft worlds.': 'Apne Minecraft worlds banao, sambhalo aur share karo.',
   'Already have a server?': 'Pehle se server hai?',

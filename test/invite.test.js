@@ -9,7 +9,7 @@ const full = {
   version: '1.21.11',
   address: 'fastayu-paid01.voxelport.in',
   plainAddress: 'play.voxelport.in:26043',
-  bedrock: { host: 'fastayu-paid01.voxelport.in', port: 26043 },
+  bedrock: { host: 'play.voxelport.in', port: 19147 },
 };
 
 test('the message has everything a friend needs, in order', () => {
@@ -22,7 +22,7 @@ test('the message has everything a friend needs, in order', () => {
     '(or: play.voxelport.in:26043)',
     '',
     '📱 Bedrock (phone / console / Windows 10):',
-    'Server: fastayu-paid01.voxelport.in   Port: 26043',
+    'Server: play.voxelport.in   Port: 19147',
     '',
     'How to join: Minecraft → Multiplayer → Add Server → paste the address.',
     'No mods needed. Free server, hosted with VoxelPort: https://voxelport.in',
@@ -56,6 +56,7 @@ test('Hinglish is the same message in Hinglish, still with the address and the l
   assert.ok(m.includes('(ya: play.voxelport.in:26043)'));
   assert.ok(m.includes('Kaise judo: Minecraft → Multiplayer → Add Server → address paste karo.'));
   assert.ok(m.includes('Address: fastayu-paid01.voxelport.in'));
+  assert.ok(m.includes('Server: play.voxelport.in   Port: 19147'));
   assert.ok(m.endsWith('https://voxelport.in'));
 });
 

@@ -207,6 +207,15 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
+  // Developer DevTools: only ever in an unpackaged (dev) run, and only when
+  // explicitly asked for with VOXELPORT_DEVTOOLS=1 (the dev launcher sets it).
+  // A packaged release can never open them.
+  if (!app.isPackaged && process.env.VOXELPORT_DEVTOOLS === '1') {
+    mainWindow.webContents.once('did-finish-load', () => {
+      try { mainWindow.webContents.openDevTools({ mode: 'detach' }); } catch { /* ignore */ }
+    });
+  }
+
   // Item 15/16: the renderer must never navigate away from packaged local
   // content, and window.open()/target=_blank must never spawn a new
   // VoxelPort-preload-capable window. External links only ever reach
