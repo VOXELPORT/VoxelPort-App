@@ -31,6 +31,11 @@ const {
   PerfMonitor, supportsTickQuery, isTickQueryLine, parseMspt, tpsFromMspt, LAG_RE,
 } = require('./perfMonitor');
 const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort, checkGeyserCompatible } = require('./bedrock');
+const { readBedrockEndpoint, rememberBedrockEndpoint, bedrockEndpointReady } = require('./bedrockEndpoint');
+let activeBedrockLaunch = null;
+// Remembers the Bedrock endpoint we last auto-restarted for, so a server is relaunched
+// at most once per assigned address (never in a loop). Keyed "<profileId>|<host>:<port>".
+let bedrockAutoRestartedFor = null;
 const accounts = require('./accounts');
 const addons = require('./addons');
 const voiceSetup = require('./voiceSetup');
@@ -276,9 +281,30 @@ function broadcastState() {
   });
 }
 
+function localBedrockPort(profile) {
+  return bedrockPort(profile.serverDir, { javaPort: profile.port, voicePort: profile.voice?.port });
+}
+
 function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
-  t.on('assigned', (port) => send('tunnel:assigned', { port, host: publicHost }));
+  t.on('assigned', (port) => {
+    if (t !== tunnel) return;
+    const id = publicServerProfileId;
+    const endpoint = { publicHost, publicPort: t.bedrockPublicPort, localPort: t.udpPort };
+    const ready = Boolean(id && activeServerProfileId === id && serverProc.child
+      && activeBedrockLaunch?.profileId === id && bedrockEndpointReady(activeBedrockLaunch, endpoint));
+    if (id && t.bedrockPublicPort) {
+      try { rememberBedrockEndpoint(userDataDir(), id, deviceToken, endpoint); }
+      catch (err) { send('server:log', `[VoxelPort] Could not remember the Bedrock address: ${err.message}`); }
+      // The relay only assigns the Bedrock public port at make-public, after the server
+      // (and Geyser) already started, so the first time a server goes public Geyser is
+      // running without the right advertise address. Rather than ask the user to restart
+      // by hand, relaunch the server once now so Geyser comes up advertising the assigned
+      // address. Guarded so it fires at most once per assigned endpoint (never loops).
+      if (!ready) void autoRestartForBedrock(id, endpoint);
+    }
+    send('tunnel:assigned', { port, host: publicHost, bedrockPort: t.bedrockPublicPort, bedrockReady: ready });
+  });
   t.on('rank', (rank) => {
     if (t !== tunnel) return;
     publishVoiceState({ rank, profileId: publicServerProfileId,
@@ -298,7 +324,7 @@ function wireTunnel(t, publicHost) {
       if (!isCurrent()) return;
       const profile = serverProfiles.getProfile(userDataDir(), id);
       if (!profile) return;
-      const plan = voiceSetup.voicePlan(profile, profile.bedrock ? bedrockPort(profile.serverDir) : null);
+      const plan = voiceSetup.voicePlan(profile, profile.bedrock ? localBedrockPort(profile) : null);
       if (!plan) return;
       const result = await voiceSetup.configureVoice({ profile, plan, host: publicHost, publicPort: port,
         running: activeServerProfileId === id && Boolean(serverProc.child), isCurrent });
@@ -442,6 +468,7 @@ function wireServerProcess(p) {
     perf.stop();
     stopTickPolling();
     const exitedProfileId = activeServerProfileId;
+    activeBedrockLaunch = null;
     send('server:exit', code);
     if (activeServerProfileId && publicServerProfileId === activeServerProfileId) {
       // The managed server backing the public tunnel died — the tunnel
@@ -876,7 +903,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
-  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, voicePort, voiceAuto, client: `desktop/${app.getVersion()}` });
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, bedrockPort: udpPort, voicePort, voiceAuto, client: `desktop/${app.getVersion()}` });
   broadcastState();
   return { ok: true };
 }
@@ -895,7 +922,10 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
   if (!serverProc.child) {
     return { ok: false, error: 'Wait for the server to finish starting, then make it public.' };
   }
-  const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
+  // A deliberate make-public clears the once-per-endpoint auto-restart guard, so a
+  // fresh attempt can relaunch for Bedrock again if needed.
+  bedrockAutoRestartedFor = null;
+  const udpPort = profile.bedrock ? localBedrockPort(profile) : null;
   return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort, voicePort: profile.voice?.enabled ? profile.voice.port : null });
 }));
 
@@ -1375,7 +1405,10 @@ async function startServerProfile(id, { retried = false } = {}) {
   if (voiceRestartNeeded.delete(id)) {
     publishVoiceState({ message: 'Voice chat is configured automatically. Players join using your server address and the matching voice mod.' });
   }
-  serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath });
+  const bedrock = profile.bedrock ? { localPort: localBedrockPort(profile),
+    ...readBedrockEndpoint(userDataDir(), id, deviceToken) } : null;
+  activeBedrockLaunch = bedrock ? { ...bedrock, profileId: id } : null;
+  serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath, bedrock });
   if (serverProc.child && serverProc.child.pid) perf.start(serverProc.child.pid);
   broadcastState();
   return { ok: true, port: profile.port };
@@ -1388,6 +1421,39 @@ ipcMain.handle('server:stop', guarded(g, () => {
 }));
 
 // Stop the running server, wait for it to exit, then start the same profile again (voice setup and plugin changes need this).
+/**
+ * Relaunches a running, public Bedrock server once so Geyser comes up advertising
+ * the Bedrock address the relay just assigned (the relay only assigns it at
+ * make-public, after the first start). Runs at most once per assigned endpoint, so
+ * a server that still doesn't match (e.g. the relay keeps giving a new port) is not
+ * restarted in a loop — it falls back to the manual note. Best-effort: any problem
+ * leaves the server running and tells the user to restart by hand.
+ */
+async function autoRestartForBedrock(id, endpoint) {
+  const key = `${id}|${endpoint.publicHost}:${endpoint.publicPort}`;
+  if (bedrockAutoRestartedFor === key) {
+    send('server:log', '[VoxelPort] Bedrock still needs a manual restart: Stop, then Start the server once to activate its Bedrock address. Java is unaffected.');
+    return;
+  }
+  // Only act on the server that is actually running and public right now.
+  if (activeServerProfileId !== id || publicServerProfileId !== id || !serverProc.child) return;
+  bedrockAutoRestartedFor = key;
+  send('server:log', '[VoxelPort] Activating the Bedrock address — restarting the server once. Java players reconnect automatically.');
+  try {
+    stopRequested = true;
+    serverProc.stop();
+    await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+    if (serverProc.child) {
+      send('server:log', '[VoxelPort] The server was slow to stop; Start it once to finish activating Bedrock.');
+      return;
+    }
+    const res = await startServerProfile(id);
+    if (!res || !res.ok) send('server:log', '[VoxelPort] Could not restart automatically; Start the server once to activate Bedrock.');
+  } catch (err) {
+    send('server:log', `[VoxelPort] Could not restart automatically (${err.message}); Start the server once to activate Bedrock.`);
+  }
+}
+
 ipcMain.handle('server:restart', guarded(g, async () => {
   const id = activeServerProfileId;
   if (!serverProc.child || !id) return { ok: false, error: 'The server is not running.' };
@@ -1479,7 +1545,7 @@ ipcMain.handle('server:settings:get', guarded(g, (_evt, { id }) => {
     profile,
     fields: serverSettings.SETTINGS,
     values: serverSettings.readSettings(profile.serverDir),
-    bedrock: { supported: bedrockSupported(profile.type), enabled: Boolean(profile.bedrock), port: bedrockPort(profile.serverDir) },
+    bedrock: { supported: bedrockSupported(profile.type), enabled: Boolean(profile.bedrock), port: localBedrockPort(profile) },
     listing: profile.listing || { enabled: false, description: '' },
     totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
     running: activeServerProfileId === id && Boolean(serverProc.child),
@@ -1495,7 +1561,7 @@ ipcMain.handle('server:settings:save', guarded(g, (_evt, { id, name, port, ramMb
   if (voice !== undefined) {
     if (!voice || typeof voice.enabled !== 'boolean' || !['simple', 'plasmo'].includes(voice.plugin)
       || !Number.isInteger(voice.port) || voice.port < 1 || voice.port > 65535) throw new Error('Enter a valid voice plugin and UDP port (1–65535).');
-    if (voice.enabled && profile.bedrock && voice.port === bedrockPort(profile.serverDir)) throw new Error('Voice chat and Bedrock need different local UDP ports.');
+    if (voice.enabled && profile.bedrock && voice.port === localBedrockPort(profile)) throw new Error('Voice chat and Bedrock need different local UDP ports.');
     changes.voice = { enabled: voice.enabled, plugin: voice.plugin, port: voice.port };
   }
   if (typeof name === 'string' && name.trim()) changes.name = name.trim().slice(0, 60);
@@ -1536,7 +1602,6 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
   try {
     if (enabled) {
       if (!bedrockSupported(profile.type)) return { ok: false, error: 'Bedrock players need a Paper or Fabric server.' };
-      if (profile.voice?.enabled && profile.voice.port === bedrockPort(profile.serverDir)) return { ok: false, error: 'Voice chat and Bedrock need different local UDP ports.' };
       await installBedrockSupport({
         serverDir: profile.serverDir, type: profile.type, version: profile.version,
         onProgress: (p) => send('bedrock:progress', p),
@@ -1554,7 +1619,7 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
       publicServerProfileId = null;
       await startTunnelInternal({
         localPort: updated.port, relayUrl: DEFAULT_RELAY_URL, profileId: id,
-        udpPort: updated.bedrock ? bedrockPort(updated.serverDir) : null,
+        udpPort: updated.bedrock ? localBedrockPort(updated) : null,
         voicePort: updated.voice?.enabled ? updated.voice.port : null,
       });
     }
