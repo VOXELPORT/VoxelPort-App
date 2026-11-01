@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const yazl = require('yazl');
-const { readRuntimeInfo, readPlugins, versionFromFileName } = require('../src/main/runtimeInfo');
+const { readRuntimeInfo, readPlugins, readStagedUpdates, versionFromFileName } = require('../src/main/runtimeInfo');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-runtime-'));
@@ -63,4 +63,21 @@ test('readRuntimeInfo returns null version for a Fabric-style jar with no versio
   await makeJar(path.join(dir, 'server.jar'), { 'fabric-server-launch.properties': 'x' });
   const info = await readRuntimeInfo(dir);
   assert.equal(info.minecraftVersion, null);
+});
+
+test('readStagedUpdates finds jars waiting in plugins/update and mods/update', () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'plugins', 'update'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'mods', 'update'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'plugins', 'update', 'Geyser-Spigot.jar'), 'x');
+  fs.writeFileSync(path.join(dir, 'plugins', 'update', 'notes.txt'), 'x'); // ignored
+  fs.writeFileSync(path.join(dir, 'mods', 'update', 'SomeMod.jar'), 'x');
+  const staged = readStagedUpdates(dir).map((s) => `${s.dir}/${s.name}`).sort();
+  assert.deepEqual(staged, ['mods/SomeMod.jar', 'plugins/Geyser-Spigot.jar']);
+});
+
+test('readStagedUpdates is empty (not an error) when there is no update folder', () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  assert.deepEqual(readStagedUpdates(dir), []);
 });

@@ -42,16 +42,31 @@ function readPlugins(serverDir) {
 }
 
 /**
- * { minecraftVersion, plugins:[{key,label,version,file}] }. minecraftVersion is
- * null for a Fabric launcher jar (no version.json) or a missing/unreadable jar —
- * callers show the stored version in that case.
+ * Plugin/mod updates that were downloaded but couldn't replace the running jar
+ * (it was locked), so the server staged them in plugins/update or mods/update
+ * and will apply them on the next restart. Returns the staged jar file names.
+ */
+function readStagedUpdates(serverDir) {
+  const out = [];
+  for (const dir of ['plugins', 'mods']) {
+    let names = [];
+    try { names = fs.readdirSync(path.join(serverDir, dir, 'update')); } catch { continue; }
+    for (const name of names) if (/\.jar$/i.test(name)) out.push({ dir, name });
+  }
+  return out;
+}
+
+/**
+ * { minecraftVersion, plugins:[{key,label,version,file}], stagedUpdates:[{dir,name}] }.
+ * minecraftVersion is null for a Fabric launcher jar (no version.json) or a
+ * missing/unreadable jar — callers show the stored version in that case.
  */
 async function readRuntimeInfo(serverDir) {
   let minecraftVersion = null;
   try {
     minecraftVersion = await readJarMinecraftVersion(path.join(serverDir, 'server.jar'));
   } catch { /* unreadable/missing jar → null */ }
-  return { minecraftVersion, plugins: readPlugins(serverDir) };
+  return { minecraftVersion, plugins: readPlugins(serverDir), stagedUpdates: readStagedUpdates(serverDir) };
 }
 
-module.exports = { readRuntimeInfo, readPlugins, versionFromFileName };
+module.exports = { readRuntimeInfo, readPlugins, readStagedUpdates, versionFromFileName };

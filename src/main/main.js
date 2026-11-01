@@ -1939,6 +1939,7 @@ ipcMain.handle('server:runtimeInfo', guarded(g, async (_evt, { id }) => {
     jarVersionReadable: info.minecraftVersion != null,
     build: profile.build || null,
     plugins: info.plugins,
+    stagedUpdates: info.stagedUpdates,
     bedrock: !!profile.bedrock,
     bedrockCompatible,
   };
