@@ -15,6 +15,7 @@ const {
   detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
 } = require('./serverInstall');
 const { readJarMinecraftVersion } = require('./jarVersion');
+const { readRuntimeInfo } = require('./runtimeInfo');
 const { ServerProcess } = require('./serverProcess');
 const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
@@ -29,7 +30,7 @@ const { explainCrash } = require('./crashExplain');
 const {
   PerfMonitor, supportsTickQuery, isTickQueryLine, parseMspt, tpsFromMspt, LAG_RE,
 } = require('./perfMonitor');
-const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
+const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort, checkGeyserCompatible } = require('./bedrock');
 const accounts = require('./accounts');
 const addons = require('./addons');
 const voiceSetup = require('./voiceSetup');
@@ -1312,10 +1313,32 @@ async function startServerProfile(id, { retried = false } = {}) {
     return { ok: true, alreadyRunning: true, port: profile.port };
   }
 
+  // The real running version comes from the jar when readable (decision 4), not
+  // just the stored config. Read it once; reuse it for the pre-flight and the
+  // diagnostic report. Fabric launcher jars have none, so fall back to config.
+  let runningVersion = profile.version;
+  try {
+    const fromJar = await readJarMinecraftVersion(path.join(profile.serverDir, 'server.jar'));
+    if (fromJar) runningVersion = fromJar;
+  } catch { /* keep the stored version */ }
+
+  // Bedrock/Geyser compatibility pre-flight (locked decision 5): if this server
+  // has Bedrock support on, make sure a Geyser build actually supports its
+  // Minecraft version before it starts — otherwise Bedrock players would be let
+  // in and then disconnected ("does not support Java Edition X"). We warn and
+  // still start (Java players are unaffected); we never block on our own check
+  // failing.
+  if (profile.bedrock) {
+    const compat = await checkGeyserCompatible(profile.type, runningVersion);
+    if (!compat.ok) {
+      send('server:log', `[VoxelPort] Bedrock warning: ${compat.reason} Fix: change this server to a version Geyser supports (Settings → change version), or turn Bedrock off. Java players are unaffected.`);
+    }
+  }
+
   serverProfiles.touchProfile(userDataDir(), id);
   activeServerProfileId = id;
   // Retain only support metadata after a crash clears the active profile ID.
-  diagnosticServer = { type: profile.type, version: profile.version, port: profile.port };
+  diagnosticServer = { type: profile.type, version: runningVersion, build: profile.build || null, port: profile.port };
   if (!retried) diagnosticLines.length = 0;
 
   // Prefer the Java VoxelPort installed itself; otherwise java on the PATH.
@@ -1891,3 +1914,32 @@ ipcMain.handle('server:state', guarded(g, () => ({
   manualTunnelActive,
   serverStatus: currentServerStatus(),
 })));
+
+/**
+ * The actual installed version and plugin versions for a server, read from disk
+ * (decision 4), plus whether a Geyser build supports that version when Bedrock is
+ * on. `storedVersion` is returned too so the UI can show "config says X, jar is Y"
+ * if they ever differ.
+ */
+ipcMain.handle('server:runtimeInfo', guarded(g, async (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  const info = await readRuntimeInfo(profile.serverDir);
+  const runningVersion = info.minecraftVersion || profile.version;
+  let bedrockCompatible = null;
+  if (profile.bedrock) {
+    const c = await checkGeyserCompatible(profile.type, runningVersion);
+    bedrockCompatible = c.unknown ? null : c.ok;
+  }
+  return {
+    ok: true,
+    type: profile.type,
+    storedVersion: profile.version,
+    runningVersion,
+    jarVersionReadable: info.minecraftVersion != null,
+    build: profile.build || null,
+    plugins: info.plugins,
+    bedrock: !!profile.bedrock,
+    bedrockCompatible,
+  };
+}));

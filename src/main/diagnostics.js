@@ -43,7 +43,7 @@ function createReport({ version, platform, arch, server, status, lines, now = ne
     'VoxelPort diagnostic report v1',
     `Created: ${now.toISOString()}`,
     `App: ${version} | OS: ${platform} ${arch}`,
-    `Server: ${server?.type || 'external/none'} | Minecraft: ${server?.version || 'unknown'} | Status: ${status}`,
+    `Server: ${server?.type || 'external/none'} | Minecraft: ${server?.version || 'unknown'}${server?.build ? ` (build ${server.build})` : ''} | Status: ${status}`,
     'Error codes:',
     codes.join('\n\n') || 'VP-NO_MATCH: No known error signature found; review the log below.',
     '', 'Recent session output (oldest first; bounded excerpt):', clean.slice(-200000),

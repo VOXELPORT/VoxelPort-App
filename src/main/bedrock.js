@@ -42,21 +42,44 @@ function bedrockSupported(type) {
   return type === 'paper' || type === 'fabric';
 }
 
+/**
+ * Picks the Geyser build that actually supports a given Minecraft version, from
+ * Modrinth's per-release `game_versions` (the GeyserMC download API does not say
+ * which Minecraft versions a build supports, which is why installing "latest"
+ * could hand a 26.2 server a Geyser that only speaks 26.3). Returns a download
+ * descriptor, or throws if no Geyser release lists that Minecraft version.
+ */
+async function resolveGeyserForVersion(loaders, mcVersion, fetchImpl = fetch) {
+  const q = `loaders=${encodeURIComponent(JSON.stringify(loaders))}&game_versions=${encodeURIComponent(JSON.stringify([mcVersion]))}`;
+  const versions = await getJson(`${MODRINTH_API}/project/geyser/version?${q}`, fetchImpl);
+  const pick = (Array.isArray(versions) ? versions : []).find((v) => v.version_type === 'release') || (versions || [])[0];
+  if (!pick) throw new Error(`No Geyser build supports Minecraft ${mcVersion} yet.`);
+  const file = (pick.files || []).find((f) => f.primary) || (pick.files || [])[0];
+  if (!file || !file.hashes || !file.hashes.sha512 || !SAFE_JAR_NAME.test(file.filename)) {
+    throw new Error(`No usable Geyser download for Minecraft ${mcVersion}.`);
+  }
+  return { url: file.url, fileName: file.filename, checksum: { algorithm: 'sha512', expected: file.hashes.sha512 } };
+}
+
 /** Resolves the jars to download for a server: [{ url, fileName, checksum, dir }]. */
 async function resolveBedrockJars(type, mcVersion, fetchImpl = fetch) {
   if (type === 'paper') {
     const out = [];
-    for (const project of ['geyser', 'floodgate']) {
-      const build = await getJson(`${GEYSER_API}/${project}/versions/latest/builds/latest`, fetchImpl);
-      const dl = build.downloads && build.downloads.spigot;
-      if (!dl || !dl.sha256 || !SAFE_JAR_NAME.test(dl.name)) throw new Error(`No Paper download for ${project}.`);
-      out.push({
-        url: `${GEYSER_API}/${project}/versions/${encodeURIComponent(build.version)}/builds/${Number(build.build)}/downloads/spigot`,
-        fileName: dl.name,
-        checksum: { algorithm: 'sha256', expected: dl.sha256 },
-        dir: 'plugins',
-      });
-    }
+    // Geyser must match the server's Minecraft version (see resolveGeyserForVersion).
+    const geyser = await resolveGeyserForVersion(['paper', 'spigot'], mcVersion, fetchImpl);
+    out.push({ ...geyser, dir: 'plugins', family: 'geyser' });
+    // Floodgate is Minecraft-version-agnostic (it only adds the auth path), so the
+    // latest build from GeyserMC's own API is correct for every server version.
+    const fg = await getJson(`${GEYSER_API}/floodgate/versions/latest/builds/latest`, fetchImpl);
+    const dl = fg.downloads && fg.downloads.spigot;
+    if (!dl || !dl.sha256 || !SAFE_JAR_NAME.test(dl.name)) throw new Error('No Paper download for floodgate.');
+    out.push({
+      url: `${GEYSER_API}/floodgate/versions/${encodeURIComponent(fg.version)}/builds/${Number(fg.build)}/downloads/spigot`,
+      fileName: dl.name,
+      checksum: { algorithm: 'sha256', expected: dl.sha256 },
+      dir: 'plugins',
+      family: 'floodgate',
+    });
     return out;
   }
   if (type === 'fabric') {
@@ -124,7 +147,8 @@ async function installBedrockSupport({ serverDir, type, version, onProgress = ()
     await download(jar.url, dest, null, jar.checksum);
     if (jar.project !== 'fabric-api') {
       // Drop older copies of the same one, so the server doesn't load two Geysers.
-      const family = /^geyser/i.test(jar.fileName) ? /^geyser/i : /^floodgate/i;
+      const isGeyser = jar.family === 'geyser' || (!jar.family && /^geyser/i.test(jar.fileName));
+      const family = isGeyser ? /^geyser/i : /^floodgate/i;
       const name = path.basename(jar.fileName);
       for (const old of owned) {
         if (old.dir === jar.dir && old.name !== name && family.test(old.name)) fs.rmSync(path.join(serverDir, old.dir, old.name), { force: true });
@@ -144,6 +168,26 @@ function removeBedrockSupport(serverDir) {
   fs.rmSync(path.join(serverDir, REGISTRY), { force: true });
 }
 
+/**
+ * Pre-flight for decision 5: does a Geyser build exist that supports this
+ * server's Minecraft version? Reads Modrinth's per-release game_versions (not a
+ * hardcoded table). Returns { ok: true } when one exists, { ok: false, reason }
+ * when none does (so the server would let Bedrock players in only to have Geyser
+ * disconnect them), or { ok: true, unknown: true } if the check itself failed
+ * (network) — we never block a start on our own inability to check.
+ */
+async function checkGeyserCompatible(type, mcVersion, fetchImpl = fetch) {
+  const loaders = type === 'fabric' ? ['fabric'] : ['paper', 'spigot'];
+  try {
+    const q = `loaders=${encodeURIComponent(JSON.stringify(loaders))}&game_versions=${encodeURIComponent(JSON.stringify([mcVersion]))}`;
+    const versions = await getJson(`${MODRINTH_API}/project/geyser/version?${q}`, fetchImpl);
+    if (Array.isArray(versions) && versions.length > 0) return { ok: true };
+    return { ok: false, reason: `No Geyser build supports Minecraft ${mcVersion}, so Bedrock players would be disconnected.` };
+  } catch {
+    return { ok: true, unknown: true };
+  }
+}
+
 /** The UDP port Geyser listens on (from its config once it has run), default 19132. */
 function bedrockPort(serverDir) {
   for (const rel of [['plugins', 'Geyser-Spigot', 'config.yml'], ['config', 'Geyser-Fabric', 'config.yml']]) {
@@ -160,4 +204,4 @@ function bedrockPort(serverDir) {
   return DEFAULT_BEDROCK_PORT;
 }
 
-module.exports = { bedrockSupported, resolveBedrockJars, installBedrockSupport, removeBedrockSupport, bedrockPort, DEFAULT_BEDROCK_PORT };
+module.exports = { bedrockSupported, resolveBedrockJars, resolveGeyserForVersion, checkGeyserCompatible, installBedrockSupport, removeBedrockSupport, bedrockPort, DEFAULT_BEDROCK_PORT };
