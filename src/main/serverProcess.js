@@ -69,13 +69,23 @@ class ServerProcess extends EventEmitter {
     const child = this.spawnImpl(javaPath, [
       `-Xms${minRamMb}M`,
       `-Xmx${maxRamMb}M`,
+      // Force UTF-8 end to end (locked decision 6). Without these the JVM writes
+      // its console in the OS code page (e.g. Windows CP-1252), so non-ASCII in
+      // MOTDs, player names, plugin output and crash text arrives as "?". These
+      // are JVM options, so they must come before -jar.
+      '-Dfile.encoding=UTF-8',
+      '-Dstdout.encoding=UTF-8',
+      '-Dstderr.encoding=UTF-8',
       '-jar', jarName,
       'nogui',
     ], { cwd: serverDir, shell: false });
     this.child = child;
 
     // One line at a time, however the output was cut into chunks (and a character split between two chunks stays whole).
+    // Decode explicitly as UTF-8 (matching the JVM flags above) so a multi-byte
+    // character split across two chunks is still reassembled correctly.
     for (const stream of [child.stdout, child.stderr]) {
+      stream.setEncoding('utf8');
       readline.createInterface({ input: stream, crlfDelay: Infinity }).on('line', (line) => this._onLine(line));
     }
     // Writing a command to a server that has just gone away must not crash the app.

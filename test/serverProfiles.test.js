@@ -50,6 +50,32 @@ test('createProfile persists a profile with a stable UUID id', () => {
   assert.equal(listed[0].id, p.id);
 });
 
+test('createProfile stores the resolved build and it survives a reload', () => {
+  const dir = tmpUserData();
+  const p = createProfile(dir, baseInput({ build: 236 }));
+  assert.equal(p.build, '236'); // coerced to a string
+  assert.equal(getProfile(dir, p.id).build, '236');
+});
+
+test('build is optional, and a blank or over-long build is rejected', () => {
+  const dir = tmpUserData();
+  const noBuild = createProfile(dir, baseInput());
+  assert.equal(noBuild.build, undefined);
+  assert.ok(isValidProfile({ ...noBuild, build: 'loader 0.16.0 / installer 1.0.1' }));
+  assert.ok(!isValidProfile({ ...noBuild, build: '' }));
+  assert.ok(!isValidProfile({ ...noBuild, build: 'x'.repeat(121) }));
+  assert.ok(!isValidProfile({ ...noBuild, build: 236 })); // must be a string on the stored profile
+});
+
+test('updateProfile can change version and build together (version switch)', () => {
+  const dir = tmpUserData();
+  const p = createProfile(dir, baseInput({ version: '1.21.4', build: '100' }));
+  const updated = updateProfile(dir, p.id, { version: '1.21.5', build: '150' });
+  assert.equal(updated.version, '1.21.5');
+  assert.equal(updated.build, '150');
+  assert.equal(getProfile(dir, p.id).version, '1.21.5');
+});
+
 test('getProfile finds by id, not by name', () => {
   const dir = tmpUserData();
   const a = createProfile(dir, baseInput({ name: 'Same Name' }));

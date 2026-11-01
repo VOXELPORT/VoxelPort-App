@@ -31,7 +31,8 @@ async function resolveVanilla(version) {
   const detail = await getJson(entry.url);
   const server = detail.downloads && detail.downloads.server;
   if (!server) throw new Error(`${version} has no server download (too old?)`);
-  return { url: server.url, fileName: 'server.jar', checksum: server.sha1 ? { algorithm: 'sha1', expected: server.sha1 } : null };
+  // Vanilla has no separate build number; the version id is the whole identity.
+  return { url: server.url, fileName: 'server.jar', minecraftVersion: version, build: null, checksum: server.sha1 ? { algorithm: 'sha1', expected: server.sha1 } : null };
 }
 
 async function listPaperVersions() {
@@ -50,7 +51,8 @@ async function resolvePaper(version) {
   const download = build.downloads['server:default'];
   if (!download) throw new Error(`Paper ${version} build ${build.id} has no server download`);
   const sha256 = download.checksums && download.checksums.sha256;
-  return { url: download.url, fileName: 'server.jar', checksum: sha256 ? { algorithm: 'sha256', expected: sha256 } : null };
+  // Record the exact build we picked so the caller can store it and the jar can be verified.
+  return { url: download.url, fileName: 'server.jar', minecraftVersion: version, build: build.id, checksum: sha256 ? { algorithm: 'sha256', expected: sha256 } : null };
 }
 
 async function listFabricVersions() {
@@ -73,6 +75,9 @@ async function resolveFabric(version) {
   return {
     url: `${FABRIC_META}/versions/loader/${version}/${loaderVersion}/${installerVersion}/server/jar`,
     fileName: 'server.jar',
+    minecraftVersion: version,
+    // Fabric "build" is the loader+installer pair that produced this launcher jar.
+    build: `loader ${loaderVersion} / installer ${installerVersion}`,
     // Fabric's server/jar endpoint assembles the jar on request — no published
     // hash to verify against, unlike Vanilla (sha1) and Paper (sha256).
     checksum: null,

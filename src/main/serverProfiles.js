@@ -28,6 +28,9 @@ function isValidProfile(p) {
     && typeof p.name === 'string' && p.name.trim().length > 0
     && KNOWN_TYPES.has(p.type)
     && typeof p.version === 'string' && p.version.length > 0
+    // Optional: the exact build/loader the version resolved to when installed
+    // (Paper build id, Fabric loader/installer pair). Vanilla has none.
+    && (p.build === undefined || (typeof p.build === 'string' && p.build.length > 0 && p.build.length <= 120))
     && typeof p.serverDir === 'string' && path.isAbsolute(p.serverDir)
     && Number.isInteger(p.port) && p.port >= 1 && p.port <= 65535
     && Number.isInteger(p.minRamMb) && p.minRamMb >= 256 && p.minRamMb <= 131072
@@ -170,6 +173,7 @@ function createProfile(userDataDir, input) {
     createdAt: now,
     lastUsedAt: now,
   };
+  if (input.build) profile.build = String(input.build);
   if (input.template) profile.template = input.template;
   if (!isValidProfile(profile)) throw new Error('Invalid server profile.');
 

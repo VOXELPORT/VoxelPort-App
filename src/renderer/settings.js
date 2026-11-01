@@ -100,9 +100,92 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   setListingDesc.value = listing.description || '';
   setListingDesc.disabled = !listing.enabled;
 
+  await renderRuntimeInfo(id, profile, data.running);
+
   if (data.running) showSetMsg(t('This server is running — gameplay changes apply after a restart.'), 'info');
   showScreen('screen-settings');
 };
+
+// Installed Minecraft version (read from the jar), plugin versions, staged
+// updates and Bedrock compatibility, plus the change-version control.
+async function renderRuntimeInfo(id, profile, running) {
+  const installedEl = $('setInstalledVersion');
+  const pluginsRow = $('setPluginsRow');
+  const pluginsEl = $('setPlugins');
+  const stagedMsg = $('setStagedMsg');
+  const bedrockMsg = $('setBedrockCompatMsg');
+  const select = $('setVersionSelect');
+  const changeBtn = $('setChangeVersionBtn');
+  const changeMsg = $('setChangeVersionMsg');
+  changeMsg.textContent = '';
+  stagedMsg.classList.add('hidden');
+  bedrockMsg.classList.add('hidden');
+
+  let info = null;
+  try { info = await window.vp.server.runtimeInfo(id); } catch { /* fall back to stored */ }
+  const running_ = info && info.ok ? info.runningVersion : profile.version;
+  const buildNote = info && info.ok && info.build ? ` (build ${info.build})` : '';
+  installedEl.textContent = `${profile.type} ${running_}${buildNote}`;
+
+  if (info && info.ok && info.plugins && info.plugins.length) {
+    pluginsEl.textContent = info.plugins.map((p) => `${p.label} ${p.version || '?'}`).join(' · ');
+    pluginsRow.classList.remove('hidden');
+  } else {
+    pluginsRow.classList.add('hidden');
+  }
+
+  if (info && info.ok && info.stagedUpdates && info.stagedUpdates.length) {
+    stagedMsg.textContent = t('An update for {names} is ready — restart the server to apply it.', { names: info.stagedUpdates.map((s) => s.name).join(', ') });
+    stagedMsg.classList.remove('hidden');
+  }
+  if (info && info.ok && info.bedrock && info.bedrockCompatible === false) {
+    bedrockMsg.textContent = t("No Geyser build supports Minecraft {version}, so Bedrock players would be disconnected. Change to a version Geyser supports, or turn Bedrock off.", { version: running_ });
+    bedrockMsg.classList.remove('hidden');
+  }
+
+  // Fill the version dropdown for this server's type; mark the current one.
+  const placeholder = (text) => { select.replaceChildren(); const o = document.createElement('option'); o.textContent = text; select.appendChild(o); };
+  placeholder(t('Loading…'));
+  changeBtn.disabled = true;
+  try {
+    const versions = await window.vp.server.versions(profile.type);
+    select.replaceChildren();
+    for (const v of versions) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v === profile.version ? `${v} ${t('(current)')}` : v;
+      if (v === profile.version) opt.selected = true;
+      select.appendChild(opt);
+    }
+    changeBtn.disabled = running; // can't switch a running server's jar
+    if (running) changeMsg.textContent = t('Stop the server to change its Minecraft version.');
+  } catch {
+    placeholder(t('Could not load versions'));
+  }
+}
+
+$('setChangeVersionBtn').addEventListener('click', async () => {
+  const id = settingsProfileId;
+  const version = $('setVersionSelect').value;
+  const changeMsg = $('setChangeVersionMsg');
+  const btn = $('setChangeVersionBtn');
+  if (!id || !version) return;
+  btn.disabled = true;
+  changeMsg.textContent = t('Backing up, then downloading Minecraft {version}…', { version });
+  try {
+    const res = await window.vp.server.changeVersion(id, version);
+    if (res && res.ok) {
+      changeMsg.textContent = t('Now on Minecraft {version}.', { version }) + (res.warning ? ' ' + res.warning : '');
+      await openSettingsScreen(id); // refresh the whole screen with the new version
+    } else {
+      changeMsg.textContent = (res && res.error) || t('Could not change the version.');
+      btn.disabled = false;
+    }
+  } catch (err) {
+    changeMsg.textContent = err && err.message ? err.message : t('Could not change the version.');
+    btn.disabled = false;
+  }
+});
 
 setRam.addEventListener('input', () => { setRamLabel.textContent = setRam.value; });
 setListed.addEventListener('change', () => { setListingDesc.disabled = !setListed.checked; });

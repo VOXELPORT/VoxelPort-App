@@ -355,13 +355,13 @@
             <button class="link-btn" id="nameRemoveBtn" type="button">Remove</button>
           </div>
           <div class="name-edit" id="nameEdit">
-            <span class="share-label">Get a custom address — free</span>
+            <span class="share-label">Your address is free — a custom name is a supporter perk</span>
             <div class="name-row">
               <input id="nameInput" type="text" maxlength="20" placeholder="yourname" spellcheck="false" autocomplete="off" />
               <span class="name-suffix">.voxelport.in</span>
               <button id="nameClaimBtn" class="ghost small" type="button">Claim</button>
             </div>
-            <div class="name-msg" id="nameMsg">Friends join without a port number. 3–20 letters, numbers or dashes.</div>
+            <div class="name-msg" id="nameMsg">A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.</div>
           </div>
         </div>
 
@@ -408,6 +408,23 @@
           <span class="label">Memory (RAM) — <span id="setRamLabel">–</span> MB</span>
           <input id="setRam" type="range" min="512" step="256" />
         </label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Minecraft version</div>
+        <dl class="about-list" id="setRuntimeList">
+          <div><dt>Installed</dt><dd id="setInstalledVersion">…</dd></div>
+          <div id="setPluginsRow" class="hidden"><dt>Plugins</dt><dd id="setPlugins">—</dd></div>
+        </dl>
+        <p class="hint hidden" id="setStagedMsg"></p>
+        <p class="hint hidden" id="setBedrockCompatMsg"></p>
+        <label class="field">
+          <span class="label">Change Minecraft version</span>
+          <select id="setVersionSelect"><option>…</option></select>
+        </label>
+        <p class="hint">Changing the version backs this server up first, then downloads and verifies the new one. Your world and settings are kept; check your plugins or mods work on the new version.</p>
+        <div><button class="ghost small" id="setChangeVersionBtn" type="button">Change version</button></div>
+        <p class="hint" id="setChangeVersionMsg" role="status"></p>
       </div>
 
       <div class="set-group">
