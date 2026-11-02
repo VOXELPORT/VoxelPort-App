@@ -1,6 +1,14 @@
 'use strict';
 
-// App settings: the language, and which versions of VoxelPort and Java are in use.
+// App settings: the theme, the language, and which versions of VoxelPort and Java are in use.
+
+const appThemeSelect = $('appThemeSelect');
+appThemeSelect.value = VPTheme.get();
+appThemeSelect.addEventListener('change', () => {
+  const value = VPTheme.set(appThemeSelect.value);
+  // The main process remembers it too, so the window opens in the right colour next time.
+  if (window.vp.setTheme) window.vp.setTheme(value).catch(() => {});
+});
 
 const appLangSelect = $('appLangSelect');
 const aboutCopyBtn = $('aboutCopyBtn');

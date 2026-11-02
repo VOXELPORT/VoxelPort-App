@@ -479,4 +479,12 @@
   "Backing up, then downloading Minecraft {version}…": "백업한 뒤 Minecraft {version} 내려받는 중…",
   "Now on Minecraft {version}.": "이제 Minecraft {version}입니다.",
   "Could not change the version.": "버전을 바꾸지 못했습니다.",
+  "Cracked (no account needed)": "크랙 서버 (계정 불필요)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "TLauncher, SKLauncher 친구용. 비밀번호와 스킨 포함.",
+  "Setting up player passwords and skins…": "플레이어 비밀번호와 스킨 설정 중…",
+  "Appearance": "화면 스타일",
+  "Color theme": "색상 테마",
+  "Dark": "다크",
+  "Light": "라이트",
+  "Match system": "시스템 설정 따르기",
 };

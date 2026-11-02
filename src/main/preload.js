@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('vp', {
   // The language the screen is showing, so messages the main process writes (crash explanations,
   // in-game chat lines) use it too.
   setLanguage: (lang) => ipcRenderer.invoke('app:setLanguage', { lang }),
+  setTheme: (theme) => ipcRenderer.invoke('app:setTheme', { theme }),
 
   java: {
     check: (version) => ipcRenderer.invoke('java:check', { version }),
@@ -133,7 +134,8 @@ contextBridge.exposeInMainWorld('vp', {
   addons: {
     get: (id) => ipcRenderer.invoke('addons:get', { id }),
     search: (id, query, anyVersion, offset) => ipcRenderer.invoke('addons:search', { id, query, anyVersion, offset }),
-    install: (id, projectId, title) => ipcRenderer.invoke('addons:install', { id, projectId, title }),
+    install: (id, projectId, title, icon) => ipcRenderer.invoke('addons:install', { id, projectId, title, icon }),
+    icon: (url) => ipcRenderer.invoke('addons:icon', { url }),
     remove: (id, projectId) => ipcRenderer.invoke('addons:remove', { id, projectId }),
     openFolder: (id) => ipcRenderer.invoke('addons:openFolder', { id }),
   },

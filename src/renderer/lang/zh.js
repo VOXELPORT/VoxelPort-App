@@ -479,4 +479,12 @@
   "Backing up, then downloading Minecraft {version}…": "正在备份，然后下载 Minecraft {version}…",
   "Now on Minecraft {version}.": "已切换到 Minecraft {version}。",
   "Could not change the version.": "无法更改版本。",
+  "Cracked (no account needed)": "破解服（无需正版账号）",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "适合使用 TLauncher 和 SKLauncher 的朋友。含密码和皮肤。",
+  "Setting up player passwords and skins…": "正在设置玩家密码和皮肤…",
+  "Appearance": "外观",
+  "Color theme": "颜色主题",
+  "Dark": "深色",
+  "Light": "浅色",
+  "Match system": "跟随系统",
 };

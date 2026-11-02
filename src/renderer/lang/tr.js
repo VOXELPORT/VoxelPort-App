@@ -479,4 +479,12 @@
   "Backing up, then downloading Minecraft {version}…": "Yedekleniyor, sonra Minecraft {version} indiriliyor…",
   "Now on Minecraft {version}.": "Artık Minecraft {version}.",
   "Could not change the version.": "Sürüm değiştirilemedi.",
+  "Cracked (no account needed)": "Cracked (hesap gerekmez)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "TLauncher ve SKLauncher kullanan arkadaşlar için. Parolalar ve skinler dahil.",
+  "Setting up player passwords and skins…": "Oyuncu parolaları ve skinler ayarlanıyor…",
+  "Appearance": "Görünüm",
+  "Color theme": "Renk teması",
+  "Dark": "Koyu",
+  "Light": "Açık",
+  "Match system": "Sistemle aynı",
 };

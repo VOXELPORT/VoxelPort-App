@@ -477,4 +477,12 @@
   "Backing up, then downloading Minecraft {version}…": "Mencadangkan, lalu mengunduh Minecraft {version}…",
   "Now on Minecraft {version}.": "Sekarang di Minecraft {version}.",
   "Could not change the version.": "Tidak bisa mengubah versi.",
+  "Cracked (no account needed)": "Cracked (tanpa akun)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "Untuk teman yang pakai TLauncher dan SKLauncher. Sudah termasuk kata sandi dan skin.",
+  "Setting up player passwords and skins…": "Menyiapkan kata sandi dan skin pemain…",
+  "Appearance": "Tampilan",
+  "Color theme": "Tema warna",
+  "Dark": "Gelap",
+  "Light": "Terang",
+  "Match system": "Ikuti sistem",
 };

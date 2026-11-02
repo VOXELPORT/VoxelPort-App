@@ -479,4 +479,12 @@
   "Backing up, then downloading Minecraft {version}…": "Đang sao lưu, rồi tải Minecraft {version}…",
   "Now on Minecraft {version}.": "Giờ đang ở Minecraft {version}.",
   "Could not change the version.": "Không đổi được phiên bản.",
+  "Cracked (no account needed)": "Cracked (không cần tài khoản)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "Dành cho bạn bè dùng TLauncher và SKLauncher. Có mật khẩu và skin.",
+  "Setting up player passwords and skins…": "Đang thiết lập mật khẩu và skin cho người chơi…",
+  "Appearance": "Giao diện",
+  "Color theme": "Chủ đề màu",
+  "Dark": "Tối",
+  "Light": "Sáng",
+  "Match system": "Theo hệ thống",
 };

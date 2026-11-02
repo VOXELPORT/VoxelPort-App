@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -158,15 +158,23 @@ function refreshPresence() {
   presence.update(profile ? { type: profile.type, version: profile.version, players: serverProc.online.size } : null);
 }
 
-// App-wide preferences: the relay region (auto / in / eu) and whether to show on Discord what is being hosted.
-let prefs = { region: 'auto', presence: true };
+// App-wide preferences: the relay region (auto / in / eu), whether to show on Discord what is being hosted, and the
+// theme ('dark', 'light' or 'system'). The page keeps its own copy of the theme to paint it at once; this one lets the
+// window open in the right colour and keeps the system's own scrollbars and menus in step.
+let prefs = { region: 'auto', presence: true, theme: 'dark' };
+const THEMES = new Set(['dark', 'light', 'system']);
+const normalizeTheme = (v) => (THEMES.has(v) ? v : 'dark');
+function windowBackground() {
+  const light = prefs.theme === 'light' || (prefs.theme === 'system' && !nativeTheme.shouldUseDarkColors);
+  return light ? '#f5f6f3' : '#181a1b';
+}
 function prefsPath() {
   return path.join(userDataDir(), 'preferences.json');
 }
 function loadPrefs() {
   try {
     const v = JSON.parse(fs.readFileSync(prefsPath(), 'utf8'));
-    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false) };
+    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false), theme: normalizeTheme(v && v.theme) };
   } catch { /* defaults */ }
 }
 function savePrefs() {
@@ -191,7 +199,7 @@ function createWindow() {
     height: 800,
     minWidth: 540,
     minHeight: 640,
-    backgroundColor: '#181a1b',
+    backgroundColor: windowBackground(),
     title: 'VoxelPort',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
     webPreferences: {
@@ -575,6 +583,7 @@ if (!gotLock) {
     setInterval(() => refreshDiscord().catch(() => {}), DISCORD_RECHECK_MS).unref();
     loadCustomAddress();
     loadPrefs();
+    nativeTheme.themeSource = prefs.theme;
     presence.setEnabled(prefs.presence);
     createWindow();
     mainWindow.on('focus', refreshDiscordSoon);
@@ -737,6 +746,15 @@ ipcMain.handle('app:versions', guarded(g, async () => {
     systemJava: system.found && system.major !== null ? system.major : null,
     managedJava: listManagedJava(userDataDir()),
   };
+}));
+
+// The theme the person chose in App Settings. Only these three words are accepted.
+ipcMain.handle('app:setTheme', guarded(g, (_evt, { theme }) => {
+  prefs.theme = normalizeTheme(theme);
+  savePrefs();
+  nativeTheme.themeSource = prefs.theme;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground());
+  return { ok: true, theme: prefs.theme };
 }));
 
 ipcMain.handle('app:setLanguage', guarded(g, (_evt, { lang }) => {
@@ -1160,12 +1178,17 @@ ipcMain.handle('server:chooseFolder', guarded(g, async () => {
 // ─── Install (Vanilla/Paper/Fabric) ─────────────────────────────────────────
 
 ipcMain.handle('server:templates', guarded(g, () => serverSettings.TEMPLATES.map((t) => ({
-  id: t.id, label: t.label, blurb: t.blurb, type: t.type, bedrock: Boolean(t.bedrock),
+  id: t.id, label: t.label, blurb: t.blurb, type: t.type, bedrock: Boolean(t.bedrock), cracked: Boolean(t.cracked),
 }))));
 
-ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, port, minRamMb, maxRamMb, serverDir, templateId }) => {
+ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, port, minRamMb, maxRamMb, serverDir, templateId, crackedConfirmed }) => {
   const template = templateId ? serverSettings.getTemplate(templateId) : null;
   if (templateId && !template) throw new Error('Unknown template.');
+  // A cracked server turns off Minecraft's account check, so, like the Settings switch, it only happens
+  // after the user has seen the risks and said yes (the main process insists, not just the dialog).
+  if (template && template.cracked && crackedConfirmed !== true) {
+    throw new Error('Confirm that you want to allow cracked players first.');
+  }
   const portNum = Number(port);
   if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
     throw new Error('Enter a valid server port (1–65535).');
@@ -1227,6 +1250,12 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
     } catch (err) {
       warning = `Bedrock support couldn't be added (${err.message}). You can turn it on later in Settings.`;
     }
+  }
+  if (template && template.cracked) {
+    send('install:progress', { phase: 'cracked' });
+    // Login plugin first, then offline mode (only if the login plugin is really there), then skins.
+    const result = await accounts.setUpCrackedServer({ serverDir: dir, type, version });
+    if (result.warnings.length) warning = [warning, ...result.warnings].filter(Boolean).join(' ');
   }
   send('install:progress', { phase: 'done' });
   return { ok: true, profile, warning };
@@ -1749,7 +1778,7 @@ ipcMain.handle('addons:search', guarded(g, async (_evt, { id, query, anyVersion,
 }));
 
 let addonsBusy = false;
-ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title }) => {
+ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title, icon }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };
   if (addonsBusy) return { ok: false, error: 'Already installing — one moment.' };
@@ -1757,7 +1786,7 @@ ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title 
   try {
     const installed = await addons.installAddon({
       serverDir: profile.serverDir, type: profile.type, version: profile.version, projectId,
-      title: typeof title === 'string' ? title : '', running: serverIsRunning(id),
+      title: typeof title === 'string' ? title : '', icon: typeof icon === 'string' ? icon : '', running: serverIsRunning(id),
       onProgress: (p) => send('addons:progress', p),
     });
     return { ok: true, installed, restartNeeded: serverIsRunning(id) };
@@ -1769,10 +1798,17 @@ ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title 
   }
 }));
 
+// A plugin icon, fetched here because the page may not load anything from the internet. '' means no icon.
+ipcMain.handle('addons:icon', guarded(g, async (_evt, { url }) => addons.fetchAddonIcon(url)));
+
 ipcMain.handle('addons:remove', guarded(g, (_evt, { id, projectId }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };
   if (addonsBusy) return { ok: false, error: 'Already installing — one moment.' };
+  // The login plugin is what keeps a cracked server from letting anyone join as the owner: not while that is on.
+  if (projectId === accounts.LOGIN_PROJECT && accounts.isCracked(profile.serverDir)) {
+    return { ok: false, error: 'This server lets in cracked players, so it needs its login plugin (AuthMe). Turn off cracked players in Settings first.' };
+  }
   try {
     addons.removeAddon({ serverDir: profile.serverDir, projectId, running: serverIsRunning(id) });
     return { ok: true };

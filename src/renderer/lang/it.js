@@ -478,4 +478,12 @@
   "Backing up, then downloading Minecraft {version}…": "Backup in corso, poi download di Minecraft {version}…",
   "Now on Minecraft {version}.": "Ora su Minecraft {version}.",
   "Could not change the version.": "Impossibile cambiare la versione.",
+  "Cracked (no account needed)": "Cracked (senza account)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "Per gli amici con TLauncher e SKLauncher. Password e skin inclusi.",
+  "Setting up player passwords and skins…": "Configurazione di password e skin dei giocatori…",
+  "Appearance": "Aspetto",
+  "Color theme": "Tema colori",
+  "Dark": "Scuro",
+  "Light": "Chiaro",
+  "Match system": "Come il sistema",
 };

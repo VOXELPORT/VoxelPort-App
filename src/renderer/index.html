@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" />
   <title>VoxelPort</title>
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="theme-dark.css" />
+  <link rel="stylesheet" href="theme-light.css" />
 </head>
 <body>
   <header class="head">
@@ -623,6 +625,18 @@
     <section class="screen panel" id="screen-app-settings">
       <button class="back-link" data-back="screen-library">‹ Back</button>
       <div class="screen-title"><div><div class="label">VoxelPort</div><h1>APP SETTINGS</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Appearance</div>
+        <label class="field">
+          <span class="label">Color theme</span>
+          <select id="appThemeSelect">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">Match system</option>
+          </select>
+        </label>
+      </div>
 
       <div class="set-group">
         <div class="set-group-title">Language</div>

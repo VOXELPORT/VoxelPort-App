@@ -133,6 +133,12 @@ const TEMPLATES = [
     properties: { gamemode: 'survival', difficulty: 'normal', 'max-players': '20', motd: 'Java + Bedrock SMP' },
   },
   {
+    // Offline-mode server for friends on TLauncher / SKLauncher. `cracked` makes the installer put a
+    // login plugin (AuthMe) in first and only then turn the account check off, plus skins.
+    id: 'cracked', label: 'Cracked (no account needed)', blurb: 'For TLauncher and SKLauncher friends. Passwords and skins included.', type: 'paper', cracked: true,
+    properties: { gamemode: 'survival', difficulty: 'normal', pvp: 'true', 'max-players': '20', motd: 'Cracked SMP' },
+  },
+  {
     id: 'creative', label: 'Creative Flat', blurb: 'Flat world, creative mode, no monsters.', type: 'paper',
     properties: {
       gamemode: 'creative', 'force-gamemode': 'true', difficulty: 'peaceful', 'level-type': 'minecraft\\:flat',

@@ -36,14 +36,26 @@
 
   function installedIds() { return new Set(info ? info.installed.map((a) => a.id) : []); }
 
-  function avatar(title) {
+  // The first letter shows at once; the real icon replaces it when the main process has fetched it (it fetches
+  // for us because this page may not load anything from the internet). No icon, or a failure: the letter stays.
+  function avatar(title, icon) {
     const a = document.createElement('div');
     a.className = 'ad-avatar';
     a.textContent = (String(title).trim()[0] || '?').toUpperCase();
+    if (icon && window.vp.addons.icon) {
+      window.vp.addons.icon(icon).then((src) => {
+        if (typeof src !== 'string' || !src.startsWith('data:image/')) return;
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = src;
+        a.textContent = '';
+        a.appendChild(img);
+      }).catch(() => {});
+    }
     return a;
   }
 
-  function row(title, descText, metaText, button) {
+  function row(title, descText, metaText, button, icon) {
     const item = document.createElement('div');
     item.className = 'ad-item';
     const main = document.createElement('div');
@@ -64,7 +76,7 @@
       m.textContent = metaText;
       main.appendChild(m);
     }
-    item.append(avatar(title), main, button);
+    item.append(avatar(title, icon), main, button);
     return item;
   }
 
@@ -84,7 +96,7 @@
       btn.textContent = t('Remove');
       btn.disabled = busy;
       btn.addEventListener('click', () => removeOne(a));
-      adInstalled.appendChild(row(a.title, '', a.file, btn));
+      adInstalled.appendChild(row(a.title, '', a.file, btn, a.icon));
     }
   }
 
@@ -105,7 +117,7 @@
       btn.textContent = isIn ? t('Installed') : t('Install');
       btn.disabled = busy || isIn;
       btn.addEventListener('click', () => installOne(h));
-      adResults.appendChild(row(h.title, h.desc, window.VPAddons.hitMeta(h, t), btn));
+      adResults.appendChild(row(h.title, h.desc, window.VPAddons.hitMeta(h, t), btn, h.icon));
     }
     adMoreBtn.classList.toggle('hidden', !more || !hits.length);
   }
@@ -164,7 +176,7 @@
     setBusy(true);
     showStatus('');
     let res;
-    try { res = await window.vp.addons.install(profileId, hit.id, hit.title); } catch (err) { res = { ok: false, error: String(err && err.message ? err.message : err) }; }
+    try { res = await window.vp.addons.install(profileId, hit.id, hit.title, hit.icon); } catch (err) { res = { ok: false, error: String(err && err.message ? err.message : err) }; }
     await refreshInfo();
     setBusy(false);
     if (res && res.code === 'exists') showStatus(t('A file named {file} is already in {folder}. Remove it first, or keep using it.', { file: String(res.file || ''), folder: info ? info.folder : '' }), true);

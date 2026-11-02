@@ -479,4 +479,12 @@
   "Backing up, then downloading Minecraft {version}…": "バックアップしてから Minecraft {version} をダウンロード中…",
   "Now on Minecraft {version}.": "Minecraft {version} になりました。",
   "Could not change the version.": "バージョンを変更できませんでした。",
+  "Cracked (no account needed)": "クラック版（アカウント不要）",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "TLauncher・SKLauncher の友達向け。パスワードとスキン付き。",
+  "Setting up player passwords and skins…": "プレイヤーのパスワードとスキンを設定中…",
+  "Appearance": "外観",
+  "Color theme": "カラーテーマ",
+  "Dark": "ダーク",
+  "Light": "ライト",
+  "Match system": "システムに合わせる",
 };

@@ -496,4 +496,12 @@
   "Backing up, then downloading Minecraft {version}…": "Backup ho raha hai, phir Minecraft {version} download ho raha hai…",
   "Now on Minecraft {version}.": "Ab Minecraft {version} par.",
   "Could not change the version.": "Version badal nahi paaye.",
+  "Cracked (no account needed)": "Cracked (account ki zaroorat nahi)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "TLauncher aur SKLauncher wale doston ke liye. Passwords aur skins shamil.",
+  "Setting up player passwords and skins…": "Players ke passwords aur skins set ho rahe hain…",
+  "Appearance": "Dikhawat",
+  "Color theme": "Rang ka theme",
+  "Dark": "Andhera (Dark)",
+  "Light": "Ujala (Light)",
+  "Match system": "System ke hisaab se",
 };

@@ -24,6 +24,42 @@ const MC_VERSION = /^[\w.+-]{1,40}$/;
 const PAGE = 20;
 const MAX_DEPENDENCY_DEPTH = 2;
 const MAX_JARS_TO_IDENTIFY = 100;
+const ICON_HOST = 'cdn.modrinth.com';
+const MAX_ICON_BYTES = 256 * 1024;
+const ICON_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const iconCache = new Map(); // address -> data: address, newest last; bounded so it can't grow without end
+const ICON_CACHE_MAX = 300;
+
+/** An icon address is only ever Modrinth's own image host over https, with no credentials or odd ports. */
+function isIconUrl(value) {
+  if (typeof value !== 'string' || value.length > 300) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' && u.hostname === ICON_HOST && !u.username && !u.password && !u.port;
+  } catch { return false; }
+}
+
+/**
+ * Fetches one plugin icon in the main process and returns it as a data: address the page can show. The page itself
+ * is not allowed to load anything from the internet, so this is the only way an icon reaches it. Only Modrinth's
+ * image host, only small real images, with a time limit. Returns '' for anything else (the page keeps its letter).
+ */
+async function fetchAddonIcon(url, fetchImpl = fetch) {
+  if (!isIconUrl(url)) return '';
+  if (iconCache.has(url)) return iconCache.get(url);
+  let out = '';
+  try {
+    const res = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(8000), redirect: 'error' });
+    const type = String((res.headers && res.headers.get && res.headers.get('content-type')) || '').split(';')[0].trim().toLowerCase();
+    if (res.ok && ICON_TYPES.has(type)) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 0 && buf.length <= MAX_ICON_BYTES) out = `data:${type};base64,${buf.toString('base64')}`;
+    }
+  } catch { /* no icon: the letter stays */ }
+  iconCache.set(url, out);
+  if (iconCache.size > ICON_CACHE_MAX) iconCache.delete(iconCache.keys().next().value);
+  return out;
+}
 
 /** Vanilla can't load either; Paper takes plugins, Fabric takes mods. */
 function supported(type) { return type === 'paper' || type === 'fabric'; }
@@ -72,6 +108,7 @@ async function searchAddons({ type, version, query = '', anyVersion = false, off
       desc: String(h.description || ''),
       downloads: Number(h.downloads) || 0,
       author: String(h.author || ''),
+      icon: isIconUrl(h.icon_url) ? h.icon_url : '',
     }));
   return { hits, more: raw.length >= PAGE };
 }
@@ -99,13 +136,27 @@ function installedAddons(serverDir) {
   for (const a of list) {
     if (!a || !PROJECT_ID.test(String(a.id)) || !SAFE_JAR_NAME.test(String(a.file)) || !['plugins', 'mods'].includes(a.dir)) continue;
     if (!fs.existsSync(path.join(serverDir, a.dir, a.file))) continue;
-    out.push({ id: a.id, title: String(a.title || a.id), file: a.file, dir: a.dir });
+    out.push({ id: a.id, title: String(a.title || a.id), file: a.file, dir: a.dir, ...(isIconUrl(a.icon) ? { icon: a.icon } : {}) });
   }
   return out;
 }
 
 function saveRegistry(serverDir, list) {
   atomicWriteFileSync(registryPath(serverDir), JSON.stringify(list, null, 2));
+}
+
+/**
+ * Records a plugin that VoxelPort put in the folder by another route (the login and skins plugins that a cracked
+ * server is set up with), so it shows under "Installed" and Remove only ever touches files VoxelPort installed.
+ * Replaces an earlier entry for the same project. `icon` is an optional Modrinth icon address.
+ */
+function registerAddon({ serverDir, projectId, title, file, dir = 'plugins', icon = '' }) {
+  checkServerDir(serverDir);
+  checkProject(projectId);
+  if (!SAFE_JAR_NAME.test(String(file)) || !['plugins', 'mods'].includes(dir)) throw new Error('Invalid add-on entry.');
+  const entry = { id: projectId, title: String(title || projectId).slice(0, 100), file, dir };
+  if (icon && isIconUrl(icon)) entry.icon = icon;
+  saveRegistry(serverDir, [...installedAddons(serverDir).filter((a) => a.id !== projectId), entry]);
 }
 
 /** Deletes the files VoxelPort installed for a project. A running server has them open, so it has to be stopped first. */
@@ -157,7 +208,7 @@ async function projectsInFolder(dir, fetchImpl) {
  * @param running the server is running: new files can be added, but one that is already there can't be replaced.
  */
 async function installAddon({
-  serverDir, type, version, projectId, title = '', running = false,
+  serverDir, type, version, projectId, title = '', icon = '', running = false,
   onProgress = () => {}, fetchImpl = fetch, download = downloadServerJar,
 }) {
   checkServerDir(serverDir);
@@ -206,7 +257,7 @@ async function installAddon({
     onProgress({ stage: 'download', title: name || fileName, file: fileName });
     await download(file.url, dest, null, { algorithm: 'sha512', expected: sha512 });
     for (const a of older) if (a.file !== fileName) fs.rmSync(path.join(serverDir, a.dir, a.file), { force: true });
-    saveRegistry(serverDir, [...registry.filter((a) => a.id !== id), { id, title: name || fileName, file: fileName, dir: folderFor(type) }]);
+    saveRegistry(serverDir, [...registry.filter((a) => a.id !== id), { id, title: name || fileName, file: fileName, dir: folderFor(type), ...(id === projectId && isIconUrl(icon) ? { icon } : {}) }]);
     done.push(name || fileName);
   }
 
@@ -217,4 +268,5 @@ async function installAddon({
 
 module.exports = {
   supported, loadersFor, folderFor, searchAddons, installAddon, removeAddon, installedAddons, projectsInFolder,
+  registerAddon, fetchAddonIcon, isIconUrl,
 };

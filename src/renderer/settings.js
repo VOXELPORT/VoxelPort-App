@@ -125,7 +125,8 @@ async function renderRuntimeInfo(id, profile, running) {
   try { info = await window.vp.server.runtimeInfo(id); } catch { /* fall back to stored */ }
   const running_ = info && info.ok ? info.runningVersion : profile.version;
   const buildNote = info && info.ok && info.build ? ` (build ${info.build})` : '';
-  installedEl.textContent = `${profile.type} ${running_}${buildNote}`;
+  const typeName = { paper: 'Paper', fabric: 'Fabric', vanilla: 'Vanilla' }[profile.type] || profile.type;
+  installedEl.textContent = `${typeName} ${running_}${buildNote}`;
 
   if (info && info.ok && info.plugins && info.plugins.length) {
     pluginsEl.textContent = info.plugins.map((p) => `${p.label} ${p.version || '?'}`).join(' · ');

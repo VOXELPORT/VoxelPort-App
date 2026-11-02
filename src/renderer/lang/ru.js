@@ -479,4 +479,12 @@
   "Backing up, then downloading Minecraft {version}…": "Создание копии, затем загрузка Minecraft {version}…",
   "Now on Minecraft {version}.": "Теперь Minecraft {version}.",
   "Could not change the version.": "Не удалось сменить версию.",
+  "Cracked (no account needed)": "Пиратка (без аккаунта)",
+  "For TLauncher and SKLauncher friends. Passwords and skins included.": "Для друзей с TLauncher и SKLauncher. Пароли и скины включены.",
+  "Setting up player passwords and skins…": "Настройка паролей и скинов игроков…",
+  "Appearance": "Оформление",
+  "Color theme": "Цветовая тема",
+  "Dark": "Тёмная",
+  "Light": "Светлая",
+  "Match system": "Как в системе",
 };
