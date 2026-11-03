@@ -16,10 +16,6 @@
 </h3>
 
 <p align="center">
-  <a href="https://apps.microsoft.com/detail/9NGRX9CFNBD6"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" height="56" /></a>
-</p>
-
-<p align="center">
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Linux.tar.gz"><img src="https://img.shields.io/badge/Download-Linux-F6CB2F?style=for-the-badge&logo=linux&logoColor=black&labelColor=15120F" alt="Download for Linux" height="40" /></a>
   <a href="https://voxelport.in/guides/host-minecraft-server-android-phone"><img src="https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black&labelColor=15120F" alt="Install the Android app" height="40" /></a>
 </p>
@@ -32,7 +28,7 @@
 
 | | |
 |:-:|---|
-| **1** | **Install** the app from the [Microsoft Store](https://apps.microsoft.com/detail/9NGRX9CFNBD6) and sign in with Discord once. Friends never need an account. |
+| **1** | **Install** the app from [voxelport.in](https://voxelport.in) or the [latest release](https://github.com/VOXELPORT/VoxelPort-App/releases/latest) and sign in with Discord once. Friends never need an account. |
 | **2** | **Create** a new server (Vanilla, Paper or Fabric) or **import** one you already have. |
 | **3** | Press **Start**, then **Make public**. You get an address like `play.voxelport.in:26137`. |
 | **4** | Friends paste it into **Multiplayer → Add Server**. Done. |
@@ -97,7 +93,7 @@ No. They join with normal Minecraft: Java Edition using the address the app give
 <details>
 <summary><b>Does it update itself?</b></summary>
 
-Yes on Windows. The Microsoft Store keeps its version up to date (Microsoft reviews each update, so it can arrive about a day after a release), and the direct installer updates itself. **Settings → Check for updates** tells you where you stand. On Linux, download the new release when one comes out.
+Yes on Windows: the installer updates itself. **Settings → Check for updates** tells you where you stand. On Linux, download the new release when one comes out.
 </details>
 
 <details>
