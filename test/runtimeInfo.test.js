@@ -81,3 +81,33 @@ test('readStagedUpdates is empty (not an error) when there is no update folder',
   fs.mkdirSync(path.join(dir, 'plugins'));
   assert.deepEqual(readStagedUpdates(dir), []);
 });
+
+test('readAllPlugins lists every jar and reads the real version from inside it, not the file name', async () => {
+  const { readAllPlugins } = require('../src/main/runtimeInfo');
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  await makeJar(path.join(dir, 'plugins', 'Geyser-Spigot.jar'), { 'plugin.yml': "name: Geyser-Spigot\nversion: '2.9.5-SNAPSHOT'\nmain: x\n" });
+  await makeJar(path.join(dir, 'plugins', 'floodgate-spigot.jar'), { 'plugin.yml': 'name: floodgate\nversion: 2.2.5-SNAPSHOT (b123-abc)\n' });
+  await makeJar(path.join(dir, 'plugins', 'spark.jar'), { 'plugin.yml': 'name: spark\nversion: 1.10.119\n' });
+  await makeJar(path.join(dir, 'plugins', 'Broken.jar'), { 'plugin.yml': 'name: Broken\nversion: ${project.version}\n' });
+  fs.writeFileSync(path.join(dir, 'plugins', 'NotReal-3.4.jar'), 'not a zip');
+  fs.writeFileSync(path.join(dir, 'plugins', 'readme.txt'), 'x');
+  const found = Object.fromEntries((await readAllPlugins(dir)).map((p) => [p.file, `${p.label}@${p.version}`]));
+  assert.deepEqual(found, {
+    'Broken.jar': 'Broken@null',
+    'Geyser-Spigot.jar': 'Geyser@2.9.5-SNAPSHOT',
+    'NotReal-3.4.jar': 'NotReal-3.4@3.4',
+    'floodgate-spigot.jar': 'Floodgate@2.2.5-SNAPSHOT (b123-abc)',
+    'spark.jar': 'spark@1.10.119',
+  });
+});
+
+test('readAllPlugins reads fabric.mod.json for mods', async () => {
+  const { readAllPlugins } = require('../src/main/runtimeInfo');
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'mods'));
+  await makeJar(path.join(dir, 'mods', 'fabric-api.jar'), { 'fabric.mod.json': JSON.stringify({ name: 'Fabric API', version: '0.99.1+26.2' }) });
+  const [p] = await readAllPlugins(dir);
+  assert.equal(p.label, 'Fabric API');
+  assert.equal(p.version, '0.99.1+26.2');
+});

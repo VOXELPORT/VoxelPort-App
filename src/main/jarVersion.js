@@ -55,4 +55,52 @@ function readJarMinecraftVersion(jarPath) {
   });
 }
 
-module.exports = { readJarMinecraftVersion };
+const META_FILES = ['plugin.yml', 'paper-plugin.yml', 'fabric.mod.json'];
+const MAX_META_BYTES = 256 * 1024;
+
+/** A value out of a plugin.yml line like `version: '2.2.5-SNAPSHOT'`; null when absent or an unfilled ${placeholder}. */
+function yamlValue(text, key) {
+  const m = new RegExp(`^${key}\\s*:\\s*(.+?)\\s*$`, 'mi').exec(text);
+  if (!m) return null;
+  const v = m[1].replace(/^['"]|['"]$/g, '').trim();
+  return v && !v.includes('${') ? v.slice(0, 60) : null;
+}
+
+/**
+ * The name and version a plugin or mod declares about itself (plugin.yml, paper-plugin.yml or fabric.mod.json inside the
+ * jar): that is the real version, whatever the file is called. { name, version } with null for what it does not say, or
+ * { name: null, version: null } when the jar cannot be read. Never rejects.
+ */
+function readJarPluginMeta(jarPath) {
+  const none = { name: null, version: null };
+  return new Promise((resolve) => {
+    yauzl.open(jarPath, { lazyEntries: true }, (err, zip) => {
+      if (err) { resolve(none); return; }
+      let settled = false;
+      const done = (v) => { if (!settled) { settled = true; resolve(v); } try { zip.close(); } catch { /* ignore */ } };
+      zip.on('error', () => done(none));
+      zip.on('end', () => done(none));
+      zip.on('entry', (entry) => {
+        if (!META_FILES.includes(entry.fileName) || entry.uncompressedSize > MAX_META_BYTES) { zip.readEntry(); return; }
+        zip.openReadStream(entry, (e, stream) => {
+          if (e) { done(none); return; }
+          const chunks = [];
+          stream.on('data', (c) => chunks.push(c));
+          stream.on('error', () => done(none));
+          stream.on('end', () => {
+            const text = Buffer.concat(chunks).toString('utf8');
+            try {
+              if (entry.fileName === 'fabric.mod.json') {
+                const j = JSON.parse(text);
+                done({ name: typeof j.name === 'string' ? j.name.slice(0, 60) : null, version: typeof j.version === 'string' && !j.version.includes('${') ? j.version.slice(0, 60) : null });
+              } else done({ name: yamlValue(text, 'name'), version: yamlValue(text, 'version') });
+            } catch { done(none); }
+          });
+        });
+      });
+      zip.readEntry();
+    });
+  });
+}
+
+module.exports = { readJarMinecraftVersion, readJarPluginMeta };

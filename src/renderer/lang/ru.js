@@ -339,7 +339,9 @@
 
   'Search': 'Поиск',
   'Installed': 'Установлено',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'Здесь показаны только установленные отсюда. Файлы, которые вы добавили сами, никогда не затрагиваются.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'Показаны все плагины из папки сервера. Удалить можно только установленные отсюда; файлы, которые вы добавили сами, никогда не затрагиваются.',
+  'Managed by Bedrock support': 'Управляется поддержкой Bedrock',
+  'Added by hand': 'Добавлено вручную',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'Сервер запущен. Новые можно добавлять сейчас, но чтобы удалить или обновить, остановите сервер.',
   'Find and install': 'Найти и установить',
   'Also show ones not marked for this version': 'Показывать и те, что не отмечены для этой версии',

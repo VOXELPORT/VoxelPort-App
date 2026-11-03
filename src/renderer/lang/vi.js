@@ -339,7 +339,9 @@
 
   'Search': 'Tìm kiếm',
   'Installed': 'Đã cài',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'Chỉ liệt kê những mục được cài từ đây. Các tệp bạn tự thêm sẽ không bao giờ bị động đến.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'Mọi plugin trong thư mục máy chủ đều được liệt kê. Bạn chỉ có thể gỡ những mục được cài từ đây; các tệp bạn tự thêm không bao giờ bị động đến.',
+  'Managed by Bedrock support': 'Do hỗ trợ Bedrock quản lý',
+  'Added by hand': 'Thêm thủ công',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'Máy chủ đang chạy. Bạn có thể thêm mục mới ngay, nhưng hãy dừng máy chủ để xóa hoặc cập nhật.',
   'Find and install': 'Tìm và cài đặt',
   'Also show ones not marked for this version': 'Hiện cả những mục không đánh dấu cho phiên bản này',

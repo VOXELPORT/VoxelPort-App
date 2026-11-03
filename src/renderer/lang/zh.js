@@ -339,7 +339,9 @@
 
   'Search': '搜索',
   'Installed': '已安装',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': '只列出从这里安装的项目。你自己添加的文件不会被改动。',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': '列出服务器文件夹中的所有插件。只能移除从这里安装的插件；你自己添加的文件不会被改动。',
+  'Managed by Bedrock support': '由 Bedrock 支持管理',
+  'Added by hand': '手动添加',
   'The server is running. You can add new ones now, but stop it to remove or update one.': '服务器正在运行。现在可以添加新的，但要移除或更新请先停止服务器。',
   'Find and install': '查找并安装',
   'Also show ones not marked for this version': '同时显示未标记适用于此版本的项目',

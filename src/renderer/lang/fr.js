@@ -338,7 +338,9 @@
 
   'Search': 'Rechercher',
   'Installed': 'Installés',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'Seuls ceux installés d’ici sont listés. Les fichiers que vous avez ajoutés vous-même ne sont jamais touchés.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'Tous les plugins du dossier du serveur sont listés. Vous ne pouvez retirer que ceux installés d’ici ; les fichiers que vous avez ajoutés vous-même ne sont jamais touchés.',
+  'Managed by Bedrock support': 'Géré par la prise en charge de Bedrock',
+  'Added by hand': 'Ajouté à la main',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'Le serveur tourne. Vous pouvez en ajouter de nouveaux maintenant, mais arrêtez-le pour en retirer ou en mettre à jour un.',
   'Find and install': 'Trouver et installer',
   'Also show ones not marked for this version': 'Afficher aussi ceux non marqués pour cette version',

@@ -339,7 +339,9 @@
 
   'Search': '검색',
   'Installed': '설치됨',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': '여기서 설치한 항목만 표시됩니다. 직접 추가한 파일은 건드리지 않습니다.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': '서버 폴더에 있는 모든 플러그인이 표시됩니다. 여기서 설치한 것만 제거할 수 있으며, 직접 추가한 파일은 절대 건드리지 않습니다.',
+  'Managed by Bedrock support': 'Bedrock 지원에서 관리',
+  'Added by hand': '직접 추가함',
   'The server is running. You can add new ones now, but stop it to remove or update one.': '서버가 실행 중입니다. 새로 추가할 수는 있지만, 삭제하거나 업데이트하려면 서버를 중지하세요.',
   'Find and install': '찾아서 설치',
   'Also show ones not marked for this version': '이 버전용으로 표시되지 않은 항목도 보기',

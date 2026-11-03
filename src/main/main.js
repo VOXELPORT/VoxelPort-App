@@ -15,7 +15,7 @@ const {
   detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
 } = require('./serverInstall');
 const { readJarMinecraftVersion } = require('./jarVersion');
-const { readRuntimeInfo } = require('./runtimeInfo');
+const { readRuntimeInfo, readAllPlugins } = require('./runtimeInfo');
 const { ServerProcess } = require('./serverProcess');
 const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
@@ -1749,16 +1749,26 @@ ipcMain.handle('server:accounts:installLogin', guarded(g, async (_evt, { id }) =
 
 const serverIsRunning = (id) => activeServerProfileId === id && Boolean(serverProc.child);
 
-ipcMain.handle('addons:get', guarded(g, (_evt, { id }) => {
+ipcMain.handle('addons:get', guarded(g, async (_evt, { id }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) throw new Error('Server profile not found.');
   const supported = addons.supported(profile.type);
+  const installed = supported ? addons.installedAddons(profile.serverDir) : [];
+  // Everything else in the folder (Geyser and Floodgate from Bedrock support, files added by hand): listed so nothing
+  // is hidden, with its real version, but never offered for removal here.
+  const mine = new Set(installed.map((a) => a.file));
+  const others = supported
+    ? (await readAllPlugins(profile.serverDir))
+      .filter((p) => p.dir === addons.folderFor(profile.type) && !mine.has(p.file))
+      .map((p) => ({ title: p.label, version: p.version || '', file: p.file, bedrock: p.key === 'geyser' || p.key === 'floodgate' }))
+    : [];
   return {
     supported,
     type: profile.type,
     version: profile.version,
     folder: supported ? addons.folderFor(profile.type) : '',
-    installed: supported ? addons.installedAddons(profile.serverDir) : [],
+    installed,
+    others,
     running: serverIsRunning(id),
   };
 }));

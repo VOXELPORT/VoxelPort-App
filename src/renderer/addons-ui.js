@@ -82,7 +82,8 @@
 
   function renderInstalled() {
     adInstalled.innerHTML = '';
-    if (!info || !info.installed.length) {
+    const others = (info && info.others) || [];
+    if (!info || (!info.installed.length && !others.length)) {
       const empty = document.createElement('div');
       empty.className = 'bk-empty';
       empty.textContent = t('Nothing installed from here yet.');
@@ -97,6 +98,12 @@
       btn.disabled = busy;
       btn.addEventListener('click', () => removeOne(a));
       adInstalled.appendChild(row(a.title, '', a.file, btn, a.icon));
+    }
+    for (const o of others) {
+      const tag = document.createElement('span');
+      tag.className = 'bk-meta';
+      tag.textContent = o.bedrock ? t('Managed by Bedrock support') : t('Added by hand');
+      adInstalled.appendChild(row(o.title, '', o.version ? o.version + ' · ' + o.file : o.file, tag));
     }
   }
 

@@ -356,7 +356,9 @@
   // ── Plugins & mods ────────────────────────────────────────────────────
   'Search': 'Dhundo',
   'Installed': 'Install ho gaya',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'Yahan sirf wahi dikhte hain jo yahan se install kiye gaye. Jo files tumne khud daali hain unhe haath nahi lagaya jaata.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'Server folder ke saare plugins yahan dikhte hain. Remove sirf wahi kar sakte ho jo yahan se install kiye gaye; jo files tumne khud daali hain unhe kabhi nahi chhua jaata.',
+  'Managed by Bedrock support': 'Bedrock support manage karta hai',
+  'Added by hand': 'Haath se daala gaya',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'Server chal raha hai. Naye abhi jod sakte ho, par kisi ko hatane ya update karne ke liye pehle server band karo.',
   'Find and install': 'Dhundo aur install karo',
   'Also show ones not marked for this version': 'Woh bhi dikhao jo is version ke liye mark nahi hain',

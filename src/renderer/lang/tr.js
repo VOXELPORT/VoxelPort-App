@@ -339,7 +339,9 @@
 
   'Search': 'Ara',
   'Installed': 'Kurulu',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'Yalnızca buradan kurulanlar listelenir. Kendi eklediğin dosyalara asla dokunulmaz.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'Sunucu klasöründeki tüm eklentiler listelenir. Yalnızca buradan kurulanları kaldırabilirsin; kendi eklediğin dosyalara asla dokunulmaz.',
+  'Managed by Bedrock support': 'Bedrock desteği tarafından yönetilir',
+  'Added by hand': 'Elle eklendi',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'Sunucu çalışıyor. Şimdi yenilerini ekleyebilirsin ama birini kaldırmak veya güncellemek için sunucuyu durdur.',
   'Find and install': 'Bul ve kur',
   'Also show ones not marked for this version': 'Bu sürüm için işaretlenmemiş olanları da göster',

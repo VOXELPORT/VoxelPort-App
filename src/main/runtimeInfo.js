@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readJarMinecraftVersion } = require('./jarVersion');
+const { readJarMinecraftVersion, readJarPluginMeta } = require('./jarVersion');
 
 /**
  * Reads what is actually installed for a server, for display and diagnostics
@@ -42,6 +42,32 @@ function readPlugins(serverDir) {
 }
 
 /**
+ * Every plugin and mod jar in the server folder with its real name and version, read from the jar itself (the file name
+ * is only a fallback: Geyser-Spigot.jar and floodgate-spigot.jar carry no version in their names).
+ * [{ key, label, version, file, dir }], key being 'geyser' etc. for the ones we know and the lower-cased name otherwise.
+ */
+async function readAllPlugins(serverDir) {
+  const out = [];
+  for (const dir of ['plugins', 'mods']) {
+    let names = [];
+    try { names = fs.readdirSync(path.join(serverDir, dir)); } catch { continue; }
+    for (const name of names.filter((n) => /.jar$/i.test(n)).sort((a, b) => a.localeCompare(b))) {
+      const known = KNOWN.find((k) => k.re.test(name));
+      const meta = await readJarPluginMeta(path.join(serverDir, dir, name));
+      const label = known ? known.label : (meta.name || name.replace(/.jar$/i, ''));
+      out.push({
+        key: known ? known.key : label.toLowerCase(),
+        label,
+        version: meta.version || versionFromFileName(name),
+        file: name,
+        dir,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Plugin/mod updates that were downloaded but couldn't replace the running jar
  * (it was locked), so the server staged them in plugins/update or mods/update
  * and will apply them on the next restart. Returns the staged jar file names.
@@ -66,7 +92,7 @@ async function readRuntimeInfo(serverDir) {
   try {
     minecraftVersion = await readJarMinecraftVersion(path.join(serverDir, 'server.jar'));
   } catch { /* unreadable/missing jar → null */ }
-  return { minecraftVersion, plugins: readPlugins(serverDir), stagedUpdates: readStagedUpdates(serverDir) };
+  return { minecraftVersion, plugins: await readAllPlugins(serverDir), stagedUpdates: readStagedUpdates(serverDir) };
 }
 
-module.exports = { readRuntimeInfo, readPlugins, readStagedUpdates, versionFromFileName };
+module.exports = { readRuntimeInfo, readPlugins, readAllPlugins, readStagedUpdates, versionFromFileName };

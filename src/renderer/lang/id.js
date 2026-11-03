@@ -337,7 +337,9 @@
 
   'Search': 'Cari',
   'Installed': 'Terpasang',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'Hanya yang dipasang dari sini yang ditampilkan. File yang kamu tambahkan sendiri tidak pernah disentuh.',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'Semua plugin di folder server ditampilkan. Kamu hanya bisa menghapus yang dipasang dari sini; file yang kamu tambahkan sendiri tidak pernah disentuh.',
+  'Managed by Bedrock support': 'Dikelola oleh dukungan Bedrock',
+  'Added by hand': 'Ditambahkan manual',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'Server sedang berjalan. Kamu bisa menambah yang baru sekarang, tetapi hentikan server untuk menghapus atau memperbarui.',
   'Find and install': 'Cari dan pasang',
   'Also show ones not marked for this version': 'Tampilkan juga yang tidak ditandai untuk versi ini',

@@ -339,7 +339,9 @@
 
   'Search': '検索',
   'Installed': 'インストール済み',
-  'Only the ones installed from here are listed. Files you added yourself are never touched.': 'ここからインストールしたものだけを表示します。ご自身で追加したファイルには一切触れません。',
+  'Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.': 'サーバーフォルダ内のすべてのプラグインを表示します。ここからインストールしたものだけ削除できます。ご自身で追加したファイルには一切触れません。',
+  'Managed by Bedrock support': 'Bedrock対応が管理',
+  'Added by hand': '手動で追加',
   'The server is running. You can add new ones now, but stop it to remove or update one.': 'サーバーは稼働中です。新しく追加はできますが、削除や更新をするにはサーバーを停止してください。',
   'Find and install': '探してインストール',
   'Also show ones not marked for this version': 'このバージョン向けと表示されていないものも表示',
