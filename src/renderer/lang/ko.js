@@ -449,6 +449,7 @@
   'Web control is on. Friends can reach this PC.': '웹 컨트롤이 켜져 있습니다. 친구가 이 PC에 접속할 수 있습니다.',
   'Connecting to the web…': '웹에 연결하는 중…',
   'Create a server first.': '먼저 서버를 만드세요.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': '웹 제어는 Supporter+ 혜택입니다. 켜려면 Supporter+가 필요합니다.',
   'Address backup': '주소 백업',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': '주소를 Discord 계정에 백업하면 새 PC나 휴대폰에서 되찾을 수 있어요.',
   'Your address is backed up to your Discord account.': '주소가 Discord 계정에 백업되어 있어요.',

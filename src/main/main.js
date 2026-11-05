@@ -331,7 +331,7 @@ function syncWebControl() {
 }
 function webControlState() {
   const profiles = serverProfiles.listProfiles(userDataDir()).map((p) => ({ id: p.id, name: p.name }));
-  return { enabled: prefs.webControl.enabled, profileId: prefs.webControl.profileId, profiles, running: !!(remoteControl && remoteControl.snapshot().running), allowed: webControlAllowed() };
+  return { enabled: prefs.webControl.enabled, profileId: prefs.webControl.profileId, profiles, running: !!(remoteControl && remoteControl.snapshot().running), perk: remoteControl ? remoteControl.snapshot().perk : null, allowed: webControlAllowed() };
 }
 
 function send(channel, payload) {

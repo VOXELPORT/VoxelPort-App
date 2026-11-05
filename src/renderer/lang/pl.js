@@ -448,6 +448,7 @@
   'Web control is on. Friends can reach this PC.': 'Sterowanie przez sieć jest włączone. Znajomi mogą połączyć się z tym komputerem.',
   'Connecting to the web…': 'Łączenie z siecią…',
   'Create a server first.': 'Najpierw utwórz serwer.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Sterowanie przez web to korzyść Supporter+. Zdobądź Supporter+, aby je włączyć.',
   'Address backup': 'Kopia zapasowa adresu',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Zapisz swój adres na koncie Discord, aby odzyskać go na nowym komputerze lub telefonie.',
   'Your address is backed up to your Discord account.': 'Twój adres jest zapisany na koncie Discord.',

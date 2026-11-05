@@ -449,6 +449,7 @@
   'Web control is on. Friends can reach this PC.': 'Web kontrolü açık. Arkadaşların bu bilgisayara ulaşabilir.',
   'Connecting to the web…': 'Web’e bağlanılıyor…',
   'Create a server first.': 'Önce bir sunucu oluştur.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Web kontrolü bir Supporter+ avantajıdır. Açmak için Supporter+ edin.',
   'Address backup': 'Adres yedeği',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Adresini Discord hesabına yedekle, yeni bir bilgisayarda veya telefonda geri alabil.',
   'Your address is backed up to your Discord account.': 'Adresin Discord hesabına yedeklendi.',

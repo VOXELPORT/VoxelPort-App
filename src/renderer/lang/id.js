@@ -447,6 +447,7 @@
   'Web control is on. Friends can reach this PC.': 'Kontrol web aktif. Teman bisa menjangkau PC ini.',
   'Connecting to the web…': 'Menghubungkan ke web…',
   'Create a server first.': 'Buat server dulu.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Kontrol web adalah keuntungan Supporter+. Dapatkan Supporter+ untuk mengaktifkannya.',
   'Address backup': 'Cadangan alamat',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Cadangkan alamatmu ke akun Discord agar bisa didapat kembali di PC atau ponsel baru.',
   'Your address is backed up to your Discord account.': 'Alamatmu sudah dicadangkan ke akun Discord.',

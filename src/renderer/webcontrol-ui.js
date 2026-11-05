@@ -12,6 +12,7 @@
   function describe(s) {
     if (!s.enabled) return '';
     if (!s.allowed) return window.t('Sign in with Discord to use web control.');
+    if (s.perk === false) return window.t('Web control is a Supporter+ perk. Get Supporter+ to switch it on.');
     return s.running ? window.t('Web control is on. Friends can reach this PC.') : window.t('Connecting to the web…');
   }
   function render() {

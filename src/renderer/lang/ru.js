@@ -449,6 +449,7 @@
   'Web control is on. Friends can reach this PC.': 'Веб-управление включено. Друзья могут подключиться к этому ПК.',
   'Connecting to the web…': 'Подключение к сети…',
   'Create a server first.': 'Сначала создайте сервер.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Веб-управление — преимущество Supporter+. Оформите Supporter+, чтобы включить его.',
   'Address backup': 'Резервная копия адреса',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Сохрани свой адрес в аккаунте Discord, чтобы вернуть его на новом ПК или телефоне.',
   'Your address is backed up to your Discord account.': 'Твой адрес сохранён в аккаунте Discord.',

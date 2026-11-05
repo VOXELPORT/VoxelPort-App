@@ -64,6 +64,7 @@ function createRemoteControl({ request, getVpId, actions, isAllowed, onEvent = (
   let stopped = false;
   let watching = false;
   let lastOk = null;
+  let perk = null; // false once the accounts service says the owner is not Supporter+ (web control is a Supporter+ perk)
   const executed = new Set();
   const sleepers = new Set();
   const sleep = wait || ((ms) => new Promise((resolve) => {
@@ -98,6 +99,7 @@ function createRemoteControl({ request, getVpId, actions, isAllowed, onEvent = (
     if (!res.ok) return 'error';
     lastOk = now();
     if (res.json && typeof res.json.watching === 'boolean') watching = res.json.watching;
+    if (res.json && typeof res.json.perk === 'boolean') perk = res.json.perk;
     for (const raw of Array.isArray(res.json && res.json.commands) ? res.json.commands : []) {
       if (gate()) return 'blocked';
       const cmd = parseCommand(raw);
@@ -129,7 +131,7 @@ function createRemoteControl({ request, getVpId, actions, isAllowed, onEvent = (
       const began = now();
       const r = await pollOnce();
       if (r === 'blocked') { stop(); return; }
-      if (r === 'ok') { errors = 0; if (now() - began < 1000) await sleep(1000, 'gap'); continue; }
+      if (r === 'ok') { errors = 0; if (perk === false) await sleep(30000, 'perk'); else if (now() - began < 1000) await sleep(1000, 'gap'); continue; }
       errors++;
       await sleep(backoffMs(errors), 'error');
     }
@@ -156,7 +158,7 @@ function createRemoteControl({ request, getVpId, actions, isAllowed, onEvent = (
     stop,
     pollOnce,
     reportOnce,
-    snapshot: () => ({ running: !stopped, watching, lastOk }),
+    snapshot: () => ({ running: !stopped, watching, lastOk, perk }),
   };
 }
 

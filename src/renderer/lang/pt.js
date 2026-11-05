@@ -448,6 +448,7 @@
   'Web control is on. Friends can reach this PC.': 'O controle pela web está ativado. Seus amigos podem alcançar este PC.',
   'Connecting to the web…': 'Conectando à web…',
   'Create a server first.': 'Crie um servidor primeiro.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'O controle web é uma vantagem do Supporter+. Obtenha o Supporter+ para ativá-lo.',
   'Address backup': 'Backup do endereço',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Guarde seu endereço na sua conta do Discord para recuperá-lo em um PC ou celular novo.',
   'Your address is backed up to your Discord account.': 'Seu endereço está guardado na sua conta do Discord.',

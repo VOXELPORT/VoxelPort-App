@@ -449,6 +449,7 @@
   'Web control is on. Friends can reach this PC.': '网页控制已开启,朋友可以连接到这台电脑。',
   'Connecting to the web…': '正在连接网络…',
   'Create a server first.': '请先创建服务器。',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': '网页控制是 Supporter+ 的专属功能。获得 Supporter+ 即可开启。',
   'Address backup': '地址备份',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': '把你的地址备份到 Discord 账号，以便在新电脑或手机上找回。',
   'Your address is backed up to your Discord account.': '你的地址已备份到 Discord 账号。',

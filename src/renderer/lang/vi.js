@@ -449,6 +449,7 @@
   'Web control is on. Friends can reach this PC.': 'Điều khiển qua web đang bật. Bạn bè có thể truy cập máy này.',
   'Connecting to the web…': 'Đang kết nối với web…',
   'Create a server first.': 'Hãy tạo máy chủ trước.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Điều khiển qua web là quyền lợi của Supporter+. Hãy có Supporter+ để bật nó.',
   'Address backup': 'Sao lưu địa chỉ',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Sao lưu địa chỉ của bạn vào tài khoản Discord để lấy lại trên PC hoặc điện thoại mới.',
   'Your address is backed up to your Discord account.': 'Địa chỉ của bạn đã được sao lưu vào tài khoản Discord.',

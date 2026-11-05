@@ -466,6 +466,7 @@
   'Web control is on. Friends can reach this PC.': 'Web control on hai. Dost is PC tak pahunch sakte hain.',
   'Connecting to the web…': 'Web se connect ho raha hai…',
   'Create a server first.': 'Pehle ek server banao.',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Web control Supporter+ ka perk hai. Ise on karne ke liye Supporter+ lo.',
   'Address backup': 'Address ka backup',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'Apna address apne Discord account mein backup karo, taaki naye PC ya phone par wapas mil sake.',
   'Your address is backed up to your Discord account.': 'Tumhara address tumhare Discord account mein backup hai.',

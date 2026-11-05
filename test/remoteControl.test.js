@@ -143,3 +143,15 @@ test('the owner’s computer user name in file paths never reaches friends', () 
   assert.ok(!out.join('\n').match(/Trazverse|alice|bob/));
   assert.ok(out[0].includes(String.raw`C:\Users\[user]\AppData`), out[0]);
 });
+
+test('the loop learns from the poll when web control is not available to this account (Supporter+ perk)', async () => {
+  const calls = [];
+  const request = async (method, path) => { calls.push(path); return { ok: true, status: 200, json: { commands: [], watching: false, perk: false } }; };
+  const rc = createRemoteControl({
+    request, getVpId: () => 'vp_test', isAllowed: () => true, wait: async () => {},
+    actions: { start: async () => ({ ok: true }), stop: async () => ({ ok: true }), restart: async () => ({ ok: true }), kick: async () => ({ ok: true }), status: () => ({}) },
+  });
+  assert.equal(rc.snapshot().perk, null);
+  await rc.pollOnce();
+  assert.equal(rc.snapshot().perk, false);
+});

@@ -449,6 +449,7 @@
   'Web control is on. Friends can reach this PC.': 'ウェブコントロールはオンです。友達がこのPCに接続できます。',
   'Connecting to the web…': 'ウェブに接続しています…',
   'Create a server first.': '先にサーバーを作成してください。',
+  'Web control is a Supporter+ perk. Get Supporter+ to switch it on.': 'Web操作はSupporter+の特典です。オンにするにはSupporter+が必要です。',
   'Address backup': 'アドレスのバックアップ',
   'Back up your address to your Discord account, so you can get it back on a new PC or phone.': 'アドレスを Discord アカウントにバックアップすると、新しい PC やスマホで取り戻せます。',
   'Your address is backed up to your Discord account.': 'アドレスは Discord アカウントにバックアップされています。',
