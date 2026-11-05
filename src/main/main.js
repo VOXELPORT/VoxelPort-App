@@ -69,6 +69,8 @@ const backupsLib = require('./backups');
 const DEFAULT_RELAY_URL = 'wss://relay.voxelport.in';
 // Where "Continue with Discord" and the membership check live. The override is for local testing only.
 const ACCOUNTS_URL = (!app.isPackaged && process.env.VOXELPORT_ACCOUNTS_URL) || 'https://accounts.voxelport.in';
+// The web control panel friends use: its own address, signed in with the same VoxelPort accounts.
+const WEB_PANEL_URL = (!app.isPackaged && (process.env.VOXELPORT_WEB_URL || process.env.VOXELPORT_ACCOUNTS_URL)) || 'https://web.voxelport.in';
 const DISCORD_RECHECK_MS = 15 * 60 * 1000;
 let gateRecord = { installedAt: 0, existingInstall: false };
 let appAccount = null;
@@ -735,6 +737,8 @@ ipcMain.handle('discord:signIn', guarded(g, async () => {
   return { ...result, state: discordState() };
 }));
 ipcMain.handle('webcontrol:get', guarded(g, () => webControlState()));
+// The web control panel friends use (and the owner too, from a phone). Always our own address, never one the page supplies.
+ipcMain.handle('webcontrol:openDashboard', guarded(g, () => { shell.openExternal(WEB_PANEL_URL); return { ok: true }; }));
 ipcMain.handle('webcontrol:set', guarded(g, (_evt, { enabled, profileId }) => {
   const pid = typeof profileId === 'string' && serverProfiles.getProfile(userDataDir(), profileId) ? profileId : null;
   prefs.webControl = { enabled: !!enabled && !!pid, profileId: pid };

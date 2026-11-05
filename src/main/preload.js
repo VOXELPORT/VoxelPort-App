@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('vp', {
   discordRecheck: () => ipcRenderer.invoke('discord:recheck'),
   discordSignOut: () => ipcRenderer.invoke('discord:signOut'),
   webControlGet: () => ipcRenderer.invoke('webcontrol:get'),
+  webControlOpenDashboard: () => ipcRenderer.invoke('webcontrol:openDashboard'),
   webControlSet: (opts) => ipcRenderer.invoke('webcontrol:set', opts),
   discordOpenInvite: () => ipcRenderer.invoke('discord:openInvite'),
   identitySave: (passphrase) => ipcRenderer.invoke('identity:save', passphrase),
