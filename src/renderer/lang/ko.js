@@ -444,7 +444,7 @@
   'Web control': '웹 컨트롤',
   'Let friends start and stop my server from the web': '친구가 웹에서 내 서버를 시작하고 중지할 수 있게 허용',
   'Server friends can start': '친구가 시작할 수 있는 서버',
-  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'accounts.voxelport.in의 Remote control에서 친구를 추가하세요. 친구는 서버를 시작, 중지, 재시작하고 콘솔을 볼 수 있습니다(플레이어 IP 주소는 숨겨집니다). 명령을 실행하거나 파일을 열 수는 없습니다. 이 PC에서 VoxelPort가 실행 중일 때만 작동합니다.',
+  'Add friends at web.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'accounts.voxelport.in의 Remote control에서 친구를 추가하세요. 친구는 서버를 시작, 중지, 재시작하고 콘솔을 볼 수 있습니다(플레이어 IP 주소는 숨겨집니다). 명령을 실행하거나 파일을 열 수는 없습니다. 이 PC에서 VoxelPort가 실행 중일 때만 작동합니다.',
   'Sign in with Discord to use web control.': '웹 컨트롤을 사용하려면 Discord로 로그인하세요.',
   'Web control is on. Friends can reach this PC.': '웹 컨트롤이 켜져 있습니다. 친구가 이 PC에 접속할 수 있습니다.',
   'Connecting to the web…': '웹에 연결하는 중…',

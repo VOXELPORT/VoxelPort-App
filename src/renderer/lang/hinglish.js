@@ -461,7 +461,7 @@
   'Web control': 'Web se control',
   'Let friends start and stop my server from the web': 'Doston ko web se mera server start aur stop karne do',
   'Server friends can start': 'Jo server dost start kar sakte hain',
-  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Doston ko accounts.voxelport.in par Remote control mein add karo. Wo tumhara server start, stop aur restart kar sakte hain aur console dekh sakte hain (players ke IP address chhupe rehte hain). Wo commands nahi chala sakte aur tumhari files nahi khol sakte. Ye tabhi chalta hai jab is PC par VoxelPort chal raha ho.',
+  'Add friends at web.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Doston ko accounts.voxelport.in par Remote control mein add karo. Wo tumhara server start, stop aur restart kar sakte hain aur console dekh sakte hain (players ke IP address chhupe rehte hain). Wo commands nahi chala sakte aur tumhari files nahi khol sakte. Ye tabhi chalta hai jab is PC par VoxelPort chal raha ho.',
   'Sign in with Discord to use web control.': 'Web control use karne ke liye Discord se sign in karo.',
   'Web control is on. Friends can reach this PC.': 'Web control on hai. Dost is PC tak pahunch sakte hain.',
   'Connecting to the web…': 'Web se connect ho raha hai…',

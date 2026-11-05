@@ -444,7 +444,7 @@
   'Web control': 'ウェブコントロール',
   'Let friends start and stop my server from the web': '友達がウェブから私のサーバーを起動・停止できるようにする',
   'Server friends can start': '友達が起動できるサーバー',
-  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'accounts.voxelport.in の Remote control で友達を追加してください。友達はサーバーの起動・停止・再起動とコンソールの閲覧ができます(プレイヤーのIPアドレスは非表示です)。コマンドの実行やファイルを開くことはできません。このPCでVoxelPortが動いている間だけ使えます。',
+  'Add friends at web.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'accounts.voxelport.in の Remote control で友達を追加してください。友達はサーバーの起動・停止・再起動とコンソールの閲覧ができます(プレイヤーのIPアドレスは非表示です)。コマンドの実行やファイルを開くことはできません。このPCでVoxelPortが動いている間だけ使えます。',
   'Sign in with Discord to use web control.': 'ウェブコントロールを使うには Discord でサインインしてください。',
   'Web control is on. Friends can reach this PC.': 'ウェブコントロールはオンです。友達がこのPCに接続できます。',
   'Connecting to the web…': 'ウェブに接続しています…',

@@ -441,7 +441,7 @@
   'Web control': 'Websteuerung',
   'Let friends start and stop my server from the web': 'Freunden erlauben, meinen Server über das Web zu starten und zu stoppen',
   'Server friends can start': 'Server, den Freunde starten dürfen',
-  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Füge Freunde auf accounts.voxelport.in unter „Remote control“ hinzu. Sie können deinen Server starten, stoppen und neu starten und die Konsole ansehen (IP-Adressen von Spielern werden ausgeblendet). Sie können keine Befehle ausführen und deine Dateien nicht öffnen. Es funktioniert nur, solange VoxelPort auf diesem PC läuft.',
+  'Add friends at web.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Füge Freunde auf accounts.voxelport.in unter „Remote control“ hinzu. Sie können deinen Server starten, stoppen und neu starten und die Konsole ansehen (IP-Adressen von Spielern werden ausgeblendet). Sie können keine Befehle ausführen und deine Dateien nicht öffnen. Es funktioniert nur, solange VoxelPort auf diesem PC läuft.',
   'Sign in with Discord to use web control.': 'Melde dich mit Discord an, um die Websteuerung zu nutzen.',
   'Web control is on. Friends can reach this PC.': 'Websteuerung ist an. Freunde können diesen PC erreichen.',
   'Connecting to the web…': 'Verbinde mit dem Web…',

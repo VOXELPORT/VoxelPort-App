@@ -442,7 +442,7 @@
   'Web control': 'Kontrol web',
   'Let friends start and stop my server from the web': 'Izinkan teman memulai dan menghentikan server saya lewat web',
   'Server friends can start': 'Server yang boleh dimulai teman',
-  'Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Tambahkan teman di accounts.voxelport.in pada Remote control. Mereka bisa memulai, menghentikan, dan memulai ulang server serta melihat konsol (alamat IP pemain disembunyikan). Mereka tidak bisa menjalankan perintah atau membuka file Anda. Hanya berfungsi saat VoxelPort berjalan di PC ini.',
+  'Add friends at web.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.': 'Tambahkan teman di accounts.voxelport.in pada Remote control. Mereka bisa memulai, menghentikan, dan memulai ulang server serta melihat konsol (alamat IP pemain disembunyikan). Mereka tidak bisa menjalankan perintah atau membuka file Anda. Hanya berfungsi saat VoxelPort berjalan di PC ini.',
   'Sign in with Discord to use web control.': 'Masuk dengan Discord untuk memakai kontrol web.',
   'Web control is on. Friends can reach this PC.': 'Kontrol web aktif. Teman bisa menjangkau PC ini.',
   'Connecting to the web…': 'Menghubungkan ke web…',
