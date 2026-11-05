@@ -738,6 +738,16 @@ ipcMain.handle('discord:signIn', guarded(g, async () => {
 }));
 ipcMain.handle('webcontrol:get', guarded(g, () => webControlState()));
 // The web control panel friends use (and the owner too, from a phone). Always our own address, never one the page supplies.
+// Invite links: made, listed and removed through the account service with this app's own session.
+async function inviteCall(method, p, body) {
+  if (!appAccount || !deviceToken) return { ok: false, error: 'Sign in with Discord to use web control.' };
+  const r = await appAccount.request(method, p, body);
+  if (r.ok) return { ok: true, ...r.json };
+  return { ok: false, error: (r.json && r.json.error) || 'Could not do that.' };
+}
+ipcMain.handle('webcontrol:inviteList', guarded(g, () => inviteCall('GET', `/api/app/control/invites?vp=${shortId()}`)));
+ipcMain.handle('webcontrol:inviteCreate', guarded(g, (_evt, { label, days }) => inviteCall('POST', '/api/app/control/invites', { vp: shortId(), label: typeof label === 'string' ? label.slice(0, 40) : '', days: [0, 1, 7, 30].includes(days) ? days : 7 })));
+ipcMain.handle('webcontrol:inviteRemove', guarded(g, (_evt, { id }) => (Number.isInteger(id) && id > 0 ? inviteCall('DELETE', `/api/app/control/invites/${id}?vp=${shortId()}`) : { ok: false, error: 'Could not do that.' })));
 ipcMain.handle('webcontrol:openDashboard', guarded(g, () => { shell.openExternal(WEB_PANEL_URL); return { ok: true }; }));
 ipcMain.handle('webcontrol:set', guarded(g, (_evt, { enabled, profileId }) => {
   const pid = typeof profileId === 'string' && serverProfiles.getProfile(userDataDir(), profileId) ? profileId : null;

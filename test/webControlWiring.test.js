@@ -30,7 +30,7 @@ test('every new line of text is translated in all 14 languages', () => {
   for (const lang of LANGS) {
     const file = src(`renderer/lang/${lang}.js`);
     for (const s of STRINGS) assert.ok(file.includes(`'${s.replace(/'/g, "\\'")}':`), `${lang}: ${s}`);
-    assert.ok(file.includes("accounts.voxelport.in"), `${lang}: explanation`);
+    assert.ok(file.includes("'Invite links':"), `${lang}: invite links`);
   }
 });
 

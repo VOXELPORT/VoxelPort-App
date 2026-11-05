@@ -13,6 +13,10 @@
   const activity = document.getElementById('webControlActivity');
   const activityEmpty = document.getElementById('webControlActivityEmpty');
   const recent = [];
+  const inviteMake = document.getElementById('webControlInviteMake');
+  const inviteDays = document.getElementById('webControlInviteDays');
+  const inviteMsg = document.getElementById('webControlInviteMsg');
+  const inviteList = document.getElementById('webControlInviteList');
   let state = null;
 
   function describe(s) {
@@ -37,6 +41,35 @@
     activity.replaceChildren(...recent.map((e) => Object.assign(document.createElement('li'), { textContent: e.time + ' · ' + window.t(e.label) + (e.arg ? ' ' + e.arg : '') + ' · ' + (e.ok ? window.t('Done') : window.t('Failed')) })));
     if (activityEmpty) activityEmpty.classList.toggle('hidden', recent.length > 0);
   }
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); inviteMsg.textContent = window.t('Link copied.'); } catch { inviteMsg.textContent = text; }
+  }
+  async function loadInvites() {
+    if (!inviteList || !window.vp.webControlInvites) return;
+    let r = null;
+    try { r = await window.vp.webControlInvites(); } catch { /* keep what is shown */ }
+    if (!r || !r.ok) { inviteList.replaceChildren(); return; }
+    const rows = r.invites.filter((i) => i.state === 'active' || i.state === 'expired').slice(0, 10);
+    inviteList.replaceChildren(...(rows.length ? rows.map((i) => {
+      const li = document.createElement('li');
+      const days = i.expiresAt ? new Date(i.expiresAt).toLocaleDateString() : window.t('Never expires');
+      li.append((i.label || '·') + ' · ' + (i.state === 'active' ? days : window.t('expired')) + ' ');
+      const rm = Object.assign(document.createElement('button'), { type: 'button', className: 'ghost small', textContent: window.t('Remove') });
+      rm.addEventListener('click', async () => { rm.disabled = true; try { await window.vp.webControlInviteRemove(i.id); } catch { /* the list reloads below */ } loadInvites(); });
+      li.append(rm);
+      return li;
+    }) : [Object.assign(document.createElement('li'), { textContent: window.t('No links yet.') })]));
+  }
+  async function makeInvite() {
+    inviteMsg.textContent = '';
+    inviteMake.disabled = true;
+    try {
+      const r = await window.vp.webControlInviteCreate({ days: Number(inviteDays.value) });
+      if (r && r.ok) { await copy(r.url); loadInvites(); }
+      else inviteMsg.textContent = r && r.error === 'Web control is a Supporter+ perk. Get Supporter+ to switch it on.' ? window.t(r.error) : window.t('Could not create the link.');
+    } catch { inviteMsg.textContent = window.t('Could not create the link.'); }
+    inviteMake.disabled = false;
+  }
   async function save() {
     try { state = await window.vp.webControlSet({ enabled: on.checked, profileId: pick.value || null }); } catch { /* keep what is shown */ }
     render();
@@ -52,7 +85,8 @@
     if (label) { recent.unshift({ time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), label, arg: e.arg || '', ok: !!e.ok }); recent.length = Math.min(recent.length, 10); drawActivity(); }
     load();
   });
-  if (cardBtn) cardBtn.addEventListener('click', () => { load(); window.showScreen('screen-webcontrol'); });
+  if (cardBtn) cardBtn.addEventListener('click', () => { load(); loadInvites(); window.showScreen('screen-webcontrol'); });
+  if (inviteMake) inviteMake.addEventListener('click', makeInvite);
   if (dashBtn) dashBtn.addEventListener('click', () => { window.vp.webControlOpenDashboard().catch(() => {}); });
   window.vp.on('discord:state', load);
   document.addEventListener('click', (event) => { if (event.target.closest && event.target.closest('[data-open="screen-app-settings"], #appSettingsBtn, #webControlOpenBtn')) load(); });
