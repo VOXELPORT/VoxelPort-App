@@ -53,7 +53,7 @@
     inviteList.replaceChildren(...(rows.length ? rows.map((i) => {
       const li = document.createElement('li');
       const days = i.expiresAt ? new Date(i.expiresAt).toLocaleDateString() : window.t('Never expires');
-      li.append((i.label || '·') + ' · ' + (i.state === 'active' ? days : window.t('expired')) + ' ');
+      li.append((i.label || '#' + i.id) + ' · ' + (i.state === 'active' ? days : window.t('expired')) + ' ');
       const rm = Object.assign(document.createElement('button'), { type: 'button', className: 'ghost small', textContent: window.t('Remove') });
       rm.addEventListener('click', async () => { rm.disabled = true; try { await window.vp.webControlInviteRemove(i.id); } catch { /* the list reloads below */ } loadInvites(); });
       li.append(rm);
