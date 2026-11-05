@@ -172,5 +172,5 @@ test('the main process accepts only the three theme words and opens the window i
   assert.match(main, /normalizeTheme\(theme\)/);
   assert.match(main, /backgroundColor: windowBackground\(\)/);
   // Default is dark, so nobody's app changes on update.
-  assert.match(main, /let prefs = \{ region: 'auto', presence: true, theme: 'dark' \}/);
+  assert.match(main, /let prefs = \{ region: 'auto', presence: true, theme: 'dark', webControl: /);
 });
