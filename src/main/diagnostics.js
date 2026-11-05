@@ -35,6 +35,13 @@ function createReport({ version, platform, arch, server, status, lines, now = ne
   const codes = diagnoses.map(item => `VP-${item.id.toUpperCase().replace(/-/g, '_')}: ${item.title}\n${item.detail}`);
   for (const [pattern, code, detail] of [
     [/UnsupportedClassVersionError|compiled by a more recent version/i, 'JAVA_VERSION', 'Check the Java runtime required by this Minecraft or mod version.'],
+    // Geyser rejects Bedrock joins when it is built for a different Minecraft
+    // version than the server: "This server does not support Java Edition X ...
+    // Outdated server! I'm still on Y". The server itself is fine for Java players.
+    [/does not support Java Edition|Outdated server! I'm still on|I'm still on \d/i, 'GEYSER_VERSION_MISMATCH', "Geyser doesn't match this server's Minecraft version, so Bedrock players are disconnected (Java players are unaffected). Re-add Bedrock support so Geyser matches the server, or change the server to a version Geyser supports."],
+    // A plugin update that was downloaded but couldn't replace the live jar (it was
+    // locked) is staged in plugins/update/ and applied on the next restart.
+    [/plugins[\\/]update[\\/]|staged (?:the )?update|will be (?:applied|installed) on (?:the )?next restart|update folder/i, 'PLUGIN_UPDATE_STAGED', 'A plugin update has been downloaded and is waiting in plugins/update. Restart the server to apply it. (Informational — not an error.)'],
     [/ECONNREFUSED|connection refused/i, 'CONNECTION_REFUSED', 'Check the destination and confirm the local server is running on the configured port.'],
     [/ENOTFOUND|EAI_AGAIN|no such host|UnknownHostException/i, 'DNS', 'Check the hostname and your DNS connection.'],
     [/ETIMEDOUT|i\/o timeout|handshake timeout|connect timed out/i, 'TIMEOUT', 'Check the destination and connectivity; a timeout alone does not confirm a relay outage.'],
@@ -43,7 +50,7 @@ function createReport({ version, platform, arch, server, status, lines, now = ne
     'VoxelPort diagnostic report v1',
     `Created: ${now.toISOString()}`,
     `App: ${version} | OS: ${platform} ${arch}`,
-    `Server: ${server?.type || 'external/none'} | Minecraft: ${server?.version || 'unknown'} | Status: ${status}`,
+    `Server: ${server?.type || 'external/none'} | Minecraft: ${server?.version || 'unknown'}${server?.build ? ` (build ${server.build})` : ''} | Status: ${status}`,
     'Error codes:',
     codes.join('\n\n') || 'VP-NO_MATCH: No known error signature found; review the log below.',
     '', 'Recent session output (oldest first; bounded excerpt):', clean.slice(-200000),

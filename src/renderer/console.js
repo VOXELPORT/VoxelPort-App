@@ -28,6 +28,7 @@ const srvAltAddress = $('srvAltAddress');
 const srvBedrock = $('srvBedrock');
 const srvBedrockHost = $('srvBedrockHost');
 const srvBedrockPort = $('srvBedrockPort');
+const srvBedrockStatus = $('srvBedrockStatus');
 const srvListed = $('srvListed');
 const nameView = $('nameView');
 const nameEdit = $('nameEdit');
@@ -42,7 +43,8 @@ const srvRegionRow = $('srvRegionRow');
 
 let managingProfileId = null;
 let managingProfile = null;
-let assigned = null; // { host, port } of the live public tunnel
+let assigned = null; // { host, port, bedrockPort, bedrockReady } of the live public tunnel
+let awaitingAssignment = true;
 let customAddress = { name: '', address: '' };
 let editingName = false;
 
@@ -101,6 +103,11 @@ function renderManagementScreen() {
 
 // ─── Public address: custom name, plain host:port, Bedrock ─────────────────
 
+function assignedBedrockAddress() {
+  if (!assigned || !Number.isInteger(assigned.bedrockPort) || assigned.bedrockPort < 1 || assigned.bedrockPort > 65535) return null;
+  return { host: assigned.host, port: assigned.bedrockPort };
+}
+
 function renderAddress() {
   const isPublic = isThisProfilePublic();
   if (isPublic && assigned) {
@@ -108,11 +115,16 @@ function renderAddress() {
     srvAddress.textContent = customAddress.address || plain;
     srvAltAddress.textContent = customAddress.address ? t('Also works: {address}', { address: plain }) : '';
     srvAltAddress.classList.toggle('hidden', !customAddress.address);
-    const bedrock = Boolean(managingProfile && managingProfile.bedrock);
-    srvBedrock.classList.toggle('hidden', !bedrock);
-    srvBedrockHost.textContent = customAddress.address || assigned.host;
-    srvBedrockPort.textContent = String(assigned.port);
   }
+  const bedrockOn = Boolean(!awaitingAssignment && isPublic && assigned && managingProfile && managingProfile.bedrock);
+  const bedrock = bedrockOn ? assignedBedrockAddress() : null;
+  srvBedrock.classList.toggle('hidden', !bedrock);
+  srvBedrockHost.textContent = bedrock ? bedrock.host : '—';
+  srvBedrockPort.textContent = bedrock ? String(bedrock.port) : '—';
+  srvBedrockStatus.textContent = !bedrockOn ? ''
+    : !bedrock ? t('Bedrock needs an updated relay.')
+    : assigned.bedrockReady !== true ? t('Restart your server once to activate this Bedrock address.') : '';
+  srvBedrockStatus.classList.toggle('hidden', !srvBedrockStatus.textContent);
   srvListed.classList.toggle('hidden', !(managingProfile && managingProfile.listing && managingProfile.listing.enabled));
   const hasName = Boolean(customAddress.name) && !editingName;
   nameView.classList.toggle('hidden', !hasName);
@@ -141,7 +153,7 @@ nameClaimBtn.addEventListener('click', async () => {
   if (!res || !res.ok) { setNameMsg(t((res && res.error) || 'Could not set that address.'), true); return; }
   editingName = false;
   customAddress = { name: res.name, address: res.address };
-  setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
   srvLogLine(t('Your address is now {address} — it can take a minute to work everywhere.', { address: res.address }));
   renderAddress();
 });
@@ -159,7 +171,7 @@ $('nameRemoveBtn').addEventListener('click', async () => {
   const res = await window.vp.name.release();
   if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove the address.')); return; }
   customAddress = { name: '', address: '' };
-  setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
   renderAddress();
 });
 
@@ -174,14 +186,14 @@ function currentInviteData() {
     version: managingProfile && managingProfile.version,
     address: customAddress.address || plain,
     plainAddress: customAddress.address ? plain : '',
-    bedrock: bedrockOn ? { host: customAddress.address || assigned.host, port: assigned.port } : null,
+    bedrock: bedrockOn && assigned.bedrockReady === true ? assignedBedrockAddress() : null,
   };
 }
 window.currentInviteData = currentInviteData;
 wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), currentInviteData);
 
 window.vp.on('tunnel:name', (n) => {
-  if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('Friends join without a port number. 3–20 letters, numbers or dashes.'));
+  if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
   customAddress = n;
   editingName = false;
   renderAddress();
@@ -443,8 +455,16 @@ window.vp.on('server:players', (n) => { if (isThisProfileActive()) srvPlayers.te
 window.vp.on('server:exit', (code) => { renderPlayers([]); if (isThisProfileActive()) srvLogLine(t('Server process exited (code {code}).', { code })); });
 
 // The relay tunnel is shared with the manual-hosting screen — reuse its events.
-window.vp.on('tunnel:assigned', ({ port, host }) => {
-  assigned = { host, port };
+window.vp.on('tunnel:status', (status) => {
+  if (!['connecting', 'reconnecting', 'stopped'].includes(status)) return;
+  awaitingAssignment = true;
+  if (status === 'stopped') assigned = null;
+  else if (assigned) assigned = { ...assigned, bedrockPort: null, bedrockReady: false };
+  renderAddress();
+});
+window.vp.on('tunnel:assigned', ({ port, host, bedrockPort, bedrockReady }) => {
+  assigned = { host, port, bedrockPort, bedrockReady };
+  awaitingAssignment = false;
   if (!isThisProfilePublic()) return;
   publicShare.classList.remove('hidden');
   makePublicBtn.classList.add('hidden');

@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const readline = require('readline');
 const { EventEmitter } = require('events');
+const { bedrockJvmArgs } = require('./bedrock');
 
 // A server line is "[time] [thread/LEVEL]: message" (Vanilla) or "[time LEVEL]: message" (Paper). What the server means is
 // the whole message after that, never a piece of it: chat is "<name> text", so a player typing "Bob joined the game" can
@@ -43,7 +44,9 @@ class ServerProcess extends EventEmitter {
     this.stopTimer = null;
   }
 
-  start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb, javaPath = 'java' }) {
+  // bedrock: { localPort, publicHost?, publicPort? }; omit the public pair until
+  // assigned. JVM properties are fixed at launch, so a new assignment needs a restart.
+  start({ serverDir, jarName = 'server.jar', minRamMb, maxRamMb, javaPath = 'java', bedrock }) {
     if (this.child) return; // only one managed process, ever
     if (typeof serverDir !== 'string' || !path.isAbsolute(serverDir)) {
       this.emit('log', 'Refusing to start: invalid server folder.');
@@ -62,6 +65,14 @@ class ServerProcess extends EventEmitter {
       this._setStatus('crashed');
       return;
     }
+    let bedrockArgs = [];
+    if (bedrock !== undefined && bedrock !== null) {
+      try { bedrockArgs = bedrockJvmArgs(bedrock); } catch (err) {
+        this.emit('log', `Refusing to start: ${err.message}`);
+        this._setStatus('crashed');
+        return;
+      }
+    }
 
     this.online.clear();
     this._setStatus('starting');
@@ -69,13 +80,24 @@ class ServerProcess extends EventEmitter {
     const child = this.spawnImpl(javaPath, [
       `-Xms${minRamMb}M`,
       `-Xmx${maxRamMb}M`,
+      // Force UTF-8 end to end (locked decision 6). Without these the JVM writes
+      // its console in the OS code page (e.g. Windows CP-1252), so non-ASCII in
+      // MOTDs, player names, plugin output and crash text arrives as "?". These
+      // are JVM options, so they must come before -jar.
+      '-Dfile.encoding=UTF-8',
+      '-Dstdout.encoding=UTF-8',
+      '-Dstderr.encoding=UTF-8',
+      ...bedrockArgs,
       '-jar', jarName,
       'nogui',
     ], { cwd: serverDir, shell: false });
     this.child = child;
 
     // One line at a time, however the output was cut into chunks (and a character split between two chunks stays whole).
+    // Decode explicitly as UTF-8 (matching the JVM flags above) so a multi-byte
+    // character split across two chunks is still reassembled correctly.
     for (const stream of [child.stdout, child.stderr]) {
+      stream.setEncoding('utf8');
       readline.createInterface({ input: stream, crlfDelay: Infinity }).on('line', (line) => this._onLine(line));
     }
     // Writing a command to a server that has just gone away must not crash the app.

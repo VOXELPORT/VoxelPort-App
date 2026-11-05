@@ -154,8 +154,7 @@ Output lands in `release/`.
 
 Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
 which builds the Windows installer, portable `.exe` and Linux `tar.gz`, publishes
-them to a GitHub Release, and attaches `SHA256SUMS.txt`. The Microsoft Store
-package is built locally with `npx electron-builder --win appx`.
+them to a GitHub Release, and attaches `SHA256SUMS.txt`.
 
 ### Auto-update
 
@@ -168,8 +167,6 @@ The portable `.exe` and the Linux build don't auto-update (there's no fixed
 install location to safely replace); update those manually from this page.
 See [SECURITY.md](SECURITY.md) for exactly what this does and doesn't
 guarantee.
-
-The Microsoft Store build never runs the in-app updater — the Store delivers its updates.
 
 ### Code signing
 

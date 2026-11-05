@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('vp', {
   webControlGet: () => ipcRenderer.invoke('webcontrol:get'),
   webControlSet: (opts) => ipcRenderer.invoke('webcontrol:set', opts),
   discordOpenInvite: () => ipcRenderer.invoke('discord:openInvite'),
+  identitySave: (passphrase) => ipcRenderer.invoke('identity:save', passphrase),
+  identityRestore: (passphrase) => ipcRenderer.invoke('identity:restore', passphrase),
+  identityDelete: () => ipcRenderer.invoke('identity:delete'),
   voiceState: () => ipcRenderer.invoke('voice:state'),
 
   start: (opts) => ipcRenderer.invoke('tunnel:start', opts),
@@ -68,6 +71,7 @@ contextBridge.exposeInMainWorld('vp', {
   // The language the screen is showing, so messages the main process writes (crash explanations,
   // in-game chat lines) use it too.
   setLanguage: (lang) => ipcRenderer.invoke('app:setLanguage', { lang }),
+  setTheme: (theme) => ipcRenderer.invoke('app:setTheme', { theme }),
 
   java: {
     check: (version) => ipcRenderer.invoke('java:check', { version }),
@@ -82,6 +86,8 @@ contextBridge.exposeInMainWorld('vp', {
     chooseFolder: () => ipcRenderer.invoke('server:chooseFolder'),
     detectExisting: (dir) => ipcRenderer.invoke('server:detectExisting', { dir }),
     install: (config) => ipcRenderer.invoke('server:install', config),
+    changeVersion: (id, version) => ipcRenderer.invoke('server:changeVersion', { id, version }),
+    runtimeInfo: (id) => ipcRenderer.invoke('server:runtimeInfo', { id }),
     import: (input) => ipcRenderer.invoke('server:import', input),
 
     list: () => ipcRenderer.invoke('server:profiles:list'),
@@ -131,7 +137,8 @@ contextBridge.exposeInMainWorld('vp', {
   addons: {
     get: (id) => ipcRenderer.invoke('addons:get', { id }),
     search: (id, query, anyVersion, offset) => ipcRenderer.invoke('addons:search', { id, query, anyVersion, offset }),
-    install: (id, projectId, title) => ipcRenderer.invoke('addons:install', { id, projectId, title }),
+    install: (id, projectId, title, icon) => ipcRenderer.invoke('addons:install', { id, projectId, title, icon }),
+    icon: (url) => ipcRenderer.invoke('addons:icon', { url }),
     remove: (id, projectId) => ipcRenderer.invoke('addons:remove', { id, projectId }),
     openFolder: (id) => ipcRenderer.invoke('addons:openFolder', { id }),
   },
@@ -176,6 +183,7 @@ contextBridge.exposeInMainWorld('vp', {
 
   update: {
     state: () => ipcRenderer.invoke('update:state'),
+    check: () => ipcRenderer.invoke('update:check'),
     install: () => ipcRenderer.invoke('update:install'),
   },
 });

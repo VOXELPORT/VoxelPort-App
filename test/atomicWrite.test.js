@@ -82,9 +82,13 @@ test('H4: the add-on and Bedrock lists are never left half written', async () =>
   assert.deepEqual(leftovers(dir), []);
   assert.deepEqual(installedAddons(dir), []);
 
+  // Paper now gets Geyser from Modrinth (an array of versions) and Floodgate from
+  // the GeyserMC build API (a build object), so the mock answers each in its shape.
   const geyserFetch = async (url) => ({
     ok: true, status: 200,
-    json: async () => ({ version: '2.0', build: 1, downloads: { spigot: { name: url.includes('floodgate') ? 'floodgate-spigot.jar' : 'Geyser-Spigot.jar', sha256: 'b'.repeat(64) } } }),
+    json: async () => (url.includes('/project/geyser/version')
+      ? [{ version_type: 'release', files: [{ primary: true, filename: 'Geyser-Spigot.jar', url: 'https://cdn.modrinth.com/x.jar', hashes: { sha512: 'a'.repeat(128) } }] }]
+      : { version: '2.0', build: 1, downloads: { spigot: { name: 'floodgate-spigot.jar', sha256: 'b'.repeat(64) } } }),
   });
   await withFailingRename(() => assert.rejects(installBedrockSupport({ serverDir: dir, type: 'paper', version: '26.2', fetchImpl: geyserFetch, download }), /simulated failure/));
   assert.deepEqual(leftovers(dir), []);

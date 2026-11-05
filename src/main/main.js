@@ -1,12 +1,12 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, safeStorage, Notification, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { Tunnel } = require('./tunnel');
-const { loadOrCreateToken, maskToken } = require('./token');
+const { loadOrCreateToken, replaceToken, maskToken } = require('./token');
 const { createRemoteControl } = require('./remoteControl');
 const mcVersions = require('./mcVersions');
 const { checkJava, requiredJavaMajor, requiredJavaFromLog } = require('./javaCheck');
@@ -15,6 +15,8 @@ const {
   getServerDir, downloadServerJar, writeEula, writeServerProperties,
   detectExistingServer, updateServerPropertiesSafely, assertFolderEmptyForInstall,
 } = require('./serverInstall');
+const { readJarMinecraftVersion } = require('./jarVersion');
+const { readRuntimeInfo, readAllPlugins } = require('./runtimeInfo');
 const { ServerProcess } = require('./serverProcess');
 const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
@@ -29,7 +31,12 @@ const { explainCrash } = require('./crashExplain');
 const {
   PerfMonitor, supportsTickQuery, isTickQueryLine, parseMspt, tpsFromMspt, LAG_RE,
 } = require('./perfMonitor');
-const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort } = require('./bedrock');
+const { bedrockSupported, installBedrockSupport, removeBedrockSupport, bedrockPort, checkGeyserCompatible } = require('./bedrock');
+const { readBedrockEndpoint, rememberBedrockEndpoint, bedrockEndpointReady } = require('./bedrockEndpoint');
+let activeBedrockLaunch = null;
+// Remembers the Bedrock endpoint we last auto-restarted for, so a server is relaunched
+// at most once per assigned address (never in a loop). Keyed "<profileId>|<host>:<port>".
+let bedrockAutoRestartedFor = null;
 const accounts = require('./accounts');
 const addons = require('./addons');
 const voiceSetup = require('./voiceSetup');
@@ -152,15 +159,23 @@ function refreshPresence() {
   presence.update(profile ? { type: profile.type, version: profile.version, players: serverProc.online.size } : null);
 }
 
-// App-wide preferences: the relay region (auto / in / eu) and whether to show on Discord what is being hosted.
-let prefs = { region: 'auto', presence: true, webControl: { enabled: false, profileId: null } };
+// App-wide preferences: the relay region (auto / in / eu), whether to show on Discord what is being hosted, and the
+// theme ('dark', 'light' or 'system'). The page keeps its own copy of the theme to paint it at once; this one lets the
+// window open in the right colour and keeps the system's own scrollbars and menus in step.
+let prefs = { region: 'auto', presence: true, theme: 'dark', webControl: { enabled: false, profileId: null } };
+const THEMES = new Set(['dark', 'light', 'system']);
+const normalizeTheme = (v) => (THEMES.has(v) ? v : 'dark');
+function windowBackground() {
+  const light = prefs.theme === 'light' || (prefs.theme === 'system' && !nativeTheme.shouldUseDarkColors);
+  return light ? '#f5f6f3' : '#181a1b';
+}
 function prefsPath() {
   return path.join(userDataDir(), 'preferences.json');
 }
 function loadPrefs() {
   try {
     const v = JSON.parse(fs.readFileSync(prefsPath(), 'utf8'));
-    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false), webControl: normalizeWebControl(v && v.webControl) };
+    prefs = { region: normalizePreference(v && v.region), presence: !(v && v.presence === false), theme: normalizeTheme(v && v.theme), webControl: normalizeWebControl(v && v.webControl) };
   } catch { /* defaults */ }
 }
 function savePrefs() {
@@ -185,7 +200,7 @@ function createWindow() {
     height: 800,
     minWidth: 540,
     minHeight: 640,
-    backgroundColor: '#181a1b',
+    backgroundColor: windowBackground(),
     title: 'VoxelPort',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
     webPreferences: {
@@ -200,6 +215,15 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+
+  // Developer DevTools: only ever in an unpackaged (dev) run, and only when
+  // explicitly asked for with VOXELPORT_DEVTOOLS=1 (the dev launcher sets it).
+  // A packaged release can never open them.
+  if (!app.isPackaged && process.env.VOXELPORT_DEVTOOLS === '1') {
+    mainWindow.webContents.once('did-finish-load', () => {
+      try { mainWindow.webContents.openDevTools({ mode: 'detach' }); } catch { /* ignore */ }
+    });
+  }
 
   // Item 15/16: the renderer must never navigate away from packaged local
   // content, and window.open()/target=_blank must never spawn a new
@@ -225,10 +249,15 @@ function currentGate() {
   const snap = appAccount ? appAccount.snapshot() : { session: false, config: null, status: null, statusError: null, lastGood: null };
   return evaluateGate({ existingInstall: gateRecord.existingInstall, session: snap.session, config: snap.config, status: snap.status, statusError: snap.statusError, lastGood: snap.lastGood, now: Date.now() });
 }
+// The address backup this account holds: only the last 4 characters of its id are for showing, and whether it is this PC's own.
+function backupInfo(snap) {
+  const b = snap && snap.identityBackup;
+  return b ? { id: b.vpId.slice(-4), updatedAt: b.updatedAt, thisPc: b.vpId === shortId() } : null;
+}
 function discordState() {
   const gate = currentGate();
   const snap = appAccount ? appAccount.snapshot() : { config: null, discordName: null, standing: null };
-  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, rank: snap.standing ? snap.standing.rank : null, planName: snap.standing ? snap.standing.plan.name : null, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError };
+  return { ...gate, newInstall: !gateRecord.existingInstall, reachable: !!snap.config, rank: snap.standing ? snap.standing.rank : null, planName: snap.standing ? snap.standing.plan.name : null, inviteUrl: snap.config ? snap.config.inviteUrl : null, discordName: snap.discordName, linkError: discordLinkError, backup: backupInfo(snap) };
 }
 // Coming back to the window re-checks (at most once a minute), so a new plan, a changed rank or a removed account shows at once.
 let lastDiscordRefresh = 0;
@@ -331,9 +360,30 @@ function broadcastState() {
   });
 }
 
+function localBedrockPort(profile) {
+  return bedrockPort(profile.serverDir, { javaPort: profile.port, voicePort: profile.voice?.port });
+}
+
 function wireTunnel(t, publicHost) {
   t.on('status', (s) => send('tunnel:status', s));
-  t.on('assigned', (port) => send('tunnel:assigned', { port, host: publicHost }));
+  t.on('assigned', (port) => {
+    if (t !== tunnel) return;
+    const id = publicServerProfileId;
+    const endpoint = { publicHost, publicPort: t.bedrockPublicPort, localPort: t.udpPort };
+    const ready = Boolean(id && activeServerProfileId === id && serverProc.child
+      && activeBedrockLaunch?.profileId === id && bedrockEndpointReady(activeBedrockLaunch, endpoint));
+    if (id && t.bedrockPublicPort) {
+      try { rememberBedrockEndpoint(userDataDir(), id, deviceToken, endpoint); }
+      catch (err) { send('server:log', `[VoxelPort] Could not remember the Bedrock address: ${err.message}`); }
+      // The relay only assigns the Bedrock public port at make-public, after the server
+      // (and Geyser) already started, so the first time a server goes public Geyser is
+      // running without the right advertise address. Rather than ask the user to restart
+      // by hand, relaunch the server once now so Geyser comes up advertising the assigned
+      // address. Guarded so it fires at most once per assigned endpoint (never loops).
+      if (!ready) void autoRestartForBedrock(id, endpoint);
+    }
+    send('tunnel:assigned', { port, host: publicHost, bedrockPort: t.bedrockPublicPort, bedrockReady: ready });
+  });
   t.on('rank', (rank) => {
     if (t !== tunnel) return;
     publishVoiceState({ rank, profileId: publicServerProfileId,
@@ -353,7 +403,7 @@ function wireTunnel(t, publicHost) {
       if (!isCurrent()) return;
       const profile = serverProfiles.getProfile(userDataDir(), id);
       if (!profile) return;
-      const plan = voiceSetup.voicePlan(profile, profile.bedrock ? bedrockPort(profile.serverDir) : null);
+      const plan = voiceSetup.voicePlan(profile, profile.bedrock ? localBedrockPort(profile) : null);
       if (!plan) return;
       const result = await voiceSetup.configureVoice({ profile, plan, host: publicHost, publicPort: port,
         running: activeServerProfileId === id && Boolean(serverProc.child), isCurrent });
@@ -497,6 +547,7 @@ function wireServerProcess(p) {
     perf.stop();
     stopTickPolling();
     const exitedProfileId = activeServerProfileId;
+    activeBedrockLaunch = null;
     send('server:exit', code);
     if (activeServerProfileId && publicServerProfileId === activeServerProfileId) {
       // The managed server backing the public tunnel died — the tunnel
@@ -594,6 +645,7 @@ if (!gotLock) {
     setInterval(() => refreshDiscord().catch(() => {}), DISCORD_RECHECK_MS).unref();
     loadCustomAddress();
     loadPrefs();
+    nativeTheme.themeSource = prefs.theme;
     presence.setEnabled(prefs.presence);
     createWindow();
     syncWebControl();
@@ -693,6 +745,55 @@ ipcMain.handle('webcontrol:set', guarded(g, (_evt, { enabled, profileId }) => {
 ipcMain.handle('discord:cancel', guarded(g, () => { if (appAccount) appAccount.cancelSignIn(); return { ok: true }; }));
 ipcMain.handle('discord:recheck', guarded(g, async () => { await refreshDiscord(); return discordState(); }));
 ipcMain.handle('discord:signOut', guarded(g, async () => { await appAccount.signOut(); discordLinkError = null; send('discord:state', discordState()); return discordState(); }));
+// ─── Address backup (end-to-end encrypted, kept on the person's Discord account) ──────────────────────────
+
+const BACKUP_ERRORS = {
+  too_short: 'Use at least 12 characters.',
+  too_simple: 'Choose something less repetitive.',
+  wrong_passphrase: "That passphrase doesn't open the backup.",
+  not_found: 'There is no backup on your account.',
+  signed_out: 'Please sign in with Discord again.',
+  unauthorized: 'Please sign in with Discord again.',
+};
+let backupBusy = false;
+// One backup action at a time; the result is { ok, message } or { ok: false, error } in text the screen runs through t().
+async function backupAction(run) {
+  if (!appAccount || backupBusy) return { ok: false, error: "That didn't work. Check your connection and try again." };
+  backupBusy = true;
+  try {
+    const result = await run();
+    send('discord:state', discordState());
+    return result;
+  } catch {
+    return { ok: false, error: "That didn't work. Check your connection and try again." };
+  } finally { backupBusy = false; }
+}
+const backupFailure = (code) => ({ ok: false, error: BACKUP_ERRORS[code] || "That didn't work. Check your connection and try again." });
+const publicAddressLive = () => Boolean((tunnel && tunnel.isLive()) || (retiringTunnel && retiringTunnel.isLive()));
+const passphraseOf = (v) => (typeof v === 'string' ? v : '');
+
+ipcMain.handle('identity:save', guarded(g, (_e, passphrase) => backupAction(async () => {
+  const r = await appAccount.saveBackup(passphraseOf(passphrase));
+  return r.ok ? { ok: true, message: "Backed up. Remember your passphrase: VoxelPort can't recover it." } : backupFailure(r.error);
+})));
+ipcMain.handle('identity:restore', guarded(g, (_e, passphrase) => backupAction(async () => {
+  // This PC's address is the device token of the running public address: swapping it under a live tunnel would split the two.
+  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore.' };
+  const r = await appAccount.restoreBackup(passphraseOf(passphrase));
+  if (!r.ok) return backupFailure(r.error);
+  if (publicAddressLive()) return { ok: false, error: 'Stop the public address first, then restore.' }; // started while the backup was being opened
+  try { replaceToken(userDataDir(), r.token, safeStorage); } catch { return backupFailure('failed'); }
+  deviceToken = r.token;
+  tokenUnreadable = false;
+  tokenEncryptedAtRest = !!(safeStorage && safeStorage.isEncryptionAvailable());
+  appAccount.setDeviceToken(deviceToken);
+  refreshDiscord().catch(() => {});
+  return { ok: true, message: 'Restored. Make your server public to get your address back.' };
+})));
+ipcMain.handle('identity:delete', guarded(g, () => backupAction(async () => {
+  const r = await appAccount.deleteBackup();
+  return r.ok ? { ok: true, message: 'Backup deleted.' } : backupFailure(r.error);
+})));
 ipcMain.handle('discord:openInvite', guarded(g, () => {
   const url = discordState().inviteUrl;
   if (typeof url !== 'string' || !/^https:\/\/discord\.gg\/[A-Za-z0-9-]{2,32}$/.test(url)) return { ok: false };
@@ -718,12 +819,28 @@ ipcMain.handle('app:versions', guarded(g, async () => {
   };
 }));
 
+// The theme the person chose in App Settings. Only these three words are accepted.
+ipcMain.handle('app:setTheme', guarded(g, (_evt, { theme }) => {
+  prefs.theme = normalizeTheme(theme);
+  savePrefs();
+  nativeTheme.themeSource = prefs.theme;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground());
+  return { ok: true, theme: prefs.theme };
+}));
+
 ipcMain.handle('app:setLanguage', guarded(g, (_evt, { lang }) => {
   uiLang = lang === 'hinglish' ? 'hinglish' : 'en';
   return { ok: true };
 }));
 
 ipcMain.handle('update:state', guarded(g, () => ({ readyToInstall: updater.readyToInstall })));
+
+// The Settings "Check for updates" button. A finished download also shows the "ready to install" banner again.
+ipcMain.handle('update:check', guarded(g, async () => {
+  const result = await updater.checkNow();
+  if (result.status === 'downloaded') send('update:downloaded', result.version);
+  return result;
+}));
 
 // Applying a downloaded update quits and relaunches the app — never do that
 // silently while a managed server is running or the tunnel is public
@@ -884,7 +1001,7 @@ async function startTunnelInternal({ localPort, relayUrl, profileId, udpPort = n
   if (profileId) tunnel.setListing(buildListing(serverProfiles.getProfile(userDataDir(), profileId)));
   publicServerProfileId = profileId || null;
   manualTunnelActive = !profileId;
-  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, voicePort, voiceAuto, client: `desktop/${app.getVersion()}` });
+  tunnel.start({ relayUrls, token: deviceToken, localPort: port, udpPort, bedrockPort: udpPort, voicePort, voiceAuto, client: `desktop/${app.getVersion()}` });
   broadcastState();
   return { ok: true };
 }
@@ -903,7 +1020,10 @@ ipcMain.handle('server:makePublic', guarded(g, (_evt, { id }) => {
   if (!serverProc.child) {
     return { ok: false, error: 'Wait for the server to finish starting, then make it public.' };
   }
-  const udpPort = profile.bedrock ? bedrockPort(profile.serverDir) : null;
+  // A deliberate make-public clears the once-per-endpoint auto-restart guard, so a
+  // fresh attempt can relaunch for Bedrock again if needed.
+  bedrockAutoRestartedFor = null;
+  const udpPort = profile.bedrock ? localBedrockPort(profile) : null;
   return startTunnelInternal({ localPort: profile.port, relayUrl: DEFAULT_RELAY_URL, profileId: id, udpPort, voicePort: profile.voice?.enabled ? profile.voice.port : null });
 }));
 
@@ -1129,12 +1249,17 @@ ipcMain.handle('server:chooseFolder', guarded(g, async () => {
 // ─── Install (Vanilla/Paper/Fabric) ─────────────────────────────────────────
 
 ipcMain.handle('server:templates', guarded(g, () => serverSettings.TEMPLATES.map((t) => ({
-  id: t.id, label: t.label, blurb: t.blurb, type: t.type, bedrock: Boolean(t.bedrock),
+  id: t.id, label: t.label, blurb: t.blurb, type: t.type, bedrock: Boolean(t.bedrock), cracked: Boolean(t.cracked),
 }))));
 
-ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, port, minRamMb, maxRamMb, serverDir, templateId }) => {
+ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, port, minRamMb, maxRamMb, serverDir, templateId, crackedConfirmed }) => {
   const template = templateId ? serverSettings.getTemplate(templateId) : null;
   if (templateId && !template) throw new Error('Unknown template.');
+  // A cracked server turns off Minecraft's account check, so, like the Settings switch, it only happens
+  // after the user has seen the risks and said yes (the main process insists, not just the dialog).
+  if (template && template.cracked && crackedConfirmed !== true) {
+    throw new Error('Confirm that you want to allow cracked players first.');
+  }
   const portNum = Number(port);
   if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
     throw new Error('Enter a valid server port (1–65535).');
@@ -1154,12 +1279,28 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   fs.mkdirSync(dir, { recursive: true });
 
   send('install:progress', { phase: 'resolving' });
-  const { url, checksum } = await mcVersions.resolveDownload(type, version);
+  const resolved = await mcVersions.resolveDownload(type, version);
+  const { url, checksum, build } = resolved;
 
   send('install:progress', { phase: 'downloading', received: 0, total: 0 });
-  await downloadServerJar(url, path.join(dir, 'server.jar'), (p) => {
+  const jarPath = path.join(dir, 'server.jar');
+  await downloadServerJar(url, jarPath, (p) => {
     send('install:progress', { phase: 'downloading', ...p });
   }, checksum);
+
+  // Verify the jar really is the selected Minecraft version (locked decision 3):
+  // read version.json from inside it. Fabric launcher jars carry none, so a null
+  // result means "can't verify from the jar", which we accept only for Fabric.
+  send('install:progress', { phase: 'verifying' });
+  const jarVersion = await readJarMinecraftVersion(jarPath).catch(() => null);
+  if (jarVersion && jarVersion !== version) {
+    fs.rmSync(jarPath, { force: true });
+    throw new Error(`Downloaded server is Minecraft ${jarVersion}, not the ${version} you selected. Nothing was installed.`);
+  }
+  if (!jarVersion && type !== 'fabric') {
+    fs.rmSync(jarPath, { force: true });
+    throw new Error(`Couldn't read the Minecraft version from the downloaded ${type} server to confirm it is ${version}. Nothing was installed.`);
+  }
 
   writeEula(dir);
   writeServerProperties(dir, { port: portNum, extra: template ? template.properties : {} });
@@ -1167,6 +1308,7 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
   let profile = serverProfiles.createProfile(userDataDir(), {
     name: name || (template ? template.label : `${type[0].toUpperCase()}${type.slice(1)} server`),
     type, version, serverDir: dir, port: portNum, minRamMb: minRam, maxRamMb: maxRam,
+    build: build != null ? String(build) : undefined,
     template: template ? template.id : undefined,
   });
 
@@ -1180,8 +1322,86 @@ ipcMain.handle('server:install', guarded(g, async (_evt, { name, type, version, 
       warning = `Bedrock support couldn't be added (${err.message}). You can turn it on later in Settings.`;
     }
   }
+  if (template && template.cracked) {
+    send('install:progress', { phase: 'cracked' });
+    // Login plugin first, then offline mode (only if the login plugin is really there), then skins.
+    const result = await accounts.setUpCrackedServer({ serverDir: dir, type, version });
+    if (result.warnings.length) warning = [warning, ...result.warnings].filter(Boolean).join(' ');
+  }
   send('install:progress', { phase: 'done' });
   return { ok: true, profile, warning };
+}));
+
+/**
+ * Changes an existing server's Minecraft version: backs the server up first,
+ * downloads and verifies the new jar, swaps it in, updates the stored version
+ * and build, and warns about things that may now be incompatible (Bedrock /
+ * Geyser, mods/plugins built for the old version). The server must be stopped.
+ * The world and configs are left untouched; only server.jar is replaced, and
+ * only after the new jar is confirmed to be the requested version.
+ */
+ipcMain.handle('server:changeVersion', guarded(g, async (_evt, { id, version }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  if (typeof version !== 'string' || !version.trim()) return { ok: false, error: 'Choose a Minecraft version.' };
+  if (version === profile.version) return { ok: false, error: `This server is already on Minecraft ${version}.` };
+  if (serverProc.child && activeServerProfileId === id) {
+    return { ok: false, error: 'Stop the server before changing its Minecraft version.' };
+  }
+  if (backupService.isBusy(id)) return { ok: false, error: 'A backup or restore is running for this server. Try again in a moment.' };
+
+  const dir = profile.serverDir;
+  const jarPath = path.join(dir, 'server.jar');
+
+  // 1. Back up first, so nothing is lost if the switch goes wrong (never skip this).
+  send('install:progress', { phase: 'backing-up' });
+  try {
+    const backup = await backupService.create(id, 'manual');
+    if (backup && backup.ok === false) throw new Error(backup.error || 'backup failed');
+  } catch (err) {
+    return { ok: false, error: `Couldn't back the server up first, so nothing was changed (${err.message}).` };
+  }
+
+  // 2. Resolve + download the new version to a side path, then verify it before swapping.
+  send('install:progress', { phase: 'resolving' });
+  let resolved;
+  try {
+    resolved = await mcVersions.resolveDownload(profile.type, version);
+  } catch (err) {
+    return { ok: false, error: `Minecraft ${version} isn't available for ${profile.type}: ${err.message}. The server is unchanged.` };
+  }
+  const stagedPath = path.join(dir, '.server.jar.new');
+  send('install:progress', { phase: 'downloading', received: 0, total: 0 });
+  try {
+    await downloadServerJar(resolved.url, stagedPath, (p) => send('install:progress', { phase: 'downloading', ...p }), resolved.checksum);
+  } catch (err) {
+    fs.rmSync(stagedPath, { force: true });
+    return { ok: false, error: `Download failed: ${err.message}. The server is unchanged.` };
+  }
+
+  send('install:progress', { phase: 'verifying' });
+  const jarVersion = await readJarMinecraftVersion(stagedPath).catch(() => null);
+  if ((jarVersion && jarVersion !== version) || (!jarVersion && profile.type !== 'fabric')) {
+    fs.rmSync(stagedPath, { force: true });
+    const got = jarVersion ? `Minecraft ${jarVersion}` : `an unverifiable ${profile.type} jar`;
+    return { ok: false, error: `Downloaded ${got}, not the ${version} you selected. The server is unchanged.` };
+  }
+
+  // 3. Swap the verified jar in and record the new version + build.
+  fs.renameSync(stagedPath, jarPath);
+  const updated = serverProfiles.updateProfile(userDataDir(), id, {
+    version,
+    build: resolved.build != null ? String(resolved.build) : undefined,
+  });
+
+  // 4. Warn about things that may need attention after a version change.
+  const warnings = [];
+  if (profile.bedrock) warnings.push('This server has Bedrock support (Geyser): re-enable it in Settings so Geyser matches the new version.');
+  if (profile.type === 'fabric') warnings.push('Check that your mods support Minecraft ' + version + '.');
+  else warnings.push('Check that your plugins support Minecraft ' + version + '.');
+
+  send('install:progress', { phase: 'done' });
+  return { ok: true, profile: updated, warning: warnings.join(' ') };
 }));
 
 // ─── Single managed server process (item 6) ─────────────────────────────────
@@ -1232,10 +1452,32 @@ async function startServerProfile(id, { retried = false } = {}) {
     return { ok: true, alreadyRunning: true, port: profile.port };
   }
 
+  // The real running version comes from the jar when readable (decision 4), not
+  // just the stored config. Read it once; reuse it for the pre-flight and the
+  // diagnostic report. Fabric launcher jars have none, so fall back to config.
+  let runningVersion = profile.version;
+  try {
+    const fromJar = await readJarMinecraftVersion(path.join(profile.serverDir, 'server.jar'));
+    if (fromJar) runningVersion = fromJar;
+  } catch { /* keep the stored version */ }
+
+  // Bedrock/Geyser compatibility pre-flight (locked decision 5): if this server
+  // has Bedrock support on, make sure a Geyser build actually supports its
+  // Minecraft version before it starts — otherwise Bedrock players would be let
+  // in and then disconnected ("does not support Java Edition X"). We warn and
+  // still start (Java players are unaffected); we never block on our own check
+  // failing.
+  if (profile.bedrock) {
+    const compat = await checkGeyserCompatible(profile.type, runningVersion);
+    if (!compat.ok) {
+      send('server:log', `[VoxelPort] Bedrock warning: ${compat.reason} Fix: change this server to a version Geyser supports (Settings → change version), or turn Bedrock off. Java players are unaffected.`);
+    }
+  }
+
   serverProfiles.touchProfile(userDataDir(), id);
   activeServerProfileId = id;
   // Retain only support metadata after a crash clears the active profile ID.
-  diagnosticServer = { type: profile.type, version: profile.version, port: profile.port };
+  diagnosticServer = { type: profile.type, version: runningVersion, build: profile.build || null, port: profile.port };
   if (!retried) diagnosticLines.length = 0;
 
   // Prefer the Java VoxelPort installed itself; otherwise java on the PATH.
@@ -1272,7 +1514,10 @@ async function startServerProfile(id, { retried = false } = {}) {
   if (voiceRestartNeeded.delete(id)) {
     publishVoiceState({ message: 'Voice chat is configured automatically. Players join using your server address and the matching voice mod.' });
   }
-  serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath });
+  const bedrock = profile.bedrock ? { localPort: localBedrockPort(profile),
+    ...readBedrockEndpoint(userDataDir(), id, deviceToken) } : null;
+  activeBedrockLaunch = bedrock ? { ...bedrock, profileId: id } : null;
+  serverProc.start({ serverDir: profile.serverDir, minRamMb: profile.minRamMb, maxRamMb: profile.maxRamMb, javaPath: java.javaPath, bedrock });
   if (serverProc.child && serverProc.child.pid) perf.start(serverProc.child.pid);
   broadcastState();
   return { ok: true, port: profile.port };
@@ -1285,6 +1530,39 @@ ipcMain.handle('server:stop', guarded(g, () => {
 }));
 
 // Stop the running server, wait for it to exit, then start the same profile again (voice setup and plugin changes need this).
+/**
+ * Relaunches a running, public Bedrock server once so Geyser comes up advertising
+ * the Bedrock address the relay just assigned (the relay only assigns it at
+ * make-public, after the first start). Runs at most once per assigned endpoint, so
+ * a server that still doesn't match (e.g. the relay keeps giving a new port) is not
+ * restarted in a loop — it falls back to the manual note. Best-effort: any problem
+ * leaves the server running and tells the user to restart by hand.
+ */
+async function autoRestartForBedrock(id, endpoint) {
+  const key = `${id}|${endpoint.publicHost}:${endpoint.publicPort}`;
+  if (bedrockAutoRestartedFor === key) {
+    send('server:log', '[VoxelPort] Bedrock still needs a manual restart: Stop, then Start the server once to activate its Bedrock address. Java is unaffected.');
+    return;
+  }
+  // Only act on the server that is actually running and public right now.
+  if (activeServerProfileId !== id || publicServerProfileId !== id || !serverProc.child) return;
+  bedrockAutoRestartedFor = key;
+  send('server:log', '[VoxelPort] Activating the Bedrock address — restarting the server once. Java players reconnect automatically.');
+  try {
+    stopRequested = true;
+    serverProc.stop();
+    await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+    if (serverProc.child) {
+      send('server:log', '[VoxelPort] The server was slow to stop; Start it once to finish activating Bedrock.');
+      return;
+    }
+    const res = await startServerProfile(id);
+    if (!res || !res.ok) send('server:log', '[VoxelPort] Could not restart automatically; Start the server once to activate Bedrock.');
+  } catch (err) {
+    send('server:log', `[VoxelPort] Could not restart automatically (${err.message}); Start the server once to activate Bedrock.`);
+  }
+}
+
 ipcMain.handle('server:restart', guarded(g, () => restartActiveServer()));
 async function restartActiveServer() {
   const id = activeServerProfileId;
@@ -1377,7 +1655,7 @@ ipcMain.handle('server:settings:get', guarded(g, (_evt, { id }) => {
     profile,
     fields: serverSettings.SETTINGS,
     values: serverSettings.readSettings(profile.serverDir),
-    bedrock: { supported: bedrockSupported(profile.type), enabled: Boolean(profile.bedrock), port: bedrockPort(profile.serverDir) },
+    bedrock: { supported: bedrockSupported(profile.type), enabled: Boolean(profile.bedrock), port: localBedrockPort(profile) },
     listing: profile.listing || { enabled: false, description: '' },
     totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
     running: activeServerProfileId === id && Boolean(serverProc.child),
@@ -1393,7 +1671,7 @@ ipcMain.handle('server:settings:save', guarded(g, (_evt, { id, name, port, ramMb
   if (voice !== undefined) {
     if (!voice || typeof voice.enabled !== 'boolean' || !['simple', 'plasmo'].includes(voice.plugin)
       || !Number.isInteger(voice.port) || voice.port < 1 || voice.port > 65535) throw new Error('Enter a valid voice plugin and UDP port (1–65535).');
-    if (voice.enabled && profile.bedrock && voice.port === bedrockPort(profile.serverDir)) throw new Error('Voice chat and Bedrock need different local UDP ports.');
+    if (voice.enabled && profile.bedrock && voice.port === localBedrockPort(profile)) throw new Error('Voice chat and Bedrock need different local UDP ports.');
     changes.voice = { enabled: voice.enabled, plugin: voice.plugin, port: voice.port };
   }
   if (typeof name === 'string' && name.trim()) changes.name = name.trim().slice(0, 60);
@@ -1434,7 +1712,6 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
   try {
     if (enabled) {
       if (!bedrockSupported(profile.type)) return { ok: false, error: 'Bedrock players need a Paper or Fabric server.' };
-      if (profile.voice?.enabled && profile.voice.port === bedrockPort(profile.serverDir)) return { ok: false, error: 'Voice chat and Bedrock need different local UDP ports.' };
       await installBedrockSupport({
         serverDir: profile.serverDir, type: profile.type, version: profile.version,
         onProgress: (p) => send('bedrock:progress', p),
@@ -1452,7 +1729,7 @@ ipcMain.handle('server:bedrock:set', guarded(g, async (_evt, { id, enabled }) =>
       publicServerProfileId = null;
       await startTunnelInternal({
         localPort: updated.port, relayUrl: DEFAULT_RELAY_URL, profileId: id,
-        udpPort: updated.bedrock ? bedrockPort(updated.serverDir) : null,
+        udpPort: updated.bedrock ? localBedrockPort(updated) : null,
         voicePort: updated.voice?.enabled ? updated.voice.port : null,
       });
     }
@@ -1544,16 +1821,26 @@ ipcMain.handle('server:accounts:installLogin', guarded(g, async (_evt, { id }) =
 
 const serverIsRunning = (id) => activeServerProfileId === id && Boolean(serverProc.child);
 
-ipcMain.handle('addons:get', guarded(g, (_evt, { id }) => {
+ipcMain.handle('addons:get', guarded(g, async (_evt, { id }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) throw new Error('Server profile not found.');
   const supported = addons.supported(profile.type);
+  const installed = supported ? addons.installedAddons(profile.serverDir) : [];
+  // Everything else in the folder (Geyser and Floodgate from Bedrock support, files added by hand): listed so nothing
+  // is hidden, with its real version, but never offered for removal here.
+  const mine = new Set(installed.map((a) => a.file));
+  const others = supported
+    ? (await readAllPlugins(profile.serverDir))
+      .filter((p) => p.dir === addons.folderFor(profile.type) && !mine.has(p.file))
+      .map((p) => ({ title: p.label, version: p.version || '', file: p.file, bedrock: p.key === 'geyser' || p.key === 'floodgate' }))
+    : [];
   return {
     supported,
     type: profile.type,
     version: profile.version,
     folder: supported ? addons.folderFor(profile.type) : '',
-    installed: supported ? addons.installedAddons(profile.serverDir) : [],
+    installed,
+    others,
     running: serverIsRunning(id),
   };
 }));
@@ -1573,7 +1860,7 @@ ipcMain.handle('addons:search', guarded(g, async (_evt, { id, query, anyVersion,
 }));
 
 let addonsBusy = false;
-ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title }) => {
+ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title, icon }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };
   if (addonsBusy) return { ok: false, error: 'Already installing — one moment.' };
@@ -1581,7 +1868,7 @@ ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title 
   try {
     const installed = await addons.installAddon({
       serverDir: profile.serverDir, type: profile.type, version: profile.version, projectId,
-      title: typeof title === 'string' ? title : '', running: serverIsRunning(id),
+      title: typeof title === 'string' ? title : '', icon: typeof icon === 'string' ? icon : '', running: serverIsRunning(id),
       onProgress: (p) => send('addons:progress', p),
     });
     return { ok: true, installed, restartNeeded: serverIsRunning(id) };
@@ -1593,10 +1880,17 @@ ipcMain.handle('addons:install', guarded(g, async (_evt, { id, projectId, title 
   }
 }));
 
+// A plugin icon, fetched here because the page may not load anything from the internet. '' means no icon.
+ipcMain.handle('addons:icon', guarded(g, async (_evt, { url }) => addons.fetchAddonIcon(url)));
+
 ipcMain.handle('addons:remove', guarded(g, (_evt, { id, projectId }) => {
   const profile = serverProfiles.getProfile(userDataDir(), id);
   if (!profile) return { ok: false, error: 'Server profile not found.' };
   if (addonsBusy) return { ok: false, error: 'Already installing — one moment.' };
+  // The login plugin is what keeps a cracked server from letting anyone join as the owner: not while that is on.
+  if (projectId === accounts.LOGIN_PROJECT && accounts.isCracked(profile.serverDir)) {
+    return { ok: false, error: 'This server lets in cracked players, so it needs its login plugin (AuthMe). Turn off cracked players in Settings first.' };
+  }
   try {
     addons.removeAddon({ serverDir: profile.serverDir, projectId, running: serverIsRunning(id) });
     return { ok: true };
@@ -1812,3 +2106,33 @@ ipcMain.handle('server:state', guarded(g, () => ({
   manualTunnelActive,
   serverStatus: currentServerStatus(),
 })));
+
+/**
+ * The actual installed version and plugin versions for a server, read from disk
+ * (decision 4), plus whether a Geyser build supports that version when Bedrock is
+ * on. `storedVersion` is returned too so the UI can show "config says X, jar is Y"
+ * if they ever differ.
+ */
+ipcMain.handle('server:runtimeInfo', guarded(g, async (_evt, { id }) => {
+  const profile = serverProfiles.getProfile(userDataDir(), id);
+  if (!profile) return { ok: false, error: 'Server profile not found.' };
+  const info = await readRuntimeInfo(profile.serverDir);
+  const runningVersion = info.minecraftVersion || profile.version;
+  let bedrockCompatible = null;
+  if (profile.bedrock) {
+    const c = await checkGeyserCompatible(profile.type, runningVersion);
+    bedrockCompatible = c.unknown ? null : c.ok;
+  }
+  return {
+    ok: true,
+    type: profile.type,
+    storedVersion: profile.version,
+    runningVersion,
+    jarVersionReadable: info.minecraftVersion != null,
+    build: profile.build || null,
+    plugins: info.plugins,
+    stagedUpdates: info.stagedUpdates,
+    bedrock: !!profile.bedrock,
+    bedrockCompatible,
+  };
+}));

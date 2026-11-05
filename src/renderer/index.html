@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" />
   <title>VoxelPort</title>
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="theme-dark.css" />
+  <link rel="stylesheet" href="theme-light.css" />
 </head>
 <body>
   <header class="head">
@@ -337,6 +339,7 @@
         <div class="bedrock-line hidden" id="srvBedrock">
           <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
         </div>
+        <p class="hint hidden" id="srvBedrockStatus" role="status"></p>
         <div class="invite-row">
           <button id="srvInviteBtn" class="ghost small" type="button">Copy invite message</button>
           <button id="srvInviteAltBtn" class="link-btn" type="button"></button>
@@ -355,13 +358,13 @@
             <button class="link-btn" id="nameRemoveBtn" type="button">Remove</button>
           </div>
           <div class="name-edit" id="nameEdit">
-            <span class="share-label">Get a custom address — free</span>
+            <span class="share-label">Your address is free — a custom name is a supporter perk</span>
             <div class="name-row">
               <input id="nameInput" type="text" maxlength="20" placeholder="yourname" spellcheck="false" autocomplete="off" />
               <span class="name-suffix">.voxelport.in</span>
               <button id="nameClaimBtn" class="ghost small" type="button">Claim</button>
             </div>
-            <div class="name-msg" id="nameMsg">Friends join without a port number. 3–20 letters, numbers or dashes.</div>
+            <div class="name-msg" id="nameMsg">A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.</div>
           </div>
         </div>
 
@@ -408,6 +411,23 @@
           <span class="label">Memory (RAM) — <span id="setRamLabel">–</span> MB</span>
           <input id="setRam" type="range" min="512" step="256" />
         </label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Minecraft version</div>
+        <dl class="about-list" id="setRuntimeList">
+          <div><dt>Installed</dt><dd id="setInstalledVersion">…</dd></div>
+          <div id="setPluginsRow" class="hidden"><dt>Plugins</dt><dd id="setPlugins">—</dd></div>
+        </dl>
+        <p class="hint hidden" id="setStagedMsg"></p>
+        <p class="hint hidden" id="setBedrockCompatMsg"></p>
+        <label class="field">
+          <span class="label">Change Minecraft version</span>
+          <select id="setVersionSelect"><option>…</option></select>
+        </label>
+        <p class="hint">Changing the version backs this server up first, then downloads and verifies the new one. Your world and settings are kept; check your plugins or mods work on the new version.</p>
+        <div><button class="ghost small" id="setChangeVersionBtn" type="button">Change version</button></div>
+        <p class="hint" id="setChangeVersionMsg" role="status"></p>
       </div>
 
       <div class="set-group">
@@ -529,7 +549,7 @@
 
       <div class="set-group">
         <div class="set-group-title">Installed</div>
-        <div class="hint">Only the ones installed from here are listed. Files you added yourself are never touched.</div>
+        <div class="hint">Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.</div>
         <div class="hint hidden" id="adRunningNote">The server is running. You can add new ones now, but stop it to remove or update one.</div>
         <div class="bk-list" id="adInstalled"></div>
       </div>
@@ -607,6 +627,18 @@
       <div class="screen-title"><div><div class="label">VoxelPort</div><h1>APP SETTINGS</h1></div></div>
 
       <div class="set-group">
+        <div class="set-group-title">Appearance</div>
+        <label class="field">
+          <span class="label">Color theme</span>
+          <select id="appThemeSelect">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">Match system</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="set-group">
         <div class="set-group-title">Language</div>
         <label class="field">
           <span class="label">App language</span>
@@ -633,6 +665,14 @@
         <p class="hint">Add friends at accounts.voxelport.in under Remote control. They can start, stop and restart your server and watch the console (player IP addresses are hidden). They cannot run commands or open your files. It only works while VoxelPort is running on this PC.</p>
       </div>
 
+      <div class="set-group hidden" id="setBackupGroup">
+        <div class="set-group-title">Address backup</div>
+        <p class="hint">Back up your address to your Discord account, so you can get it back on a new PC or phone.</p>
+        <p class="hint" id="setBackupStatus" role="status"></p>
+        <div id="setBackupActions"></div>
+        <div id="setBackupForm" class="hidden"></div>
+      </div>
+
       <div class="set-group">
         <div class="set-group-title">Device token</div>
         <label class="field">
@@ -655,7 +695,8 @@
           <div><dt>System</dt><dd id="aboutPlatform">…</dd></div>
         </dl>
         <p class="hint">Each server uses the Java version its Minecraft version needs. VoxelPort downloads it for you when it is missing.</p>
-        <div><button class="ghost small" id="aboutCopyBtn" type="button">Copy version details</button></div>
+        <div class="row"><button class="ghost small" id="aboutCopyBtn" type="button">Copy version details</button> <button class="ghost small" id="updateCheckBtn" type="button">Check for updates</button></div>
+        <p class="hint" id="updateCheckStatus" role="status"></p>
       </div>
     </section>
 

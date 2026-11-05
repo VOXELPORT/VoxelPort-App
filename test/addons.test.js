@@ -6,7 +6,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { searchAddons, installAddon, removeAddon, installedAddons, projectsInFolder, folderFor, supported } = require('../src/main/addons');
+const {
+  searchAddons, installAddon, removeAddon, installedAddons, projectsInFolder, folderFor, supported,
+  registerAddon, fetchAddonIcon, isIconUrl,
+} = require('../src/main/addons');
 
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'vp-addons-'));
 const ID = (c) => c.repeat(8); // a project id looks like 8 letters/digits
@@ -97,7 +100,8 @@ test('search results keep only what is shown, as text, and drop anything without
     },
   });
   const { hits, more } = await searchAddons({ type: 'paper', version: '1.21.4', fetchImpl });
-  assert.deepEqual(hits, [{ id: ID('A'), slug: 'a', title: 'Alpha', desc: '<img src=x onerror=1>', downloads: 1200, author: 'zed' }]);
+  // The icon address from a foreign host is dropped: only Modrinth's own image host is ever kept.
+  assert.deepEqual(hits, [{ id: ID('A'), slug: 'a', title: 'Alpha', desc: '<img src=x onerror=1>', downloads: 1200, author: 'zed', icon: '' }]);
   assert.equal(more, false);
 });
 
@@ -365,4 +369,75 @@ test('K6: updating one VoxelPort installed (same file name) still works', async 
   await installAddon({ serverDir: dir, type: 'paper', version: '1.21.4', projectId: ID('A'), title: 'Thing', fetchImpl, download });
   assert.equal(calls.length, 2);
   assert.equal(installedAddons(dir).length, 1);
+});
+
+// ─── Icons and plugins registered by another route ──────────────────────────────
+
+const ICON = 'https://cdn.modrinth.com/data/AAAAAAAA/icon.png';
+
+test("only Modrinth's own image host over https counts as an icon address", () => {
+  assert.equal(isIconUrl(ICON), true);
+  for (const bad of ['http://cdn.modrinth.com/x.png', 'https://evil.example/x.png', 'https://cdn.modrinth.com.evil.example/x.png',
+    'https://user:pw@cdn.modrinth.com/x.png', 'https://cdn.modrinth.com:8443/x.png', 'javascript:alert(1)', '', null, undefined, 42, 'https://cdn.modrinth.com/' + 'a'.repeat(400)]) {
+    assert.equal(isIconUrl(bad), false, String(bad));
+  }
+});
+
+test('search results carry a real Modrinth icon address', async () => {
+  const { fetchImpl } = fakeModrinth({ 'https://api.modrinth.com/v2/search': { hits: [{ project_id: ID('A'), title: 'Alpha', icon_url: ICON }] } });
+  const { hits } = await searchAddons({ type: 'paper', version: '1.21.4', fetchImpl });
+  assert.equal(hits[0].icon, ICON);
+});
+
+function imageResponse({ type = 'image/png', bytes = Buffer.from('PNGDATA'), ok = true } = {}) {
+  return async () => ({ ok, headers: { get: (h) => (h.toLowerCase() === 'content-type' ? type : null) }, arrayBuffer: async () => bytes });
+}
+
+test('fetchAddonIcon returns a data: image for a small real image and nothing else', async () => {
+  const url = 'https://cdn.modrinth.com/data/BBBBBBBB/icon.png';
+  const ok = await fetchAddonIcon(url, imageResponse({ bytes: Buffer.from('hello') }));
+  assert.equal(ok, 'data:image/png;base64,' + Buffer.from('hello').toString('base64'));
+  // Not an image type, an error status, empty, or too big: no icon (the letter stays).
+  assert.equal(await fetchAddonIcon('https://cdn.modrinth.com/data/CCCCCCCC/a.png', imageResponse({ type: 'text/html' })), '');
+  assert.equal(await fetchAddonIcon('https://cdn.modrinth.com/data/DDDDDDDD/a.png', imageResponse({ type: 'image/svg+xml' })), '');
+  assert.equal(await fetchAddonIcon('https://cdn.modrinth.com/data/EEEEEEEE/a.png', imageResponse({ ok: false })), '');
+  assert.equal(await fetchAddonIcon('https://cdn.modrinth.com/data/FFFFFFFF/a.png', imageResponse({ bytes: Buffer.alloc(0) })), '');
+  assert.equal(await fetchAddonIcon('https://cdn.modrinth.com/data/GGGGGGGG/a.png', imageResponse({ bytes: Buffer.alloc(300 * 1024) })), '');
+  // A network failure is just "no icon", never an exception.
+  assert.equal(await fetchAddonIcon('https://cdn.modrinth.com/data/HHHHHHHH/a.png', async () => { throw new Error('offline'); }), '');
+});
+
+test('fetchAddonIcon never even asks a foreign or non-https address, and remembers answers', async () => {
+  let asked = 0;
+  const counting = async (...a) => { asked++; return imageResponse()(...a); };
+  assert.equal(await fetchAddonIcon('https://evil.example/x.png', counting), '');
+  assert.equal(await fetchAddonIcon('http://cdn.modrinth.com/x.png', counting), '');
+  assert.equal(asked, 0);
+  const url = 'https://cdn.modrinth.com/data/IIIIIIII/icon.png';
+  await fetchAddonIcon(url, counting);
+  await fetchAddonIcon(url, counting);
+  assert.equal(asked, 1, 'the second look came from the cache');
+});
+
+test('registerAddon lists a plugin VoxelPort put there, keeps its icon, and replaces an earlier entry', () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  fs.writeFileSync(path.join(dir, 'plugins', 'AuthMe-5.7.0.jar'), 'x');
+  registerAddon({ serverDir: dir, projectId: ID('A'), title: 'AuthMe', file: 'AuthMe-5.7.0.jar', icon: ICON });
+  let list = installedAddons(dir);
+  assert.deepEqual(list, [{ id: ID('A'), title: 'AuthMe', file: 'AuthMe-5.7.0.jar', dir: 'plugins', icon: ICON }]);
+  fs.writeFileSync(path.join(dir, 'plugins', 'AuthMe-5.8.0.jar'), 'y');
+  registerAddon({ serverDir: dir, projectId: ID('A'), title: 'AuthMe', file: 'AuthMe-5.8.0.jar', icon: 'https://evil.example/x.png' });
+  list = installedAddons(dir);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].file, 'AuthMe-5.8.0.jar');
+  assert.equal('icon' in list[0], false, 'a foreign icon address is never stored');
+});
+
+test('registerAddon refuses odd names, folders and ids', () => {
+  const dir = tmpDir();
+  assert.throws(() => registerAddon({ serverDir: dir, projectId: ID('A'), title: 't', file: '../evil.jar' }));
+  assert.throws(() => registerAddon({ serverDir: dir, projectId: ID('A'), title: 't', file: 'ok.jar', dir: 'config' }));
+  assert.throws(() => registerAddon({ serverDir: dir, projectId: 'x/../y', title: 't', file: 'ok.jar' }));
+  assert.throws(() => registerAddon({ serverDir: 'relative', projectId: ID('A'), title: 't', file: 'ok.jar' }));
 });

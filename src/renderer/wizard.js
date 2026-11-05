@@ -217,6 +217,16 @@ function updateInstallEnabled() {
 eulaCheck.addEventListener('change', updateInstallEnabled);
 
 installBtn.addEventListener('click', async () => {
+  // The cracked template turns off Minecraft's account check, so it asks first, with the same words as the
+  // Settings switch (the main process refuses to install it without this confirmation).
+  const chosen = templates.find((t) => t.id === wizardState.templateId);
+  const cracked = Boolean(chosen && chosen.cracked);
+  if (cracked && !window.confirm(
+    window.t('Allow cracked players?') + '\n\n' +
+    window.t("This turns off Minecraft's account check, so people without a paid account can join.") + '\n\n' +
+    window.t("• Anyone can join under any name, including yours or an admin's, unless you use the whitelist or a login plugin.")
+  )) return;
+
   showScreen('screen-install');
   installFill.style.width = '0%';
   installText.textContent = window.t('Preparing…');
@@ -232,6 +242,7 @@ installBtn.addEventListener('click', async () => {
       maxRamMb: wizardState.ramMb,
       serverDir: wizardState.serverDir,
       templateId: wizardState.templateId || undefined,
+      crackedConfirmed: cracked ? true : undefined,
     });
   } catch (err) {
     installText.textContent = window.t('Install failed: {why}', { why: err && err.message ? err.message : err });
@@ -256,6 +267,9 @@ window.vp.on('install:progress', (p) => {
     installText.textContent = p.total
       ? window.t('Downloading… {pct}% ({done} / {total} MB)', { pct, done: mb(p.received), total: mb(p.total) })
       : window.t('Downloading…');
+  } else if (p.phase === 'cracked') {
+    installFill.style.width = '100%';
+    installText.textContent = window.t('Setting up player passwords and skins…');
   } else if (p.phase === 'bedrock') {
     installFill.style.width = '100%';
     installText.textContent = window.t('Adding Bedrock support (Geyser + Floodgate)…');

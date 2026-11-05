@@ -94,10 +94,13 @@ function isValidRelayMessage(msg) {
   switch (msg.type) {
     case 'port':
       return Number.isInteger(msg.port) && msg.port >= 1 && msg.port <= 65535
+        && (msg.bedrock_port === undefined || (Number.isInteger(msg.bedrock_port) && msg.bedrock_port >= 1 && msg.bedrock_port <= 65535
+          && msg.bedrock_port !== msg.port && msg.bedrock_port !== msg.voice_port))
         && (msg.voice_port === undefined || (Number.isInteger(msg.voice_port) && msg.voice_port >= 1 && msg.voice_port <= 65535))
         && (msg.bin === undefined || Number.isInteger(msg.bin));
     case 'connect':
-      return isValidConnId(msg.conn) && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
+      return isValidConnId(msg.conn) && (msg.bedrock === undefined || typeof msg.bedrock === 'boolean')
+        && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
     case 'data':
       return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_B64_DATA_CHARS;
     case 'close':
@@ -141,9 +144,9 @@ function isValidRelayMessage(msg) {
  *         'listingError' (message), 'udpError' (message),
  *         'notice' ({ message, seconds } — an announcement from the relay's operator; empty message = withdrawn).
  *
- * With `udpPort`, Bedrock players are bridged too: the relay forwards UDP on
- * the same public port, and each remote player becomes a local UDP socket
- * talking to Geyser on 127.0.0.1:udpPort.
+ * With `bedrockPort` and `udpPort`, the relay allocates a separate TCP+UDP
+ * endpoint for Geyser signaling and gameplay. UDP-only callers retain the
+ * legacy RakNet path. Signaling streams use the existing TCP data framing.
  */
 class Tunnel extends EventEmitter {
   constructor() {
@@ -184,13 +187,15 @@ class Tunnel extends EventEmitter {
    * after any drop of an established connection, the preferred one is tried
    * again first. `relayUrl` alone is the single-candidate form.
    */
-  start({ relayUrl, relayUrls, token, localPort, udpPort = null, voicePort = null, voiceAuto = false, client = null }) {
+  start({ relayUrl, relayUrls, token, localPort, udpPort = null, bedrockPort = null, voicePort = null, voiceAuto = false, client = null }) {
     this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
     this.urlIndex = 0;
     this.relayUrl = this.relayUrls[0];
     this.token = token;
     this.localPort = localPort;
     this.udpPort = udpPort;
+    this.bedrockPort = bedrockPort;
+    this.bedrockPublicPort = null;
     this.voicePort = voicePort;
     this.voiceAuto = voiceAuto;
     this.rank = null;
@@ -228,6 +233,7 @@ class Tunnel extends EventEmitter {
       const reg = { type: 'register', token: this.token, bin: 1 };
       if (this.client) reg.client = this.client;
       if (this.udpPort) reg.udp = true;
+      if (this.bedrockPort) reg.bedrock = true;
       if (this.voicePort) reg[this.voiceAuto ? 'voice_auto' : 'voice'] = true;
       this._send(reg);
     });
@@ -245,6 +251,7 @@ class Tunnel extends EventEmitter {
       this._stopPing();
       this._clearWsStallTimer();
       this.running = false;
+      this.bedrockPublicPort = null;
       // Never reached this candidate — move straight on to the next one.
       if (!opened && hasFallback) {
         this.urlIndex++;
@@ -287,6 +294,7 @@ class Tunnel extends EventEmitter {
         this.running = true;
         this.bin = msg.bin === 1; // only the relay saying so turns it on: an older relay never does
         this.reconnectDelay = 1000;
+        this.bedrockPublicPort = this.bedrockPort ? (msg.bedrock_port || null) : null;
         this.emit('status', 'online');
         this.emit('assigned', msg.port);
         this.voicePublicPort = this.voicePort ? (msg.voice_port || null) : null;
@@ -295,6 +303,7 @@ class Tunnel extends EventEmitter {
         this.emit('voiceAssigned', this.voicePublicPort);
         if (this.voicePort && !this.voiceAuto && !msg.voice_port) this.emit('log', 'Voice chat is unavailable on this relay or requires Supporter Plus.');
         this.emit('log', `Tunnel is live on public port ${msg.port}.`);
+        if (this.bedrockPort && !this.bedrockPublicPort) this.emit('udpError', 'Bedrock needs an updated relay with a separate TCP and UDP port. Java is still available.');
         this._startPing();
         if (this.listing) this._send({ type: 'listing', listing: this.listing });
         break;
@@ -316,6 +325,7 @@ class Tunnel extends EventEmitter {
         break;
 
       case 'udp_error':
+        this.bedrockPublicPort = null;
         this.emit('udpError', msg.message || 'Bedrock forwarding is unavailable.');
         this.emit('log', 'Relay: ' + (msg.message || 'Bedrock forwarding is unavailable.'));
         break;
@@ -346,6 +356,10 @@ class Tunnel extends EventEmitter {
         break;
 
       case 'connect':
+        if (msg.bedrock && (!this.bedrockPort || !this.bedrockPublicPort)) {
+          this._send({ type: 'close', conn: msg.conn });
+          break;
+        }
         if (this.players.has(msg.conn)) {
           // Duplicate connection id — never silently replace/leak the
           // existing socket for it (item 18).
@@ -357,7 +371,7 @@ class Tunnel extends EventEmitter {
           this._send({ type: 'close', conn: msg.conn });
           break;
         }
-        this._openPlayer(msg.conn, msg.ip);
+        this._openPlayer(msg.conn, msg.ip, Boolean(msg.bedrock));
         break;
 
       case 'data': {
@@ -427,7 +441,8 @@ class Tunnel extends EventEmitter {
   _receiveUdp(conn, data, voice = false) {
     const port = voice ? this.voicePort : this.udpPort;
     const sessions = voice ? this.voiceSessions : this.udpSessions;
-    if (!port || (voice && !this.voicePublicPort) || !data.length || data.length > MAX_UDP_DATAGRAM) return;
+    if (!port || (voice && !this.voicePublicPort) || (!voice && this.bedrockPort && !this.bedrockPublicPort)
+      || !data.length || data.length > MAX_UDP_DATAGRAM) return;
     let session = sessions.get(conn);
     if (!session) {
       if (sessions.size >= MAX_UDP_SESSIONS) return;
@@ -444,14 +459,15 @@ class Tunnel extends EventEmitter {
     this.emit('log', `Ignored a binary frame from the relay (${reason}); more are not logged for ${BAD_FRAME_LOG_EVERY_MS / 1000}s.`);
   }
 
-  _openPlayer(conn, ip) {
+  _openPlayer(conn, ip, bedrock = false) {
     const sock = new net.Socket();
     // The 16 raw bytes of the id, for binary frames. Only a proper 32-character hex id has them; any other stays on JSON.
     const raw = HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null;
-    const pc = { sock, pendingBytes: 0, closed: false, raw };
+    const pc = { sock, pendingBytes: 0, closed: false, raw, bedrock };
     this.players.set(conn, pc);
-    this.emit('players', this.players.size);
-    this.emit('log', `Player connected${ip ? ' from ' + ip : ''} → 127.0.0.1:${this.localPort}`);
+    this._emitPlayerCount();
+    const port = bedrock ? this.bedrockPort : this.localPort;
+    this.emit('log', `${bedrock ? 'Bedrock signaling' : 'Player'} connected${ip ? ' from ' + ip : ''} → 127.0.0.1:${port}`);
 
     let connected = false;
     const connectTimer = setTimeout(() => {
@@ -465,7 +481,7 @@ class Tunnel extends EventEmitter {
       clearTimeout(connectTimer);
     });
 
-    sock.connect(this.localPort, '127.0.0.1');
+    sock.connect(port, '127.0.0.1');
 
     sock.on('data', (buf) => this._onLocalData(conn, buf));
 
@@ -476,7 +492,7 @@ class Tunnel extends EventEmitter {
     sock.on('close', closeThisPlayer);
     sock.on('error', (err) => {
       if (!connected) {
-        this.emit('log', `Could not reach a local server on 127.0.0.1:${this.localPort}: ${err.message}`);
+        this.emit('log', `Could not reach a local server on 127.0.0.1:${port}: ${err.message}`);
       }
       closeThisPlayer();
     });
@@ -541,6 +557,12 @@ class Tunnel extends EventEmitter {
     });
   }
 
+  _emitPlayerCount() {
+    let count = 0;
+    for (const pc of this.players.values()) if (!pc.bedrock) count++;
+    this.emit('players', count);
+  }
+
   _closePlayer(conn, notifyRelay) {
     const pc = this.players.get(conn);
     if (!pc || pc.closed) return;
@@ -548,7 +570,7 @@ class Tunnel extends EventEmitter {
     this.players.delete(conn);
     pc.sock.destroy();
     if (notifyRelay) this._send({ type: 'close', conn });
-    this.emit('players', this.players.size);
+    this._emitPlayerCount();
   }
 
   _openUdpSession(conn, voice = false) {
@@ -648,6 +670,7 @@ class Tunnel extends EventEmitter {
     this._teardownPlayers();
     this._teardownUdp();
     this.running = false;
+    this.bedrockPublicPort = null;
     // If we're mid-reconnect-backoff, this.ws is already closed and its
     // 'close' handler already ran (with manualStop still false at the
     // time) — it will never fire again, so ws.close() here would be a

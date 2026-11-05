@@ -33,6 +33,19 @@ function started(opts = {}) {
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+// ─── Encoding: the JVM is told to use UTF-8 (decision 6) ─────────────────────
+
+test('spawns Java with UTF-8 encoding flags, before -jar', () => {
+  const child = fakeChild();
+  let gotArgs = null;
+  const proc = new ServerProcess({ spawnImpl: (_java, args) => { gotArgs = args; return child; } });
+  proc.start(START);
+  for (const flag of ['-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8']) {
+    assert.ok(gotArgs.includes(flag), `missing ${flag}`);
+    assert.ok(gotArgs.indexOf(flag) < gotArgs.indexOf('-jar'), `${flag} must come before -jar`);
+  }
+});
+
 // ─── K1: a line cut across chunks is still one line ─────────────────────────
 
 test('K1: "Done (3.2s)!" split across two chunks still brings the server online', async () => {

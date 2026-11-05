@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const {
   isCracked, setCracked, validateAccountsChange, hasLoginPlugin, resolveLoginPlugin, installLoginPlugin,
+  hasSkinsPlugin, resolveSkinsPlugin, installSkinsPlugin, setUpCrackedServer,
 } = require('../src/main/accounts');
 const { updateServerPropertiesSafely } = require('../src/main/serverInstall');
 const { validateSettings } = require('../src/main/serverSettings');
@@ -113,4 +114,117 @@ test('installLoginPlugin downloads into plugins/ with the checksum, replaces old
 
   await assert.rejects(installLoginPlugin({ serverDir: dir, type: 'fabric', version: '1.21.4', fetchImpl: fakeModrinth([good]), download }), /Paper/);
   assert.equal(hasLoginPlugin(tmpDir()), false);
+});
+
+// ─── Skins (SkinsRestorer) and the cracked-server setup order ───────────────────────
+
+const goodSkins = {
+  version_type: 'release',
+  files: [{ primary: true, url: 'https://cdn.modrinth.com/data/TsLS8Py5/versions/x/SkinsRestorer.jar', filename: 'SkinsRestorer.jar', hashes: { sha512: 'cd'.repeat(64) } }],
+};
+
+test('resolveSkinsPlugin asks Modrinth for SkinsRestorer, with the right loaders, and demands a hash', async () => {
+  let asked = '';
+  const fetchImpl = async (url) => { asked = decodeURIComponent(url); return projectFetch({ skins: [goodSkins] })(url); };
+  const jar = await resolveSkinsPlugin('26.3', fetchImpl);
+  assert.match(asked, /project\/TsLS8Py5\/version/);
+  assert.match(asked, /loaders=\["paper","spigot","bukkit"\]/);
+  assert.equal(jar.fileName, 'SkinsRestorer.jar');
+  assert.equal(jar.checksum.algorithm, 'sha512');
+  await assert.rejects(resolveSkinsPlugin('26.3', projectFetch({ skins: [] })), /SkinsRestorer isn't available for Minecraft 26.3/);
+  const evil = { ...goodSkins, files: [{ ...goodSkins.files[0], filename: '../evil.jar' }] };
+  await assert.rejects(resolveSkinsPlugin('26.3', projectFetch({ skins: [evil] })), /No usable SkinsRestorer/);
+});
+
+test('installSkinsPlugin installs into plugins/, replaces an old SkinsRestorer only, Paper only', async () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'plugins'));
+  fs.writeFileSync(path.join(dir, 'plugins', 'SkinsRestorer-14.0.jar'), 'old');
+  fs.writeFileSync(path.join(dir, 'plugins', 'AuthMe-5.7.0.jar'), 'must stay');
+  const download = async (_u, dest) => fs.writeFileSync(dest, 'new');
+  await installSkinsPlugin({ serverDir: dir, type: 'paper', version: '26.3', fetchImpl: projectFetch({ skins: [goodSkins] }), download });
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'plugins')).sort(), ['AuthMe-5.7.0.jar', 'SkinsRestorer.jar']);
+  assert.equal(hasSkinsPlugin(dir), true);
+  await assert.rejects(installSkinsPlugin({ serverDir: dir, type: 'fabric', version: '26.3', fetchImpl: projectFetch({ skins: [goodSkins] }), download }), /Paper/);
+});
+
+/** A Modrinth stand-in that answers per project, so AuthMe and SkinsRestorer can succeed or fail separately. */
+function projectFetch({ authme = [good], skins = [goodSkins] } = {}) {
+  return async (url) => {
+    const list = url.includes('3IEZ9vol') ? authme : url.includes('TsLS8Py5') ? skins : [];
+    return { ok: true, status: 200, json: async () => list };
+  };
+}
+const writeJar = async (_u, dest) => fs.writeFileSync(dest, 'jar');
+
+test('setUpCrackedServer installs the login plugin BEFORE it turns the account check off, then adds skins', async () => {
+  const dir = tmpDir();
+  props(dir, 'online-mode=true\nmotd=Hi\n');
+  const seen = [];
+  const download = async (url, dest) => {
+    // What the server looked like at the moment each plugin was downloaded.
+    seen.push({ file: path.basename(dest), cracked: isCracked(dir) });
+    fs.writeFileSync(dest, 'jar');
+  };
+  const res = await setUpCrackedServer({ serverDir: dir, type: 'paper', version: '26.3', fetchImpl: projectFetch(), download });
+  assert.deepEqual(res, { cracked: true, skins: true, warnings: [] });
+  assert.equal(isCracked(dir), true);
+  assert.equal(hasLoginPlugin(dir), true);
+  assert.equal(hasSkinsPlugin(dir), true);
+  // AuthMe was downloaded while the server was still premium-only: offline mode never comes first.
+  assert.deepEqual(seen.map((s) => s.file), ['AuthMe-5.7.0.jar', 'SkinsRestorer.jar']);
+  assert.equal(seen[0].cracked, false);
+});
+
+test('if the login plugin cannot be installed, the server stays premium-only and says so', async () => {
+  const dir = tmpDir();
+  props(dir, 'online-mode=true\n');
+  for (const fetchImpl of [projectFetch({ authme: [] }), async () => { throw new Error('network down'); }]) {
+    const res = await setUpCrackedServer({ serverDir: dir, type: 'paper', version: '26.3', fetchImpl, download: writeJar });
+    assert.equal(res.cracked, false);
+    assert.equal(res.skins, false); // never reached
+    assert.equal(res.warnings.length, 1);
+    assert.match(res.warnings[0], /NOT turned on/);
+    assert.equal(isCracked(dir), false); // online-mode is still true
+    assert.equal(hasSkinsPlugin(dir), false);
+  }
+});
+
+test('a failed AuthMe download leaves online-mode alone, even if the download throws midway', async () => {
+  const dir = tmpDir();
+  props(dir, 'online-mode=true\n');
+  const download = async () => { throw new Error('checksum mismatch'); };
+  const res = await setUpCrackedServer({ serverDir: dir, type: 'paper', version: '26.3', fetchImpl: projectFetch(), download });
+  assert.equal(res.cracked, false);
+  assert.match(res.warnings[0], /checksum mismatch/);
+  assert.equal(isCracked(dir), false);
+});
+
+test('a skins failure is only a warning: the server is still cracked and protected by the login plugin', async () => {
+  const dir = tmpDir();
+  props(dir, 'online-mode=true\n');
+  const res = await setUpCrackedServer({ serverDir: dir, type: 'paper', version: '26.3', fetchImpl: projectFetch({ skins: [] }), download: writeJar });
+  assert.equal(res.cracked, true);
+  assert.equal(res.skins, false);
+  assert.equal(res.warnings.length, 1);
+  assert.match(res.warnings[0], /Skins couldn't be added/);
+  assert.equal(isCracked(dir), true);
+  assert.equal(hasLoginPlugin(dir), true);
+});
+
+test('setUpCrackedServer refuses anything but Paper without touching online-mode', async () => {
+  const dir = tmpDir();
+  props(dir, 'online-mode=true\n');
+  const res = await setUpCrackedServer({ serverDir: dir, type: 'fabric', version: '26.3', fetchImpl: projectFetch(), download: writeJar });
+  assert.equal(res.cracked, false);
+  assert.equal(isCracked(dir), false);
+});
+
+test('a cracked setup lists AuthMe and SkinsRestorer under Installed, so they show in the Plugins screen', async () => {
+  const { installedAddons } = require('../src/main/addons');
+  const dir = tmpDir();
+  props(dir, 'online-mode=true' + String.fromCharCode(10));
+  await setUpCrackedServer({ serverDir: dir, type: 'paper', version: '26.3', fetchImpl: projectFetch(), download: writeJar });
+  const listed = installedAddons(dir).map((a) => a.title).sort();
+  assert.deepEqual(listed, ['AuthMe', 'SkinsRestorer']);
 });

@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const {
   bedrockSupported, resolveBedrockJars, installBedrockSupport, removeBedrockSupport, bedrockPort,
+  checkGeyserCompatible,
 } = require('../src/main/bedrock');
 
 const sha = (c) => c.repeat(64);
@@ -15,18 +16,20 @@ function fakeFetch(routes) {
   return async (url) => {
     const key = Object.keys(routes).find((k) => url.includes(k));
     if (!key) return { ok: false, status: 404, json: async () => ({}) };
-    return { ok: true, status: 200, json: async () => routes[key] };
+    const val = typeof routes[key] === 'function' ? routes[key](url) : routes[key];
+    return { ok: true, status: 200, json: async () => val };
   };
 }
-
-const GEYSER_ROUTES = {
-  '/geyser/versions/latest/builds/latest': { version: '2.11.3', build: 1251, downloads: { spigot: { name: 'Geyser-Spigot.jar', sha256: sha('a') } } },
-  '/floodgate/versions/latest/builds/latest': { version: '2.2.5', build: 141, downloads: { spigot: { name: 'floodgate-spigot.jar', sha256: sha('b') } } },
-};
 
 function modrinth(file, type = 'release') {
   return [{ version_type: type, files: [{ primary: true, url: `https://cdn.modrinth.com/data/x/${file}`, filename: file, hashes: { sha512: 'f'.repeat(128) } }] }];
 }
+
+// Paper now gets Geyser from Modrinth (version-matched) and Floodgate from GeyserMC (version-agnostic).
+const GEYSER_ROUTES = {
+  '/project/geyser/version': modrinth('Geyser-Spigot.jar'),
+  '/floodgate/versions/latest/builds/latest': { version: '2.2.5', build: 141, downloads: { spigot: { name: 'floodgate-spigot.jar', sha256: sha('b') } } },
+};
 
 const MODRINTH_ROUTES = {
   '/project/fabric-api/version': modrinth('fabric-api-0.161.0+26.2.jar'),
@@ -40,13 +43,34 @@ test('bedrockSupported is Paper and Fabric only', () => {
   assert.equal(bedrockSupported('vanilla'), false);
 });
 
-test('Paper resolves pinned Geyser/Floodgate builds with sha256', async () => {
+test('Paper resolves a version-matched Geyser from Modrinth and Floodgate from GeyserMC', async () => {
   const jars = await resolveBedrockJars('paper', '26.2', fakeFetch(GEYSER_ROUTES));
   assert.equal(jars.length, 2);
-  assert.equal(jars[0].url, 'https://download.geysermc.org/v2/projects/geyser/versions/2.11.3/builds/1251/downloads/spigot');
-  assert.deepEqual(jars[0].checksum, { algorithm: 'sha256', expected: sha('a') });
+  // Geyser: Modrinth, sha512, version-matched.
+  assert.equal(jars[0].family, 'geyser');
+  assert.equal(jars[0].fileName, 'Geyser-Spigot.jar');
+  assert.equal(jars[0].checksum.algorithm, 'sha512');
+  // Floodgate: GeyserMC download API, sha256, version-agnostic.
+  assert.equal(jars[1].family, 'floodgate');
   assert.equal(jars[1].fileName, 'floodgate-spigot.jar');
+  assert.deepEqual(jars[1].checksum, { algorithm: 'sha256', expected: sha('b') });
   assert.ok(jars.every((j) => j.dir === 'plugins'));
+});
+
+test('Paper refuses to install Geyser for a version no build supports', async () => {
+  // Modrinth returns no versions for an unsupported game version.
+  const routes = { ...GEYSER_ROUTES, '/project/geyser/version': [] };
+  await assert.rejects(resolveBedrockJars('paper', '26.2', fakeFetch(routes)), /No Geyser build supports Minecraft 26\.2/);
+});
+
+test('checkGeyserCompatible: ok when a build lists the version, not-ok when none, unknown on error', async () => {
+  const yes = await checkGeyserCompatible('paper', '26.3', fakeFetch({ '/project/geyser/version': modrinth('Geyser-Spigot.jar') }));
+  assert.deepEqual(yes, { ok: true });
+  const no = await checkGeyserCompatible('paper', '26.2', fakeFetch({ '/project/geyser/version': [] }));
+  assert.equal(no.ok, false);
+  assert.match(no.reason, /No Geyser build supports Minecraft 26\.2/);
+  const unknown = await checkGeyserCompatible('paper', '26.2', async () => { throw new Error('network down'); });
+  assert.deepEqual(unknown, { ok: true, unknown: true });
 });
 
 test('Fabric resolves version-matched jars from Modrinth with sha512', async () => {
@@ -61,8 +85,12 @@ test('Vanilla and unavailable versions give a clear error', async () => {
 });
 
 test('unsafe file names from an API are refused', async () => {
-  const routes = { ...GEYSER_ROUTES, '/geyser/versions/latest/builds/latest': { version: '1', build: 1, downloads: { spigot: { name: '../evil.jar', sha256: sha('a') } } } };
-  await assert.rejects(resolveBedrockJars('paper', '26.2', fakeFetch(routes)), /No Paper download/);
+  // Unsafe Floodgate name from the GeyserMC API.
+  const badFloodgate = { ...GEYSER_ROUTES, '/floodgate/versions/latest/builds/latest': { version: '1', build: 1, downloads: { spigot: { name: '../evil.jar', sha256: sha('a') } } } };
+  await assert.rejects(resolveBedrockJars('paper', '26.2', fakeFetch(badFloodgate)), /No Paper download for floodgate/);
+  // Unsafe Geyser name from Modrinth.
+  const badGeyser = { ...GEYSER_ROUTES, '/project/geyser/version': modrinth('../evil.jar') };
+  await assert.rejects(resolveBedrockJars('paper', '26.2', fakeFetch(badGeyser)), /No usable Geyser download/);
 });
 
 test('install writes jars, replaces old Geyser copies, keeps an existing Fabric API, and can be removed', async () => {
