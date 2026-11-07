@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ipc"
+description = "Enables the ipc command without any pre-configured scope."
+commands.allow = ["ipc"]
+
+[[permission]]
+identifier = "deny-ipc"
+description = "Denies the ipc command without any pre-configured scope."
+commands.deny = ["ipc"]

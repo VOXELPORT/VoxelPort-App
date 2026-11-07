@@ -1,0 +1,98 @@
+{
+  "name": "voxelport-app",
+  "version": "1.17.1",
+  "description": "VoxelPort — host any Minecraft server over the internet with no port forwarding.",
+  "author": "VoxelPort",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "test": "node --test",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "ws": "^8.21.0",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "in.voxelport.app",
+    "productName": "VoxelPort",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "VOXELPORT",
+      "repo": "VoxelPort-App"
+    },
+    "files": [
+      "src/**/*",
+      "!**/*.md"
+    ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "VoxelPort-Setup.${ext}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "VoxelPort-Portable.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "tar.gz"
+      ],
+      "category": "Utility",
+      "artifactName": "VoxelPort-Linux.${ext}"
+    },
+    "appx": {
+      "identityName": "VoxelPort.Voxelport",
+      "publisher": "CN=7BCD0C82-76E6-4816-9510-432674891EAF",
+      "publisherDisplayName": "VoxelPort",
+      "applicationId": "VoxelPort",
+      "displayName": "Voxelport",
+      "backgroundColor": "#F3EBDC",
+      "languages": [
+        "en-US"
+      ],
+      "artifactName": "VoxelPort-Store.${ext}"
+    }
+  }
+}

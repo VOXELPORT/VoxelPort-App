@@ -1,0 +1,19 @@
+[package]
+name = "voxelport-core"
+version = "0.1.0"
+edition = "2021"
+description = "VoxelPort's native core: managed Minecraft server process, log buffering, argument validation. No UI code."
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "sync", "time"] }
+regex = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time"] }
+
+# A stand-in for a Minecraft server, used only by the tests (it speaks just enough of the console protocol).
+[[bin]]
+name = "vp-fake-server"
+path = "src/bin/fake_server.rs"
+test = false

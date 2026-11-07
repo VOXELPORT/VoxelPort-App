@@ -1,0 +1,11 @@
+[workspace]
+members = ["crates/voxelport-core", "src-tauri"]
+resolver = "2"
+
+# Size and startup first: the point of the migration is a light app.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

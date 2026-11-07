@@ -1,0 +1,84 @@
+{
+  "types": [
+    {
+      "id": "vanilla",
+      "label": "Vanilla"
+    },
+    {
+      "id": "paper",
+      "label": "Paper"
+    },
+    {
+      "id": "fabric",
+      "label": "Fabric"
+    }
+  ],
+  "templates": [
+    {
+      "id": "survival",
+      "label": "Survival SMP",
+      "blurb": "Classic survival with friends.",
+      "type": "paper",
+      "bedrock": false,
+      "cracked": false
+    },
+    {
+      "id": "crossplay",
+      "label": "Java + Bedrock",
+      "blurb": "Phone, console & PC players together.",
+      "type": "paper",
+      "bedrock": true,
+      "cracked": false
+    },
+    {
+      "id": "cracked",
+      "label": "Cracked (no account needed)",
+      "blurb": "For TLauncher and SKLauncher friends. Passwords and skins included.",
+      "type": "paper",
+      "bedrock": false,
+      "cracked": true
+    },
+    {
+      "id": "creative",
+      "label": "Creative Flat",
+      "blurb": "Flat world, creative mode, no monsters.",
+      "type": "paper",
+      "bedrock": false,
+      "cracked": false
+    },
+    {
+      "id": "hardcore",
+      "label": "Hardcore",
+      "blurb": "Hard difficulty. One life.",
+      "type": "paper",
+      "bedrock": false,
+      "cracked": false
+    },
+    {
+      "id": "chill",
+      "label": "Peaceful Chill",
+      "blurb": "Build and explore, no monsters.",
+      "type": "paper",
+      "bedrock": false,
+      "cracked": false
+    },
+    {
+      "id": "modded",
+      "label": "Modded (Fabric)",
+      "blurb": "Ready for Fabric mods.",
+      "type": "fabric",
+      "bedrock": false,
+      "cracked": false
+    }
+  ],
+  "regions": [
+    {
+      "id": "in",
+      "label": "India"
+    },
+    {
+      "id": "eu",
+      "label": "Europe"
+    }
+  ]
+}

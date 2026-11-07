@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" />
+  <title>VoxelPort</title>
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="theme-dark.css" />
+  <link rel="stylesheet" href="theme-light.css" />
+</head>
+<body>
+  <header class="head">
+    <div class="brand"><img class="brand-icon" src="icon.svg" width="40" height="40" alt="" /><span class="brand-word">VOXEL<span>PORT</span></span></div>
+    <div class="tagline">Host any Minecraft server · no port forwarding</div>
+    <span id="rankBadge" class="rank-badge hidden"></span>
+  </header>
+
+  <div id="discordBanner" class="discord-banner hidden" role="status"></div>
+  <section id="discordGate" class="discord-gate hidden" role="dialog" aria-modal="true" aria-labelledby="discordGateTitle"></section>
+
+  <main id="app">
+
+    <!-- LIBRARY (home screen) -->
+    <section class="screen panel active" id="screen-library">
+      <div class="library-header">
+        <div class="library-heading">
+          <div class="label">Your worlds</div>
+          <h1>My servers</h1>
+          <p class="hint" id="librarySummary">Create, manage and share your Minecraft worlds.</p>
+        </div>
+        <button class="primary hidden" id="addServerBtn" type="button">+ Add Server</button>
+      </div>
+      <div class="server-list" id="serverList"></div>
+      <div class="library-tools">
+        <div class="library-imports">
+          <p class="hint">Already have a server?</p>
+          <div class="library-actions">
+            <button class="ghost" id="importServerBtn" type="button">Import Existing Server</button>
+            <button class="ghost" id="importModpackBtn" type="button">Import a Modpack</button>
+          </div>
+          <button class="back-link" id="manualModeLink" type="button">Tunnel a server I already run elsewhere ›</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MANUAL TUNNEL (existing flow, unchanged) -->
+    <section class="screen panel" id="screen-manual">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Already running a server?</div><h1>TUNNEL IT</h1></div></div>
+
+      <div class="statusline">
+        <span class="dot" id="dot"></span>
+        <span id="statusText">Idle</span>
+      </div>
+
+      <label class="field">
+        <span class="label">Local server port</span>
+        <input id="localPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+        <span class="hint">The port your Minecraft server or LAN world runs on.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Region</span>
+        <select class="region-select" id="region"></select>
+        <span class="hint">Auto uses the relay closest to you. Players anywhere can still join.</span>
+      </label>
+
+      <button id="toggleBtn" class="primary">Start hosting</button>
+
+      <section id="share" class="share hidden">
+        <div class="share-label">Share this address with players</div>
+        <div class="address-row">
+          <code id="address">—</code>
+          <button id="copyBtn" class="ghost" title="Copy">Copy</button>
+        </div>
+        <div class="invite-row">
+          <button id="inviteBtn" class="ghost small" type="button">Copy invite message</button>
+          <button id="inviteAltBtn" class="link-btn" type="button"></button>
+        </div>
+        <div class="stats">
+          <div><strong id="players">0</strong><span>players</span></div>
+          <div><strong id="ping">—</strong><span>relay ping</span></div>
+          <div><strong class="region-used">—</strong><span>region</span></div>
+        </div>
+      </section>
+
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <label class="field">
+          <span class="label">Relay URL</span>
+          <input id="relayUrl" type="text" placeholder="wss://relay.voxelport.in" />
+        </label>
+        <label class="field">
+          <span class="label">Device token</span>
+          <div class="folder-row">
+            <input id="token" type="text" readonly />
+            <button id="copyTokenBtn" class="ghost" type="button">Copy</button>
+          </div>
+          <span class="hint">Generated automatically. Treat it like a password — anyone with it can reconnect as this install.</span>
+          <span class="hint hidden" id="tokenWarn" style="color: var(--red)">Couldn't read your saved VoxelPort ID (is your system keyring locked?). Using a temporary one — restart after unlocking it.</span>
+        </label>
+        <label class="field"><span class="label">VoxelPort ID · safe to share for supporter ranks</span><div class="folder-row"><input id="supporterID" type="text" readonly><button id="copySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+      </details>
+
+      <div class="log" id="log" aria-live="polite"></div>
+    </section>
+
+    <!-- WIZARD STEP 1: name + server type + version -->
+    <section class="screen panel" id="screen-type">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Step 1 of 2</div><h1>NEW SERVER</h1></div></div>
+
+      <label class="field">
+        <span class="label">Server name</span>
+        <input id="serverName" type="text" placeholder="Survival SMP" maxlength="60" />
+      </label>
+
+      <div class="label" style="margin-bottom: 4px;">Start from a template <span class="label-note">— optional</span></div>
+      <div class="template-grid" id="templateGrid"></div>
+
+      <div class="label" style="margin-bottom: 4px;">Server type</div>
+      <div class="mode-grid" id="typeGrid"></div>
+
+      <label class="field">
+        <span class="label">Version</span>
+        <select id="versionSelect"><option>Loading…</option></select>
+      </label>
+
+      <button id="typeNextBtn" class="primary" disabled>Continue</button>
+    </section>
+
+    <!-- WIZARD STEP 2: RAM + Java + EULA -->
+    <section class="screen panel" id="screen-config">
+      <button class="back-link" data-back="screen-type">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Step 2 of 2</div><h1>SERVER SETTINGS</h1></div></div>
+
+      <div id="javaBlock">
+        <div class="label">Java</div>
+        <div class="hint" id="javaStatusText">Checking for Java…</div>
+        <button id="installJavaBtn" class="ghost hidden">Install Java for me</button>
+        <button id="recheckJavaBtn" class="ghost hidden">Re-check</button>
+      </div>
+
+      <label class="field">
+        <span class="label">Memory (RAM) — <span id="ramValueLabel">–</span> MB</span>
+        <input id="ramSlider" type="range" min="512" max="4096" step="256" />
+        <span class="hint" id="ramHint">Recommended based on your PC's specs.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Local port</span>
+        <input id="serverPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+      </label>
+
+      <div class="field">
+        <span class="label">Server folder</span>
+        <div class="folder-row">
+          <input id="serverDirDisplay" type="text" readonly />
+          <button id="chooseFolderBtn" class="ghost" type="button">Choose…</button>
+        </div>
+        <span class="hint">Where the world, mods, and logs are stored. Pick any drive with room.</span>
+      </div>
+
+      <label class="field eula-row">
+        <input type="checkbox" id="eulaCheck" />
+        <span>I agree to the <a href="https://www.minecraft.net/eula" target="_blank" rel="noreferrer">Minecraft EULA</a>.</span>
+      </label>
+
+      <button id="installBtn" class="primary" disabled>Install &amp; start</button>
+    </section>
+
+    <!-- WIZARD STEP 3: install progress -->
+    <section class="screen panel" id="screen-install">
+      <div class="screen-title"><div><div class="label">Hang tight</div><h1>INSTALLING…</h1></div></div>
+      <div class="progress-track"><div class="progress-fill" id="installFill"></div></div>
+      <div class="hint" id="installText">Preparing…</div>
+    </section>
+
+    <!-- IMPORT EXISTING SERVER -->
+    <section class="screen panel" id="screen-import">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Bring your own</div><h1>IMPORT SERVER</h1></div></div>
+
+      <label class="field">
+        <span class="label">Server folder</span>
+        <div class="folder-row">
+          <input id="importDirDisplay" type="text" readonly placeholder="Choose the folder your server already runs from" />
+          <button id="importChooseFolderBtn" class="ghost" type="button">Choose…</button>
+        </div>
+      </label>
+
+      <div class="hint" id="importDetectText"></div>
+
+      <label class="field">
+        <span class="label">Server name</span>
+        <input id="importName" type="text" placeholder="Survival SMP" maxlength="60" />
+      </label>
+
+      <label class="field">
+        <span class="label">Server type</span>
+        <select id="importType">
+          <option value="vanilla">Vanilla</option>
+          <option value="paper">Paper</option>
+          <option value="fabric">Fabric</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">Local port</span>
+        <input id="importPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+      </label>
+
+      <label class="field">
+        <span class="label">Memory (RAM) — <span id="importRamValueLabel">2048</span> MB</span>
+        <input id="importRamSlider" type="range" min="512" max="16384" step="256" value="2048" />
+      </label>
+
+      <button id="importConfirmBtn" class="primary" disabled>Add to VoxelPort</button>
+    </section>
+
+    <!-- IMPORT A MODPACK (.mrpack → Fabric server) -->
+    <section class="screen panel" id="screen-modpack">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Fabric modpack</div><h1>IMPORT A MODPACK</h1></div></div>
+
+      <p class="hint">Choose a Modrinth modpack file (.mrpack). VoxelPort installs the mods that run on a server and creates a Fabric server from it. Client-only mods like shaders and minimaps are skipped — they only work on each player's own game.</p>
+
+      <button id="modpackChooseBtn" class="ghost" type="button" style="margin-top:14px">Choose a .mrpack file…</button>
+      <div class="hint" id="modpackError" style="color:var(--danger);"></div>
+
+      <div id="modpackPlan" class="hidden" style="margin-top:18px">
+        <div class="field">
+          <span class="label">Server name</span>
+          <input id="modpackName" type="text" placeholder="My modpack server" maxlength="60" />
+        </div>
+        <div class="hint" id="modpackSummary"></div>
+        <details id="modpackSkippedBox" class="hidden" style="margin-top:10px">
+          <summary id="modpackSkippedSummary" style="cursor:pointer"></summary>
+          <ul id="modpackSkippedList" class="hint" style="margin-top:8px"></ul>
+        </details>
+
+        <label class="field" style="margin-top:14px">
+          <span class="label">Local port</span>
+          <input id="modpackPort" type="number" min="1" max="65535" value="25565" inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span class="label">Memory (RAM) — <span id="modpackRamValueLabel">4096</span> MB</span>
+          <input id="modpackRamSlider" type="range" min="1024" max="16384" step="256" value="4096" />
+          <span class="hint">Modpacks need more RAM than a plain server. 4–6 GB is a good start.</span>
+        </label>
+
+        <button id="modpackInstallBtn" class="primary">Create the server</button>
+      </div>
+
+      <div id="modpackProgress" class="hidden" style="margin-top:18px">
+        <div class="hint" id="modpackProgressText">Working…</div>
+      </div>
+    </section>
+
+    <!-- FRIENDS ONLY (whitelist) -->
+    <section class="screen panel" id="screen-friends">
+      <button class="back-link" id="friendsBackBtn">‹ Back</button>
+      <div class="screen-title"><div><div class="label" id="friendsServerName">—</div><h1>FRIENDS ONLY</h1></div></div>
+
+      <label class="toggle-row" style="display:flex;align-items:center;gap:12px;margin-top:8px">
+        <input type="checkbox" id="friendsEnabled" />
+        <span>Only let my friends join (whitelist on)</span>
+      </label>
+      <p class="hint" id="friendsState"></p>
+      <div class="hint hidden" id="friendsCrackedWarn" style="color:var(--warn, #b8860b)"></div>
+
+      <label class="field" style="margin-top:16px">
+        <span class="label">Add friends by Minecraft username</span>
+        <textarea id="friendsInput" rows="2" placeholder="Steve, Alex, Notch" spellcheck="false"></textarea>
+        <span class="hint">Separate names with spaces, commas or new lines. 3–16 letters, numbers or underscore.</span>
+      </label>
+      <button id="friendsAddBtn" class="primary">Add to the whitelist</button>
+      <div class="hint" id="friendsAddMsg"></div>
+
+      <div style="margin-top:20px">
+        <div class="label">On the whitelist</div>
+        <ul id="friendsList" class="server-list" style="margin-top:8px"></ul>
+        <p class="hint hidden" id="friendsEmpty">No one yet. Add a friend above.</p>
+      </div>
+
+      <div class="share-invite" style="margin-top:22px">
+        <button id="friendsInviteBtn" class="ghost small" type="button">Copy invite message</button>
+        <span class="hint">Share your server address so friends know how to join.</span>
+      </div>
+    </section>
+
+    <!-- MANAGE (per-server console) -->
+    <section class="screen panel" id="screen-console">
+      <button class="back-link" data-back="screen-library">‹ Back to library</button>
+
+      <div class="manage-header">
+        <div class="manage-name" id="mgName">—</div>
+        <div class="hint" id="mgMeta">—</div>
+      </div>
+
+      <div class="statusline">
+        <span class="dot" id="srvDot"></span>
+        <span id="srvStatusText">Stopped</span>
+        <span class="spacer"></span>
+        <strong id="srvPlayers">0</strong><span class="hint">&nbsp;players</span>
+      </div>
+
+      <div class="perf hidden" id="perfPanel" aria-label="Server performance">
+        <div class="perf-tile"><span class="perf-label">CPU</span><strong id="perfCpu">—</strong><div class="perf-bar"><div id="perfCpuBar"></div></div></div>
+        <div class="perf-tile"><span class="perf-label">RAM</span><strong id="perfRam">—</strong><div class="perf-bar"><div id="perfRamBar"></div></div></div>
+        <div class="perf-tile"><span class="perf-label">TPS</span><strong id="perfTps">—</strong><div class="perf-bar"><div id="perfTpsBar"></div></div></div>
+      </div>
+      <div class="perf-warn hidden" id="perfWarn"></div>
+
+      <div class="console-actions">
+        <button id="srvStartBtn" class="primary">Start server</button>
+        <button id="srvStopBtn" class="ghost hidden">Stop</button>
+        <button id="srvRestartBtn" class="ghost hidden">Restart</button>
+        <button id="srvSettingsBtn" class="ghost">Settings</button>
+        <button id="srvBackupsBtn" class="ghost">Backups</button>
+        <button id="srvFriendsBtn" class="ghost">Friends only</button>
+        <button id="srvAddonsBtn" class="ghost hidden">Plugins</button>
+        <button id="srvFilesBtn" class="ghost">Files</button>
+        <button id="srvFolderBtn" class="ghost">Open folder</button>
+        <button id="srvRemoveBtn" class="ghost">Delete server</button>
+      </div>
+
+      <section id="publicShare" class="share hidden">
+        <div class="share-label">Share this address with players</div>
+        <div class="address-row">
+          <code id="srvAddress">—</code>
+          <button id="srvCopyBtn" class="ghost" title="Copy">Copy</button>
+        </div>
+        <div class="share-alt hidden" id="srvAltAddress"></div>
+        <p class="hint" id="srvVoiceStatus" role="status"></p>
+        <div class="bedrock-line hidden" id="srvBedrock">
+          <span class="pill">Bedrock</span> Server <b id="srvBedrockHost">—</b> · Port <b id="srvBedrockPort">—</b>
+        </div>
+        <p class="hint hidden" id="srvBedrockStatus" role="status"></p>
+        <div class="invite-row">
+          <button id="srvInviteBtn" class="ghost small" type="button">Copy invite message</button>
+          <button id="srvInviteAltBtn" class="link-btn" type="button"></button>
+        </div>
+        <div class="stats">
+          <div><strong id="srvTunnelPlayers">0</strong><span>players</span></div>
+          <div><strong id="srvPing">—</strong><span>relay ping</span></div>
+          <div><strong class="region-used">—</strong><span>region</span></div>
+        </div>
+
+        <div class="name-box">
+          <div class="name-view hidden" id="nameView">
+            <span>Your address: <b id="nameCurrent">—</b></span>
+            <span class="spacer"></span>
+            <button class="link-btn" id="nameChangeBtn" type="button">Change</button>
+            <button class="link-btn" id="nameRemoveBtn" type="button">Remove</button>
+          </div>
+          <div class="name-edit" id="nameEdit">
+            <span class="share-label">Your address is free — a custom name is a supporter perk</span>
+            <div class="name-row">
+              <input id="nameInput" type="text" maxlength="20" placeholder="yourname" spellcheck="false" autocomplete="off" />
+              <span class="name-suffix">.voxelport.in</span>
+              <button id="nameClaimBtn" class="ghost small" type="button">Claim</button>
+            </div>
+            <div class="name-msg" id="nameMsg">A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.</div>
+          </div>
+        </div>
+
+        <div class="listed-line hidden" id="srvListed">★ Listed on <a href="https://voxelport.in/servers" target="_blank" rel="noreferrer">voxelport.in/servers</a></div>
+        <button id="stopPublicBtn" class="ghost">Stop public tunnel</button>
+      </section>
+      <div class="public-row">
+        <button id="makePublicBtn" class="ghost">Make public</button>
+        <label class="region-pick" id="srvRegionRow"><span class="label">Region</span><select class="region-select" id="srvRegion"></select></label>
+      </div>
+
+      <div class="diagnosis hidden" id="diagnosis" role="alert"></div>
+
+      <div class="players-panel hidden" id="playersPanel">
+        <div class="set-group-title">Players online</div>
+        <div class="bk-list" id="playersList"></div>
+      </div>
+
+      <div class="log console-log" id="srvLog" aria-live="polite"></div>
+
+      <div class="cmd-row">
+        <input id="cmdInput" type="text" placeholder="Type a server command…" />
+        <button id="cmdSendBtn" class="ghost">Send</button>
+        <button id="cmdCopyBtn" class="ghost" type="button" title="Copy everything shown in the console">Copy log</button>
+      </div>
+    </section>
+
+    <!-- SERVER SETTINGS -->
+    <section class="screen panel" id="screen-settings">
+      <button class="back-link" id="settingsBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="setSubtitle">Server settings</div><h1>SETTINGS</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">General</div>
+        <label class="field">
+          <span class="label">Server name</span>
+          <input id="setName" type="text" maxlength="60" />
+        </label>
+        <label class="field">
+          <span class="label">Local port</span>
+          <input id="setPort" type="number" min="1" max="65535" inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span class="label">Memory (RAM) — <span id="setRamLabel">–</span> MB</span>
+          <input id="setRam" type="range" min="512" step="256" />
+        </label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Minecraft version</div>
+        <dl class="about-list" id="setRuntimeList">
+          <div><dt>Installed</dt><dd id="setInstalledVersion">…</dd></div>
+          <div id="setPluginsRow" class="hidden"><dt>Plugins</dt><dd id="setPlugins">—</dd></div>
+        </dl>
+        <p class="hint hidden" id="setStagedMsg"></p>
+        <p class="hint hidden" id="setBedrockCompatMsg"></p>
+        <label class="field">
+          <span class="label">Change Minecraft version</span>
+          <select id="setVersionSelect"><option>…</option></select>
+        </label>
+        <p class="hint">Changing the version backs this server up first, then downloads and verifies the new one. Your world and settings are kept; check your plugins or mods work on the new version.</p>
+        <div><button class="ghost small" id="setChangeVersionBtn" type="button">Change version</button></div>
+        <p class="hint" id="setChangeVersionMsg" role="status"></p>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Gameplay</div>
+        <div class="set-fields" id="setFields"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Bedrock players</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setBedrock" />
+          <span><b>Let Bedrock players join</b><span class="hint">Phones, consoles and Minecraft for Windows. Installs Geyser + Floodgate (free, open source).</span></span>
+        </label>
+        <div class="hint" id="setBedrockMsg"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Player accounts</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setCracked" />
+          <span><b>Allow cracked players</b><span class="hint" id="setCrackedHint">People without a paid Minecraft account can join.</span></span>
+        </label>
+        <div class="set-warn hidden" id="setCrackedWarn">
+          <span><b>Anyone can join under any name</b>, even an admin's. Turn on the whitelist above, or add a login plugin so players have to register a password.</span>
+          <button class="ghost small hidden" id="setLoginBtn" type="button">Add login protection (AuthMe)</button>
+        </div>
+        <div class="hint" id="setAccountsMsg"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Public server list</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setListed" />
+          <span><b>Show on voxelport.in/servers</b><span class="hint">While this server is public, anyone can find it and join.</span></span>
+        </label>
+        <label class="field">
+          <span class="label">List description</span>
+          <textarea id="setListingDesc" maxlength="160" rows="2" placeholder="Friendly survival, no griefing, Discord in game"></textarea>
+        </label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Voice chat · Supporter Plus</div>
+        <p class="hint">Your Supporter Plus rank syncs automatically when your server is public. VoxelPort sets up voice chat for Paper and Fabric. Share only your server joining address.</p>
+        <p class="hint" id="setVoiceStatus" role="status"></p>
+        <label class="field"><span class="label">Your VoxelPort ID · share this with the operator</span><div class="folder-row"><input id="setSupporterID" type="text" readonly><button id="setCopySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+        <button id="setShareSupporterIDBtn" class="ghost" type="button">Copy ID and open Discord</button>
+        <p class="hint">To get your supporter rank, copy your ID, open a Discord support ticket and paste it there.</p>
+        <p class="hint" id="setShareSupporterIDStatus" role="status"></p>
+        <p class="hint">Players need the matching voice chat mod. If setup changes while your server is running, restart it once to activate voice chat.</p>
+      </div>
+      <button class="primary" id="setSaveBtn" type="button">Save settings</button>
+      <div class="set-msg hidden" id="setMsg"></div>
+    </section>
+
+    <!-- BACKUPS -->
+    <section class="screen panel" id="screen-backups">
+      <button class="back-link" id="backupsBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="bkSubtitle">Server backups</div><h1>BACKUPS</h1></div></div>
+
+      <p class="hint">Your world is backed up automatically while the server runs, and once more when you stop it. A backup holds your world(s), server.jar and player lists. Restoring also restores its server.jar when included; older backups leave your installed jar alone. Mods, plugins and their settings are not included.</p>
+
+      <div class="bk-actions">
+        <button class="primary" id="bkNowBtn" type="button">Back up now</button>
+        <button class="ghost" id="bkFolderBtn" type="button">Open backups folder</button>
+      </div>
+      <div class="progress-track hidden" id="bkProgress"><div class="progress-fill" id="bkFill"></div></div>
+      <div class="hint" id="bkStatus" aria-live="polite"></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Automatic backups</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="bkAuto" />
+          <span><b>Back up automatically</b><span class="hint">While the server runs (only if someone played), and once more when you stop it.</span></span>
+        </label>
+        <div class="bk-fields">
+          <label class="field"><span class="label">Every</span><select id="bkInterval"></select></label>
+          <label class="field"><span class="label">Keep the latest</span><select id="bkKeep"></select></label>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Your backups</div>
+        <div class="hint hidden" id="bkRunningNote">Stop the server to restore a backup.</div>
+        <div class="bk-list" id="bkList"></div>
+      </div>
+    </section>
+
+    <!-- SERVER FILES: browse the server folder and edit its text settings files -->
+    <section class="screen panel" id="screen-files">
+      <button class="back-link" id="filesBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="flSubtitle">Server files</div><h1>FILES</h1></div></div>
+
+      <p class="hint">Browse your server's folder and edit its settings files (server.properties, ops.json, plugin configs...). Only plain text files can be opened. Jars, worlds and logs can be seen but not changed here.</p>
+      <div class="hint hidden" id="flRunningNote">The server is running. Most changes only apply after a restart.</div>
+
+      <div class="set-group" id="flBrowser">
+        <div class="files-crumbs" id="flCrumbs"></div>
+        <div class="bk-list" id="flList"></div>
+      </div>
+
+      <div class="set-group hidden" id="flEditor">
+        <div class="set-group-title" id="flFileName"></div>
+        <textarea id="flText" class="files-text" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+        <div class="bk-actions">
+          <button class="primary" id="flSaveBtn" type="button">Save</button>
+          <button class="ghost" id="flCloseBtn" type="button">Close file</button>
+        </div>
+      </div>
+      <div class="hint" id="flStatus" aria-live="polite"></div>
+    </section>
+
+    <!-- PLUGINS & MODS: search Modrinth, install, remove -->
+    <section class="screen panel" id="screen-addons">
+      <button class="back-link" id="addonsBackBtn" type="button">‹ Back to server</button>
+      <div class="screen-title"><div><div class="label" id="adSubtitle"></div><h1 id="adTitle">PLUGINS</h1></div></div>
+
+      <p class="hint" id="adIntro"></p>
+
+      <div class="set-group">
+        <div class="set-group-title">Installed</div>
+        <div class="hint">Every plugin in the server folder is listed. You can remove only the ones installed from here; files you added yourself are never touched.</div>
+        <div class="hint hidden" id="adRunningNote">The server is running. You can add new ones now, but stop it to remove or update one.</div>
+        <div class="bk-list" id="adInstalled"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Find and install</div>
+        <div class="ad-search">
+          <input id="adQuery" type="text" maxlength="100" placeholder="Search" autocomplete="off" spellcheck="false" />
+          <button class="primary" id="adSearchBtn" type="button">Search</button>
+        </div>
+        <label class="toggle-row compact">
+          <input type="checkbox" id="adAnyVersion" />
+          <span>Also show ones not marked for this version</span>
+        </label>
+        <div class="hint hidden" id="adProgress" aria-live="polite"></div>
+        <div class="hint" id="adStatus" aria-live="polite"></div>
+        <div class="bk-list" id="adResults"></div>
+        <button class="ghost hidden" id="adMoreBtn" type="button">Show more</button>
+      </div>
+
+      <div class="bk-actions">
+        <button class="ghost" id="adFolderBtn" type="button">Open plugins folder</button>
+      </div>
+    </section>
+
+    <!-- SUPPORT VOXELPORT: tips, supporter perks, paid-hosting suggestions -->
+    <section class="screen panel" id="screen-support">
+      <button class="back-link" id="supportBackBtn" type="button">‹ Back</button>
+      <div class="screen-title"><div><div class="label">Keep it free</div><h1>SUPPORT VOXELPORT</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Get your supporter rank</div>
+        <p class="support-text">To get your supporter rank, copy your ID, open a Discord support ticket and paste it there.</p>
+        <label class="field"><span class="label">VoxelPort ID</span><div class="folder-row"><input id="supportPageID" type="text" readonly><button id="supportCopyIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+        <button id="supportShareIDBtn" class="ghost" type="button">Copy ID and open Discord</button>
+        <p class="hint" id="supportShareIDStatus" role="status"></p>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">♥ Tip jar</div>
+        <p class="support-text">VoxelPort has no ads and no paid plan. If it saved you a fight with your router, a small tip (even ₹20) helps keep the relay online.</p>
+        <div class="support-pay">
+          <img class="support-qr" src="upi-qr.svg" width="170" height="170" alt="UPI QR code for trazhub@upi" />
+          <div class="support-pay-side">
+            <div class="label">Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)</div>
+            <div class="address-row">
+              <code id="supportUpi">trazhub@upi</code>
+              <button class="ghost small" id="supportCopyBtn" type="button">Copy</button>
+            </div>
+            <button class="ghost small" id="supportSponsorsBtn" type="button">Tip from outside India (GitHub Sponsors)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">★ Supporter perks <span class="support-optional">optional</span></div>
+        <p class="support-text" id="supportIntro"></p>
+        <div id="supportTiers" class="support-tiers"></div>
+        <p class="support-text" id="supportHow"></p>
+        <p class="support-fine" id="supportFine"></p>
+        <button class="ghost small" id="supportPerksBtn" type="button">More on voxelport.in</button>
+      </div>
+
+      <div class="set-group hidden" id="supportHostsGroup">
+        <div class="set-group-title">Need it online 24/7?</div>
+        <p class="support-text" id="supportHostsIntro"></p>
+        <div id="supportHosts" class="support-hosts"></div>
+        <p class="support-fine" id="supportDisclosure"></p>
+      </div>
+    </section>
+
+    <!-- APP SETTINGS -->
+    <section class="screen panel" id="screen-app-settings">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">VoxelPort</div><h1>APP SETTINGS</h1></div></div>
+
+      <div class="set-group">
+        <div class="set-group-title">Appearance</div>
+        <label class="field">
+          <span class="label">Color theme</span>
+          <select id="appThemeSelect">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">Match system</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Language</div>
+        <label class="field">
+          <span class="label">App language</span>
+          <select id="appLangSelect" data-no-i18n></select>
+        </label>
+        <p class="hint">The app reloads when you change the language. Anything not translated yet shows in English.</p>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Discord account</div>
+        <p class="hint" id="setDiscordStatus" role="status"></p>
+        <p class="hint" id="setDiscordRank"></p>
+        <div id="setDiscordActions"></div>
+      </div>
+
+      <div class="set-group hidden" id="setBackupGroup">
+        <div class="set-group-title">Address backup</div>
+        <p class="hint">Back up your address to your Discord account, so you can get it back on a new PC or phone.</p>
+        <p class="hint" id="setBackupStatus" role="status"></p>
+        <div id="setBackupActions"></div>
+        <div id="setBackupForm" class="hidden"></div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Device token</div>
+        <label class="field">
+          <span class="label">Device token</span>
+          <div class="folder-row">
+            <input id="appTokenField" type="text" readonly />
+            <button id="appCopyTokenBtn" class="ghost" type="button">Copy</button>
+          </div>
+          <span class="hint">Generated automatically. Treat it like a password — anyone with it can reconnect as this install.</span>
+        </label>
+        <label class="field"><span class="label">VoxelPort ID · safe to share for supporter ranks</span><div class="folder-row"><input id="appSupporterID" type="text" readonly><button id="appCopySupporterIDBtn" class="ghost" type="button">Copy ID</button></div></label>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Versions</div>
+        <dl class="about-list" id="aboutList">
+          <div><dt>VoxelPort</dt><dd id="aboutApp">…</dd></div>
+          <div><dt>Java on this PC</dt><dd id="aboutSystemJava">…</dd></div>
+          <div><dt>Java installed by VoxelPort</dt><dd id="aboutManagedJava">…</dd></div>
+          <div><dt>System</dt><dd id="aboutPlatform">…</dd></div>
+        </dl>
+        <p class="hint">Each server uses the Java version its Minecraft version needs. VoxelPort downloads it for you when it is missing.</p>
+        <div class="row"><button class="ghost small" id="aboutCopyBtn" type="button">Copy version details</button> <button class="ghost small" id="updateCheckBtn" type="button">Check for updates</button></div>
+        <p class="hint" id="updateCheckStatus" role="status"></p>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="noticeBanner" class="notice-banner hidden" role="status" aria-live="polite">
+    <span id="noticeText"></span>
+    <button id="noticeCloseBtn" class="link-btn" type="button">Dismiss</button>
+  </div>
+
+  <div id="updateBanner" class="update-banner hidden">
+    <span id="updateBannerText">An update is ready.</span>
+    <button id="updateInstallBtn" class="ghost small">Restart &amp; Update</button>
+  </div>
+
+  <footer class="foot">
+    <div class="foot-actions">
+    <button class="ghost small" id="exportErrorsBtn" type="button">Export error report</button>
+    <button class="ghost small" id="discordBtn" type="button">Discord help</button>
+    </div>
+    <p class="hint diagnostic-status" id="diagnosticStatus" role="status"></p>
+    <div class="foot-links">
+    <span id="version"></span>
+    <a href="#" id="supportLink">♥ Support VoxelPort</a>
+    <a href="https://www.voxelport.in" target="_blank" rel="noreferrer">voxelport.in</a>
+    <a href="#" id="appSettingsLink">⚙ App settings</a>
+    </div>
+  </footer>
+
+  <script src="lang/hinglish.js"></script>
+  <script src="lang/es.js"></script>
+  <script src="lang/pt.js"></script>
+  <script src="lang/fr.js"></script>
+  <script src="lang/de.js"></script>
+  <script src="lang/it.js"></script>
+  <script src="lang/ru.js"></script>
+  <script src="lang/pl.js"></script>
+  <script src="lang/tr.js"></script>
+  <script src="lang/id.js"></script>
+  <script src="lang/vi.js"></script>
+  <script src="lang/zh.js"></script>
+  <script src="lang/ja.js"></script>
+  <script src="lang/ko.js"></script>
+  <script src="i18n.js"></script>
+  <script src="invite.js"></script>
+  <script src="addonsText.js"></script>
+  <script src="renderer.js"></script>
+  <script src="library.js"></script>
+  <script src="wizard.js"></script>
+  <script src="import.js"></script>
+  <script src="modpack-ui.js"></script>
+  <script src="console.js"></script>
+  <script src="friends-ui.js"></script>
+  <script src="settings.js"></script>
+  <script src="backups-ui.js"></script>
+  <script src="addons-ui.js"></script>
+  <script src="files-ui.js"></script>
+  <script src="support.js"></script>
+  <script src="app-settings.js"></script>
+  <script src="discord-ui.js"></script>
+</body>
+</html>

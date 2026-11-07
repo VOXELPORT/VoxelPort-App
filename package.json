@@ -1,0 +1,14 @@
+{
+  "name": "voxelport-tauri",
+  "private": true,
+  "version": "0.1.0",
+  "description": "VoxelPort desktop on Tauri v2 + Rust (migration workspace; the Electron app in ../VoxelPort-App is untouched)",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

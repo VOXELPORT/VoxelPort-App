@@ -1,0 +1,478 @@
+'use strict';
+
+const mgName = $('mgName');
+const mgMeta = $('mgMeta');
+const srvDot = $('srvDot');
+const srvStatusText = $('srvStatusText');
+const srvPlayers = $('srvPlayers');
+const srvStartBtn = $('srvStartBtn');
+const srvStopBtn = $('srvStopBtn');
+const srvRestartBtn = $('srvRestartBtn');
+const srvFolderBtn = $('srvFolderBtn');
+const srvRemoveBtn = $('srvRemoveBtn');
+const publicShare = $('publicShare');
+const srvAddress = $('srvAddress');
+const srvCopyBtn = $('srvCopyBtn');
+const srvTunnelPlayers = $('srvTunnelPlayers');
+const srvPing = $('srvPing');
+const makePublicBtn = $('makePublicBtn');
+const stopPublicBtn = $('stopPublicBtn');
+const srvLog = $('srvLog');
+const cmdInput = $('cmdInput');
+const cmdSendBtn = $('cmdSendBtn');
+const cmdCopyBtn = $('cmdCopyBtn');
+const playersPanel = $('playersPanel');
+const playersList = $('playersList');
+const srvSettingsBtn = $('srvSettingsBtn');
+const srvAltAddress = $('srvAltAddress');
+const srvBedrock = $('srvBedrock');
+const srvBedrockHost = $('srvBedrockHost');
+const srvBedrockPort = $('srvBedrockPort');
+const srvBedrockStatus = $('srvBedrockStatus');
+const srvListed = $('srvListed');
+const nameView = $('nameView');
+const nameEdit = $('nameEdit');
+const nameCurrent = $('nameCurrent');
+const nameInput = $('nameInput');
+const nameClaimBtn = $('nameClaimBtn');
+const nameMsg = $('nameMsg');
+const perfPanel = $('perfPanel');
+const perfWarn = $('perfWarn');
+const diagnosisBox = $('diagnosis');
+const srvRegionRow = $('srvRegionRow');
+
+let managingProfileId = null;
+let managingProfile = null;
+let assigned = null; // { host, port, bedrockPort, bedrockReady } of the live public tunnel
+let awaitingAssignment = true;
+let customAddress = { name: '', address: '' };
+let editingName = false;
+
+function srvLogLine(line) {
+  const el = document.createElement('div');
+  const t = new Date().toLocaleTimeString();
+  el.textContent = `${t}  ${line}`;
+  srvLog.appendChild(el);
+  srvLog.scrollTop = srvLog.scrollHeight;
+  while (srvLog.childElementCount > 400) srvLog.removeChild(srvLog.firstChild);
+}
+
+window.consoleLogLine = srvLogLine;
+
+function isThisProfileActive() {
+  return managingProfileId && managingProfileId === window.appState.activeServerProfileId;
+}
+function isThisProfilePublic() {
+  return managingProfileId && managingProfileId === window.appState.publicServerProfileId;
+}
+
+function renderManagementScreen() {
+  const active = isThisProfileActive();
+  const status = active ? (window.appState.serverStatus || 'stopped') : 'stopped';
+  const running = status === 'starting' || status === 'online' || status === 'stopping';
+
+  srvDot.className = 'dot';
+  if (status === 'online') { srvDot.classList.add('on'); srvStatusText.textContent = t('Online'); }
+  else if (status === 'starting') { srvDot.classList.add('warn'); srvStatusText.textContent = t('Starting…'); }
+  else if (status === 'stopping') { srvDot.classList.add('warn'); srvStatusText.textContent = t('Stopping…'); }
+  else if (status === 'crashed') { srvDot.classList.add('err'); srvStatusText.textContent = t('Crashed'); }
+  else { srvStatusText.textContent = t('Stopped'); }
+
+  // Plugins (Paper) and mods (Fabric); Vanilla can't load either, so it has no button.
+  const addonsKind = managingProfile ? window.VPAddons.kind(managingProfile.type) : '';
+  $('srvAddonsBtn').classList.toggle('hidden', !addonsKind);
+  if (addonsKind) $('srvAddonsBtn').textContent = window.VPAddons.words(managingProfile.type, t).button;
+
+  srvStartBtn.classList.toggle('hidden', running);
+  srvStopBtn.classList.toggle('hidden', !running || !active);
+  srvRestartBtn.classList.toggle('hidden', !(active && (status === 'online' || status === 'starting')));
+  cmdInput.disabled = !(active && status === 'online');
+  cmdSendBtn.disabled = !(active && status === 'online');
+
+  const isPublic = isThisProfilePublic();
+  makePublicBtn.classList.toggle('hidden', isPublic || !(active && status === 'online'));
+  srvRegionRow.classList.toggle('hidden', makePublicBtn.classList.contains('hidden'));
+  publicShare.classList.toggle('hidden', !isPublic);
+  if (!isPublic) { srvTunnelPlayers.textContent = '0'; srvPing.textContent = '—'; }
+
+  srvRemoveBtn.disabled = active || isPublic;
+  if (!running || !active) perfPanel.classList.add('hidden');
+  if (!running || !active) perfWarn.classList.add('hidden');
+  renderAddress();
+}
+
+// ─── Public address: custom name, plain host:port, Bedrock ─────────────────
+
+function assignedBedrockAddress() {
+  if (!assigned || !Number.isInteger(assigned.bedrockPort) || assigned.bedrockPort < 1 || assigned.bedrockPort > 65535) return null;
+  return { host: assigned.host, port: assigned.bedrockPort };
+}
+
+function renderAddress() {
+  const isPublic = isThisProfilePublic();
+  if (isPublic && assigned) {
+    const plain = `${assigned.host}:${assigned.port}`;
+    srvAddress.textContent = customAddress.address || plain;
+    srvAltAddress.textContent = customAddress.address ? t('Also works: {address}', { address: plain }) : '';
+    srvAltAddress.classList.toggle('hidden', !customAddress.address);
+  }
+  const bedrockOn = Boolean(!awaitingAssignment && isPublic && assigned && managingProfile && managingProfile.bedrock);
+  const bedrock = bedrockOn ? assignedBedrockAddress() : null;
+  srvBedrock.classList.toggle('hidden', !bedrock);
+  srvBedrockHost.textContent = bedrock ? bedrock.host : '—';
+  srvBedrockPort.textContent = bedrock ? String(bedrock.port) : '—';
+  srvBedrockStatus.textContent = !bedrockOn ? ''
+    : !bedrock ? t('Bedrock needs an updated relay.')
+    : assigned.bedrockReady !== true ? t('Restart your server once to activate this Bedrock address.') : '';
+  srvBedrockStatus.classList.toggle('hidden', !srvBedrockStatus.textContent);
+  srvListed.classList.toggle('hidden', !(managingProfile && managingProfile.listing && managingProfile.listing.enabled));
+  const hasName = Boolean(customAddress.name) && !editingName;
+  nameView.classList.toggle('hidden', !hasName);
+  nameEdit.classList.toggle('hidden', hasName);
+  nameCurrent.textContent = customAddress.address || '—';
+  if (!editingName && customAddress.elsewhere) {
+    setNameMsg(t('Your address {address} is on the {region} relay. Switch the region to use it.', { address: customAddress.elsewhere.address, region: customAddress.elsewhere.region }));
+  }
+}
+
+function setNameMsg(text, isError) {
+  nameMsg.textContent = text;
+  nameMsg.classList.toggle('err', Boolean(isError));
+}
+
+nameClaimBtn.addEventListener('click', async () => {
+  const name = nameInput.value.trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{1,18}[a-z0-9])$/.test(name) || name.includes('--')) {
+    setNameMsg(t('Use 3–20 lowercase letters, numbers or dashes (not at the start or end).'), true);
+    return;
+  }
+  nameClaimBtn.disabled = true;
+  setNameMsg(t('Setting up {name}.voxelport.in…', { name }));
+  const res = await window.vp.name.claim(name);
+  nameClaimBtn.disabled = false;
+  if (!res || !res.ok) { setNameMsg(t((res && res.error) || 'Could not set that address.'), true); return; }
+  editingName = false;
+  customAddress = { name: res.name, address: res.address };
+  setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
+  srvLogLine(t('Your address is now {address} — it can take a minute to work everywhere.', { address: res.address }));
+  renderAddress();
+});
+nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameClaimBtn.click(); });
+
+$('nameChangeBtn').addEventListener('click', () => {
+  editingName = true;
+  nameInput.value = customAddress.name;
+  renderAddress();
+  nameInput.focus();
+});
+
+$('nameRemoveBtn').addEventListener('click', async () => {
+  if (!window.confirm(t('Remove {address}? Players will need the address with the port again.', { address: customAddress.address }))) return;
+  const res = await window.vp.name.release();
+  if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove the address.')); return; }
+  customAddress = { name: '', address: '' };
+  setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
+  renderAddress();
+});
+
+// "Copy invite message": the address as the screen shows it, with the name, version and Bedrock details.
+// Exposed so the Friends-only screen can offer the same invite for the server being managed.
+function currentInviteData() {
+  if (!assigned) return null;
+  const plain = `${assigned.host}:${assigned.port}`;
+  const bedrockOn = Boolean(managingProfile && managingProfile.bedrock);
+  return {
+    name: managingProfile && managingProfile.name,
+    version: managingProfile && managingProfile.version,
+    address: customAddress.address || plain,
+    plainAddress: customAddress.address ? plain : '',
+    bedrock: bedrockOn && assigned.bedrockReady === true ? assignedBedrockAddress() : null,
+  };
+}
+window.currentInviteData = currentInviteData;
+wireInviteButtons($('srvInviteBtn'), $('srvInviteAltBtn'), currentInviteData);
+
+window.vp.on('tunnel:name', (n) => {
+  if (customAddress.elsewhere && !n.elsewhere) setNameMsg(t('A custom name lets friends join without a port number. 3–20 letters, numbers or dashes.'));
+  customAddress = n;
+  editingName = false;
+  renderAddress();
+});
+window.vp.name.get().then((n) => { if (n) { customAddress = n; renderAddress(); } });
+
+// ─── Performance panel ─────────────────────────────────────────────────────
+
+function setBar(id, fraction, level) {
+  const bar = $(id);
+  bar.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
+  bar.className = level || '';
+}
+
+window.vp.on('perf:sample', (p) => {
+  if (!isThisProfileActive()) return;
+  perfPanel.classList.remove('hidden');
+  if (p.cpuPercent !== null) {
+    $('perfCpu').textContent = `${Math.round(p.cpuPercent)}%`;
+    setBar('perfCpuBar', p.cpuPercent / 100, p.cpuPercent > 85 ? 'bad' : p.cpuPercent > 60 ? 'warn' : '');
+  }
+  if (p.memMb !== null) {
+    const gb = (mb) => (mb / 1024).toFixed(1);
+    $('perfRam').textContent = p.maxRamMb ? `${gb(p.memMb)}/${gb(p.maxRamMb)} GB` : `${gb(p.memMb)} GB`;
+    const frac = p.maxRamMb ? p.memMb / p.maxRamMb : 0;
+    setBar('perfRamBar', frac, frac > 0.95 ? 'bad' : frac > 0.8 ? 'warn' : '');
+  }
+  if (p.tps !== null) {
+    $('perfTps').textContent = p.tps.toFixed(1);
+    setBar('perfTpsBar', p.tps / 20, p.tps < 15 ? 'bad' : p.tps < 19 ? 'warn' : '');
+  }
+  if (p.lagWarnings > 0) {
+    perfWarn.textContent = p.lagWarnings === 1
+      ? t('⚠ The server fell behind 1 time. Lower the view distance or give it more RAM in Settings.')
+      : t('⚠ The server fell behind {n} times. Lower the view distance or give it more RAM in Settings.', { n: p.lagWarnings });
+    perfWarn.classList.remove('hidden');
+  }
+});
+
+function resetPerf() {
+  for (const id of ['perfCpu', 'perfRam', 'perfTps']) $(id).textContent = '—';
+  for (const id of ['perfCpuBar', 'perfRamBar', 'perfTpsBar']) setBar(id, 0);
+  perfPanel.classList.add('hidden');
+  perfWarn.classList.add('hidden');
+}
+
+// ─── "Why it stopped" card ─────────────────────────────────────────────────
+
+function clearDiagnosis() {
+  diagnosisBox.innerHTML = '';
+  diagnosisBox.classList.add('hidden');
+}
+
+function renderDiagnosis(items) {
+  clearDiagnosis();
+  const head = document.createElement('div');
+  head.className = 'diag-head';
+  const title = document.createElement('span');
+  title.textContent = t('Why it stopped');
+  const close = document.createElement('button');
+  close.className = 'link-btn';
+  close.type = 'button';
+  close.textContent = t('Dismiss');
+  close.addEventListener('click', clearDiagnosis);
+  head.append(title, close);
+  diagnosisBox.appendChild(head);
+
+  for (const item of items) {
+    const row = document.createElement('div');
+    row.className = 'diag-item';
+    const h = document.createElement('div');
+    h.className = 'diag-title';
+    h.textContent = item.title;
+    const p = document.createElement('div');
+    p.className = 'diag-detail';
+    p.textContent = item.detail;
+    row.append(h, p);
+    if (item.fix) {
+      const btn = document.createElement('button');
+      btn.className = 'ghost small';
+      btn.type = 'button';
+      btn.textContent = item.fix.label;
+      btn.addEventListener('click', () => runFix(item.fix.action, btn));
+      row.appendChild(btn);
+    }
+    diagnosisBox.appendChild(row);
+  }
+  diagnosisBox.classList.remove('hidden');
+}
+
+async function runFix(action, btn) {
+  if (action === 'settings') window.openSettingsScreen(managingProfileId);
+  else if (action === 'folder') window.vp.server.openFolder(managingProfileId);
+  else if (action === 'eula') {
+    btn.disabled = true;
+    const res = await window.vp.server.fix(managingProfileId, 'eula');
+    btn.textContent = res && res.ok ? t('Accepted — press Start') : t('Could not update eula.txt');
+  }
+}
+
+window.vp.on('server:diagnosis', ({ profileId, items }) => {
+  if (profileId === managingProfileId && Array.isArray(items) && items.length) renderDiagnosis(items);
+});
+
+srvSettingsBtn.addEventListener('click', () => { if (managingProfileId) window.openSettingsScreen(managingProfileId); });
+$('srvBackupsBtn').addEventListener('click', () => { if (managingProfileId) window.openBackupsScreen(managingProfileId); });
+$('srvFilesBtn').addEventListener('click', () => { if (managingProfileId) window.openFilesScreen(managingProfileId); });
+$('srvAddonsBtn').addEventListener('click', () => { if (managingProfileId) window.openAddonsScreen(managingProfileId); });
+window.onAppState.push(() => { if ($('screen-console').classList.contains('active')) renderManagementScreen(); });
+
+window.openManagementScreen = async function openManagementScreen(id) {
+  if (managingProfileId !== id) { clearDiagnosis(); resetPerf(); }
+  managingProfileId = id;
+  window.managingProfileId = id; // other screens (Friends only) read the server being managed
+  srvLog.innerHTML = '';
+  renderPlayers([]);
+  const profile = await window.vp.server.get(id);
+  if (!profile) { showScreen('screen-library'); return; }
+  managingProfile = profile;
+  mgName.textContent = profile.name;
+  mgMeta.textContent = t('{type} • {version} • port {port}', { type: { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type, version: profile.version, port: profile.port });
+  renderManagementScreen();
+};
+
+/** Re-reads the profile (after Settings) without clearing the console. */
+window.refreshManagedProfile = async function refreshManagedProfile() {
+  if (!managingProfileId) return;
+  const profile = await window.vp.server.get(managingProfileId);
+  if (!profile) return;
+  managingProfile = profile;
+  mgName.textContent = profile.name;
+  mgMeta.textContent = t('{type} • {version} • port {port}', { type: { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type, version: profile.version, port: profile.port });
+  renderManagementScreen();
+};
+window.consoleProfileId = () => managingProfileId;
+
+srvStartBtn.addEventListener('click', async () => {
+  if (!managingProfileId) return;
+  clearDiagnosis();
+  resetPerf();
+  const res = await window.vp.server.start(managingProfileId);
+  if (res && res.cancelled) return;
+  if (!res || !res.ok) srvLogLine(t(res && res.error ? res.error : 'Could not start server.'));
+});
+
+srvStopBtn.addEventListener('click', () => window.vp.server.stop());
+srvRestartBtn.addEventListener('click', async () => {
+  const res = await window.vp.server.restart();
+  if (res && res.ok === false && res.error) srvLogLine(t(res.error));
+});
+srvFolderBtn.addEventListener('click', () => window.vp.server.openFolder(managingProfileId));
+
+srvRemoveBtn.addEventListener('click', async () => {
+  if (!managingProfileId) return;
+  const res = await window.vp.server.remove(managingProfileId);
+  if (res && res.cancelled) return; // the question was answered with Cancel
+  if (!res || !res.ok) { srvLogLine(t((res && res.error) || 'Could not remove this server.')); return; }
+  await window.refreshLibrary();
+  showScreen('screen-library');
+});
+
+makePublicBtn.addEventListener('click', async () => {
+  if (!managingProfileId) return;
+  makePublicBtn.disabled = true;
+  const res = await window.vp.server.makePublic(managingProfileId);
+  makePublicBtn.disabled = false;
+  if (res && !res.ok && res.error) srvLogLine(t(res.error));
+});
+
+stopPublicBtn.addEventListener('click', () => window.vp.stop());
+
+srvCopyBtn.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(srvAddress.textContent);
+    srvCopyBtn.textContent = t('Copied');
+    setTimeout(() => { srvCopyBtn.textContent = t('Copy'); }, 1400);
+  } catch { /* ignore */ }
+});
+
+// Commands already sent, newest last: ArrowUp / ArrowDown walk through them like a terminal.
+const cmdHistory = [];
+let cmdHistoryAt = 0;
+let cmdDraft = '';
+const MAX_HISTORY = 50;
+
+function sendCommand() {
+  const cmd = cmdInput.value.trim();
+  if (!cmd) return;
+  window.vp.server.command(cmd);
+  if (cmdHistory[cmdHistory.length - 1] !== cmd) cmdHistory.push(cmd);
+  if (cmdHistory.length > MAX_HISTORY) cmdHistory.shift();
+  cmdHistoryAt = cmdHistory.length;
+  cmdInput.value = '';
+}
+cmdSendBtn.addEventListener('click', sendCommand);
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { sendCommand(); return; }
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  if (!cmdHistory.length) return;
+  e.preventDefault();
+  if (cmdHistoryAt === cmdHistory.length) cmdDraft = cmdInput.value;
+  cmdHistoryAt = Math.min(cmdHistory.length, Math.max(0, cmdHistoryAt + (e.key === 'ArrowUp' ? -1 : 1)));
+  cmdInput.value = cmdHistoryAt === cmdHistory.length ? cmdDraft : cmdHistory[cmdHistoryAt];
+});
+
+cmdCopyBtn.addEventListener('click', async () => {
+  const text = Array.from(srvLog.children).map((line) => line.textContent).join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    cmdCopyBtn.textContent = t('Copied');
+  } catch {
+    cmdCopyBtn.textContent = t('Could not copy');
+  }
+  setTimeout(() => { cmdCopyBtn.textContent = t('Copy log'); }, 1400);
+});
+
+// Who is online, with buttons that send the matching command. Names come from the server's log, so they are only ever
+// put in the page as text.
+const PLAYER_BUTTONS = [
+  { action: 'kick', label: () => t('Kick') },
+  { action: 'op', label: () => t('Make admin'), confirm: (name) => t('Make {name} an admin? Admins can run every command, including stopping the server.', { name }) },
+  { action: 'ban', label: () => t('Ban'), confirm: (name) => t('Ban {name}? They will not be able to join again until you unban them.', { name }) },
+];
+
+function renderPlayers(names) {
+  playersList.innerHTML = '';
+  playersPanel.classList.toggle('hidden', !names.length);
+  for (const name of names) {
+    const row = document.createElement('div');
+    row.className = 'bk-item';
+    const label = document.createElement('div');
+    label.className = 'bk-item-main';
+    const nameEl = document.createElement('strong');
+    nameEl.className = 'player-name';
+    nameEl.textContent = name;
+    label.appendChild(nameEl);
+    const actions = document.createElement('div');
+    actions.className = 'bk-item-actions';
+    for (const def of PLAYER_BUTTONS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ghost small';
+      btn.textContent = def.label();
+      btn.addEventListener('click', () => {
+        if (def.confirm && !window.confirm(def.confirm(name))) return;
+        window.vp.server.playerAction(def.action, name);
+      });
+      actions.appendChild(btn);
+    }
+    row.append(label, actions);
+    playersList.appendChild(row);
+  }
+}
+window.vp.on('server:playerNames', (names) => { if (isThisProfileActive()) renderPlayers(Array.isArray(names) ? names : []); });
+
+window.vp.on('server:status', () => renderManagementScreen());
+window.vp.on('server:log', (line) => { if (isThisProfileActive()) srvLogLine(line); });
+window.vp.on('server:players', (n) => { if (isThisProfileActive()) srvPlayers.textContent = String(n); });
+window.vp.on('server:exit', (code) => { renderPlayers([]); if (isThisProfileActive()) srvLogLine(t('Server process exited (code {code}).', { code })); });
+
+// The relay tunnel is shared with the manual-hosting screen — reuse its events.
+window.vp.on('tunnel:status', (status) => {
+  if (!['connecting', 'reconnecting', 'stopped'].includes(status)) return;
+  awaitingAssignment = true;
+  if (status === 'stopped') assigned = null;
+  else if (assigned) assigned = { ...assigned, bedrockPort: null, bedrockReady: false };
+  renderAddress();
+});
+window.vp.on('tunnel:assigned', ({ port, host, bedrockPort, bedrockReady }) => {
+  assigned = { host, port, bedrockPort, bedrockReady };
+  awaitingAssignment = false;
+  if (!isThisProfilePublic()) return;
+  publicShare.classList.remove('hidden');
+  makePublicBtn.classList.add('hidden');
+  srvRegionRow.classList.add('hidden');
+  renderAddress();
+});
+window.vp.on('tunnel:players', (n) => { if (isThisProfilePublic()) srvTunnelPlayers.textContent = String(n); });
+window.vp.on('tunnel:ping', (ms) => { if (isThisProfilePublic()) srvPing.textContent = `${ms}ms`; });
+window.vp.on('tunnel:error', (message) => {
+  if (isThisProfileActive() || isThisProfilePublic()) srvLogLine(t('Relay: {message}', { message }));
+});

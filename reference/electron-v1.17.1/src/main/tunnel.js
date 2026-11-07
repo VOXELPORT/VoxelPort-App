@@ -1,0 +1,688 @@
+'use strict';
+
+const net = require('net');
+const dgram = require('dgram');
+const { EventEmitter } = require('events');
+const WebSocket = require('ws');
+
+// Matches the relay's own maxWSMessageBytes (relay/relay.go) so a
+// legitimate max-size frame is never rejected, and the client-side
+// `ws` library enforces it too (closes the socket if exceeded) rather than
+// trusting only our own post-parse checks.
+const MAX_WS_MESSAGE_BYTES = 4 * 1024 * 1024;
+// A base64 "data" field this long could never decode to a legitimate frame
+// within MAX_WS_MESSAGE_BYTES once wrapped in the surrounding JSON — reject
+// before even attempting base64 decode.
+const MAX_B64_DATA_CHARS = Math.ceil((MAX_WS_MESSAGE_BYTES * 4) / 3) + 1024;
+const MAX_CONN_ID_LEN = 128;
+
+// Item 19: a malicious/misbehaving relay must not be able to make VoxelPort
+// open unlimited local sockets. Matches the relay's own per-tunnel player
+// cap (relay/relay.go maxPlayersPerTunnel) so the app is never the
+// bottleneck below what the relay would already allow.
+const MAX_LOCAL_PLAYERS = 256;
+
+// Handshake timeout for a relay candidate that has a fallback behind it, so a
+// network that silently drops the direct port doesn't stall hosting for long.
+const FALLBACK_HANDSHAKE_TIMEOUT_MS = 5000;
+
+// Item 20: per-player bound on bytes handed to a local socket that hasn't
+// finished flushing them yet. Backpressure, not deletion — once exceeded,
+// the player is disconnected cleanly rather than growing memory forever.
+const MAX_PLAYER_PENDING_WRITE_BYTES = 8 * 1024 * 1024;
+// If the shared control WebSocket stays backed up (players paused waiting
+// on it) for longer than this, something is wrong with the tunnel itself,
+// not one player — give up and let the normal error/close path run.
+const WS_STALL_TIMEOUT_MS = 30000;
+const WS_BUFFERED_HIGH_WATERMARK = 4 * 1024 * 1024;
+const WS_BUFFERED_LOW_WATERMARK = 1 * 1024 * 1024;
+
+const LOCAL_CONNECT_TIMEOUT_MS = 10000;
+
+// Protocol v2: when the relay confirms "bin": 1 in its port frame, TCP and UDP payloads travel as binary WebSocket
+// messages instead of base64 inside JSON. Layout: byte 0 = kind, bytes 1-16 = the connection id as 16 raw bytes (the
+// relay's 32-character hex id), bytes 17+ = the payload. Control frames stay JSON in both modes.
+const FRAME_TCP = 0x01;
+const FRAME_UDP = 0x02;
+const FRAME_VOICE_UDP = 0x03;
+const FRAME_HEADER_LEN = 17;
+const HEX_CONN_ID = /^[0-9a-f]{32}$/;
+// A rejected binary frame is logged at most this often, so a broken relay can't flood the console.
+const BAD_FRAME_LOG_EVERY_MS = 30000;
+
+// Bedrock (UDP) sessions — mirrors the relay's own caps (relay/udp.go).
+const MAX_UDP_SESSIONS = 256;
+const MAX_UDP_DATAGRAM = 2048;
+const MAX_UDP_B64_CHARS = Math.ceil((MAX_UDP_DATAGRAM * 4) / 3) + 4;
+const UDP_SESSION_IDLE_MS = 60000;
+
+function isValidConnId(id) {
+  return typeof id === 'string' && id.length > 0 && id.length <= MAX_CONN_ID_LEN;
+}
+
+/**
+ * Splits a binary relay frame into { kind, conn, payload } (conn is the 32-character hex id), or returns null when
+ * it can't be one: shorter than its header, or a kind this version doesn't know. What the connection id refers to is
+ * checked by the caller.
+ */
+function parseBinaryFrame(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < FRAME_HEADER_LEN) return null;
+  const kind = buf[0];
+  if (kind !== FRAME_TCP && kind !== FRAME_UDP && kind !== FRAME_VOICE_UDP) return null;
+  return { kind, conn: buf.subarray(1, FRAME_HEADER_LEN).toString('hex'), payload: buf.subarray(FRAME_HEADER_LEN) };
+}
+
+/** A binary frame: the header (kind + the 16 bytes of `raw`) in front of `payload`. */
+function buildBinaryFrame(kind, raw, payload) {
+  const frame = Buffer.allocUnsafe(FRAME_HEADER_LEN + payload.length);
+  frame[0] = kind;
+  raw.copy(frame, 1);
+  payload.copy(frame, FRAME_HEADER_LEN);
+  return frame;
+}
+
+/**
+ * Validates an incoming relay frame before anything acts on it (item 18) —
+ * the relay is untrusted input from VoxelPort's perspective, same as the
+ * relay treats the mod/app as untrusted. Unknown types are left to the
+ * caller's switch (which safely ignores them); every known type gets its
+ * fields checked here.
+ */
+function isValidRelayMessage(msg) {
+  if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return false;
+  if (msg.rank !== undefined && !['free', 'supporter', 'supporter_plus'].includes(msg.rank)) return false;
+  switch (msg.type) {
+    case 'port':
+      return Number.isInteger(msg.port) && msg.port >= 1 && msg.port <= 65535
+        && (msg.bedrock_port === undefined || (Number.isInteger(msg.bedrock_port) && msg.bedrock_port >= 1 && msg.bedrock_port <= 65535
+          && msg.bedrock_port !== msg.port && msg.bedrock_port !== msg.voice_port))
+        && (msg.voice_port === undefined || (Number.isInteger(msg.voice_port) && msg.voice_port >= 1 && msg.voice_port <= 65535))
+        && (msg.bin === undefined || Number.isInteger(msg.bin));
+    case 'connect':
+      return isValidConnId(msg.conn) && (msg.bedrock === undefined || typeof msg.bedrock === 'boolean')
+        && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
+    case 'data':
+      return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_B64_DATA_CHARS;
+    case 'close':
+      return isValidConnId(msg.conn);
+    case 'error':
+    case 'name_error':
+    case 'listing_error':
+    case 'udp_error':
+    case 'voice_error':
+      return msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 500);
+    case 'udp':
+    case 'voice_udp':
+      return isValidConnId(msg.conn) && typeof msg.data === 'string' && msg.data.length <= MAX_UDP_B64_CHARS
+        && (msg.ip === undefined || (typeof msg.ip === 'string' && msg.ip.length <= 64));
+    case 'udp_close':
+    case 'voice_udp_close':
+      return isValidConnId(msg.conn);
+    case 'name':
+      return (msg.name === undefined || (typeof msg.name === 'string' && /^[a-z0-9-]{0,32}$/.test(msg.name)))
+        && (msg.address === undefined || (typeof msg.address === 'string' && msg.address.length <= 253));
+    case 'notice':
+      // An announcement from the relay's operator. The text is shown, never acted on.
+      return (msg.message === undefined || (typeof msg.message === 'string' && msg.message.length <= 300))
+        && (msg.seconds === undefined || (Number.isInteger(msg.seconds) && msg.seconds >= 0 && msg.seconds <= 172800));
+    case 'pong':
+      return true;
+    default:
+      return true;
+  }
+}
+
+/**
+ * Tunnel is a Node implementation of the VoxelPort host protocol — the same
+ * contract the Fabric mod speaks (see relay/README.md). It opens a WebSocket to
+ * the relay, registers with a device token, receives a public port, and bridges
+ * each vanilla player connection to a local Minecraft server.
+ *
+ * Events: 'status' (state), 'assigned' (port), 'players' (count), 'ping' (ms),
+ *         'log' (line), 'error' (message), 'stopped',
+ *         'name' ({ name, address } — empty when none), 'nameError' (message),
+ *         'listingError' (message), 'udpError' (message),
+ *         'notice' ({ message, seconds } — an announcement from the relay's operator; empty message = withdrawn).
+ *
+ * With `bedrockPort` and `udpPort`, the relay allocates a separate TCP+UDP
+ * endpoint for Geyser signaling and gameplay. UDP-only callers retain the
+ * legacy RakNet path. Signaling streams use the existing TCP data framing.
+ */
+class Tunnel extends EventEmitter {
+  constructor() {
+    super();
+    this.ws = null;
+    this.players = new Map(); // connID -> { sock, pendingBytes, closed }
+    this.running = false; // registered with the relay and online
+    this.bin = false; // protocol v2 is on for the current connection (the relay confirmed it)
+    this.badFrameLoggedAt = 0;
+    this.live = false; // from start() until 'stopped': connecting, online and reconnecting all count
+    this.manualStop = false;
+    this.reconnectTimer = null;
+    this.pingTimer = null;
+    this.lastPingSent = 0;
+    this.reconnectDelay = 1000;
+    this.wsStallTimer = null;
+    this.udpSessions = new Map(); // connID -> { sock, idleTimer }
+    this.voiceSessions = new Map();
+    this.voicePublicPort = null;
+    this.listing = null; // re-sent after every (re)registration
+  }
+
+  /** True from start() until 'stopped': a tunnel that is still connecting or reconnecting exists, even though it is not online. */
+  isLive() { return this.live; }
+
+  /** The end of this tunnel's life: said once, whichever way it got here. */
+  _finish() {
+    if (!this.live) return;
+    this.live = false;
+    this.running = false;
+    this.emit('status', 'stopped');
+    this.emit('stopped');
+  }
+
+  /**
+   * `relayUrls` is an ordered list of candidates (preferred first). If a
+   * candidate can't be reached at all, the next one is tried immediately;
+   * after any drop of an established connection, the preferred one is tried
+   * again first. `relayUrl` alone is the single-candidate form.
+   */
+  start({ relayUrl, relayUrls, token, localPort, udpPort = null, bedrockPort = null, voicePort = null, voiceAuto = false, client = null }) {
+    this.relayUrls = (relayUrls && relayUrls.length) ? relayUrls : [relayUrl];
+    this.urlIndex = 0;
+    this.relayUrl = this.relayUrls[0];
+    this.token = token;
+    this.localPort = localPort;
+    this.udpPort = udpPort;
+    this.bedrockPort = bedrockPort;
+    this.bedrockPublicPort = null;
+    this.voicePort = voicePort;
+    this.voiceAuto = voiceAuto;
+    this.rank = null;
+    this.client = client; // "desktop/1.7.0": goes into the relay's log so a support question can be answered
+    this.manualStop = false;
+    this.live = true;
+    this._connect();
+  }
+
+  _connect() {
+    this.relayUrl = this.relayUrls[this.urlIndex];
+    const hasFallback = this.urlIndex < this.relayUrls.length - 1;
+    this.emit('status', 'connecting');
+    this.emit('log', `Connecting to ${this.relayUrl}…`);
+
+    let ws;
+    let opened = false;
+    try {
+      ws = new WebSocket(this.relayUrl.replace(/\/+$/, '') + '/ws', {
+        // Fail over quickly when another candidate is waiting.
+        handshakeTimeout: hasFallback ? FALLBACK_HANDSHAKE_TIMEOUT_MS : 15000,
+        maxPayload: MAX_WS_MESSAGE_BYTES,
+      });
+    } catch (err) {
+      this.emit('error', 'Bad relay URL: ' + err.message);
+      this._finish(); // nothing will ever connect: don't stay "live" with no socket
+      return;
+    }
+    this.ws = ws;
+
+    ws.on('open', () => {
+      opened = true;
+      this.emit('log', 'Connected. Registering…');
+      this.bin = false; // decided again by every port frame
+      const reg = { type: 'register', token: this.token, bin: 1 };
+      if (this.client) reg.client = this.client;
+      if (this.udpPort) reg.udp = true;
+      if (this.bedrockPort) reg.bedrock = true;
+      if (this.voicePort) reg[this.voiceAuto ? 'voice_auto' : 'voice'] = true;
+      this._send(reg);
+    });
+
+    ws.on('message', (data, isBinary) => (isBinary ? this._onBinary(data) : this._onMessage(data)));
+
+    ws.on('close', () => {
+      if (this.manualStop) {
+        // stop() already tore everything down; only the end is left to say (once).
+        this._finish();
+        return;
+      }
+      this._teardownPlayers();
+      this._teardownUdp();
+      this._stopPing();
+      this._clearWsStallTimer();
+      this.running = false;
+      this.bedrockPublicPort = null;
+      // Never reached this candidate — move straight on to the next one.
+      if (!opened && hasFallback) {
+        this.urlIndex++;
+        this.emit('log', `Could not reach ${this.relayUrl}, trying ${this.relayUrls[this.urlIndex]}…`);
+        this._connect();
+        return;
+      }
+      // Next attempt starts from the preferred candidate again.
+      this.urlIndex = 0;
+      // Unexpected drop — retry with backoff while the user wants it running.
+      this.emit('status', 'reconnecting');
+      this.emit('log', `Disconnected. Reconnecting in ${Math.round(this.reconnectDelay / 1000)}s…`);
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (!this.manualStop) this._connect();
+      }, this.reconnectDelay);
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+    });
+
+    ws.on('error', (err) => {
+      this.emit('log', 'Socket error: ' + err.message);
+      // 'close' fires next and handles reconnect/stop.
+    });
+  }
+
+  _onMessage(raw) {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+    if (!isValidRelayMessage(msg)) {
+      this.emit('log', `Ignored malformed relay frame (type=${msg && msg.type}).`);
+      return;
+    }
+
+    switch (msg.type) {
+      case 'port':
+        this.running = true;
+        this.bin = msg.bin === 1; // only the relay saying so turns it on: an older relay never does
+        this.reconnectDelay = 1000;
+        this.bedrockPublicPort = this.bedrockPort ? (msg.bedrock_port || null) : null;
+        this.emit('status', 'online');
+        this.emit('assigned', msg.port);
+        this.voicePublicPort = this.voicePort ? (msg.voice_port || null) : null;
+        this.rank = msg.rank || null;
+        this.emit('rank', this.rank);
+        this.emit('voiceAssigned', this.voicePublicPort);
+        if (this.voicePort && !this.voiceAuto && !msg.voice_port) this.emit('log', 'Voice chat is unavailable on this relay or requires Supporter Plus.');
+        this.emit('log', `Tunnel is live on public port ${msg.port}.`);
+        if (this.bedrockPort && !this.bedrockPublicPort) this.emit('udpError', 'Bedrock needs an updated relay with a separate TCP and UDP port. Java is still available.');
+        this._startPing();
+        if (this.listing) this._send({ type: 'listing', listing: this.listing });
+        break;
+
+      case 'name':
+        this.emit('name', { name: msg.name || '', address: msg.address || '' });
+        break;
+
+      case 'name_error':
+        this.emit('nameError', msg.message || 'Could not set that address.');
+        break;
+
+      case 'listing_error':
+        this.emit('listingError', msg.message || 'Could not list this server.');
+        break;
+
+      case 'notice':
+        this.emit('notice', { message: msg.message || '', seconds: msg.seconds || 0 });
+        break;
+
+      case 'udp_error':
+        this.bedrockPublicPort = null;
+        this.emit('udpError', msg.message || 'Bedrock forwarding is unavailable.');
+        this.emit('log', 'Relay: ' + (msg.message || 'Bedrock forwarding is unavailable.'));
+        break;
+
+      case 'voice_error':
+        this.emit('voiceError', msg.message || 'Voice chat forwarding is unavailable.');
+        this.emit('log', 'Relay: ' + (msg.message || 'Voice chat forwarding is unavailable.'));
+        break;
+
+      case 'udp':
+      case 'voice_udp': {
+        let data;
+        try { data = Buffer.from(msg.data, 'base64'); } catch { break; }
+        this._receiveUdp(msg.conn, data, msg.type === 'voice_udp');
+        break;
+      }
+
+      case 'udp_close':
+        this._closeUdpSession(msg.conn, false);
+        break;
+      case 'voice_udp_close':
+        this._closeUdpSession(msg.conn, false, true);
+        break;
+
+      case 'error':
+        this.emit('error', msg.message || 'relay rejected the connection');
+        this.emit('log', 'Relay error: ' + (msg.message || 'unknown'));
+        break;
+
+      case 'connect':
+        if (msg.bedrock && (!this.bedrockPort || !this.bedrockPublicPort)) {
+          this._send({ type: 'close', conn: msg.conn });
+          break;
+        }
+        if (this.players.has(msg.conn)) {
+          // Duplicate connection id — never silently replace/leak the
+          // existing socket for it (item 18).
+          this.emit('log', `Ignored duplicate connect for an already-open connection.`);
+          break;
+        }
+        if (this.players.size >= MAX_LOCAL_PLAYERS) {
+          this.emit('log', `Rejected a new player — local connection cap (${MAX_LOCAL_PLAYERS}) reached.`);
+          this._send({ type: 'close', conn: msg.conn });
+          break;
+        }
+        this._openPlayer(msg.conn, msg.ip, Boolean(msg.bedrock));
+        break;
+
+      case 'data': {
+        const pc = this.players.get(msg.conn);
+        if (!pc || pc.closed) break; // unknown/already-closed conn id creates no state
+        let decoded;
+        try {
+          decoded = Buffer.from(msg.data, 'base64');
+        } catch {
+          break;
+        }
+        // Buffer.from(..., 'base64') never throws on malformed input, it
+        // just decodes what it can — bound the *decoded* size too. Skipping the
+        // chunk would leave a hole in that player's stream (Minecraft cannot
+        // recover from one), so the player is disconnected instead.
+        if (decoded.length > MAX_WS_MESSAGE_BYTES) {
+          this.emit('log', 'A frame from the relay was larger than allowed — disconnecting that player.');
+          this._closePlayer(msg.conn, /* notifyRelay */ true);
+          break;
+        }
+        this._writeToPlayer(msg.conn, pc, decoded);
+        break;
+      }
+
+      case 'close': {
+        this._closePlayer(msg.conn, /* notifyRelay */ false);
+        break;
+      }
+
+      case 'pong':
+        if (this.lastPingSent) this.emit('ping', Date.now() - this.lastPingSent);
+        if (msg.rank && msg.rank !== this.rank) {
+          const previous = this.rank;
+          this.rank = msg.rank;
+          this.emit('rank', this.rank);
+          // Re-register once on an entitlement change to allocate/release voice safely.
+          if (this.voiceAuto && this.voicePort && (previous === 'supporter_plus' || this.rank === 'supporter_plus')) this.ws?.close();
+        }
+        break;
+    }
+  }
+
+  /** A binary frame from the relay: validated, then handled like the JSON data/udp frame it replaces. */
+  _onBinary(data) {
+    if (!this.bin) { this._noteBadFrame('the relay sent a binary frame without agreeing to protocol v2'); return; }
+    const frame = parseBinaryFrame(data);
+    if (!frame) { this._noteBadFrame('too short, or an unknown kind'); return; }
+    if (frame.payload.length === 0) return;
+
+    if (frame.kind === FRAME_TCP) {
+      const pc = this.players.get(frame.conn);
+      if (!pc || pc.closed) { this._noteBadFrame('it names a connection that does not exist'); return; }
+      // Dropping a chunk would leave a hole in the player's stream, so a payload that is too big ends that player.
+      if (frame.payload.length > MAX_WS_MESSAGE_BYTES) {
+        this.emit('log', 'A frame from the relay was larger than allowed — disconnecting that player.');
+        this._closePlayer(frame.conn, /* notifyRelay */ true);
+        return;
+      }
+      this._writeToPlayer(frame.conn, pc, frame.payload);
+      return;
+    }
+
+    // UDP: the first datagram of a session names an id nobody has seen yet, exactly as the JSON udp frame does.
+    this._receiveUdp(frame.conn, frame.payload, frame.kind === FRAME_VOICE_UDP);
+  }
+
+  _receiveUdp(conn, data, voice = false) {
+    const port = voice ? this.voicePort : this.udpPort;
+    const sessions = voice ? this.voiceSessions : this.udpSessions;
+    if (!port || (voice && !this.voicePublicPort) || (!voice && this.bedrockPort && !this.bedrockPublicPort)
+      || !data.length || data.length > MAX_UDP_DATAGRAM) return;
+    let session = sessions.get(conn);
+    if (!session) {
+      if (sessions.size >= MAX_UDP_SESSIONS) return;
+      session = this._openUdpSession(conn, voice);
+    }
+    this._touchUdpSession(conn, session);
+    session.sock.send(data, port, '127.0.0.1');
+  }
+
+  _noteBadFrame(reason) {
+    const now = Date.now();
+    if (now - this.badFrameLoggedAt < BAD_FRAME_LOG_EVERY_MS) return;
+    this.badFrameLoggedAt = now;
+    this.emit('log', `Ignored a binary frame from the relay (${reason}); more are not logged for ${BAD_FRAME_LOG_EVERY_MS / 1000}s.`);
+  }
+
+  _openPlayer(conn, ip, bedrock = false) {
+    const sock = new net.Socket();
+    // The 16 raw bytes of the id, for binary frames. Only a proper 32-character hex id has them; any other stays on JSON.
+    const raw = HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null;
+    const pc = { sock, pendingBytes: 0, closed: false, raw, bedrock };
+    this.players.set(conn, pc);
+    this._emitPlayerCount();
+    const port = bedrock ? this.bedrockPort : this.localPort;
+    this.emit('log', `${bedrock ? 'Bedrock signaling' : 'Player'} connected${ip ? ' from ' + ip : ''} → 127.0.0.1:${port}`);
+
+    let connected = false;
+    const connectTimer = setTimeout(() => {
+      if (!connected) {
+        sock.destroy(new Error(`Local server connect timeout after ${LOCAL_CONNECT_TIMEOUT_MS}ms`));
+      }
+    }, LOCAL_CONNECT_TIMEOUT_MS);
+
+    sock.once('connect', () => {
+      connected = true;
+      clearTimeout(connectTimer);
+    });
+
+    sock.connect(port, '127.0.0.1');
+
+    sock.on('data', (buf) => this._onLocalData(conn, buf));
+
+    const closeThisPlayer = () => {
+      clearTimeout(connectTimer);
+      this._closePlayer(conn, /* notifyRelay */ true);
+    };
+    sock.on('close', closeThisPlayer);
+    sock.on('error', (err) => {
+      if (!connected) {
+        this.emit('log', `Could not reach a local server on 127.0.0.1:${port}: ${err.message}`);
+      }
+      closeThisPlayer();
+    });
+  }
+
+  /** Local server -> relay, with bounded backpressure on the shared WebSocket (item 20). */
+  _onLocalData(conn, buf) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const pc = this.players.get(conn);
+    if (this.bin && pc && pc.raw) this._sendBinary(buildBinaryFrame(FRAME_TCP, pc.raw, buf));
+    else this._send({ type: 'data', conn, data: buf.toString('base64') });
+
+    if (this.ws.bufferedAmount > WS_BUFFERED_HIGH_WATERMARK) {
+      if (pc && !pc.sock.isPaused()) pc.sock.pause();
+      this._armWsStallWatch();
+    }
+  }
+
+  _armWsStallWatch() {
+    if (this.wsStallTimer) return;
+    const deadline = Date.now() + WS_STALL_TIMEOUT_MS;
+    this.wsStallTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this._clearWsStallTimer();
+        return;
+      }
+      if (this.ws.bufferedAmount <= WS_BUFFERED_LOW_WATERMARK) {
+        for (const pc of this.players.values()) {
+          if (pc.sock.isPaused()) pc.sock.resume();
+        }
+        this._clearWsStallTimer();
+        return;
+      }
+      if (Date.now() > deadline) {
+        // The shared control connection has been backed up for too long —
+        // this reflects the tunnel's own network path, not any one player.
+        // Bound the damage: drop everyone paused rather than buffer forever.
+        this.emit('log', 'Relay connection is stalled — disconnecting paused players.');
+        for (const [conn, pc] of this.players) {
+          if (pc.sock.isPaused()) this._closePlayer(conn, true);
+        }
+        this._clearWsStallTimer();
+      }
+    }, 500);
+  }
+
+  _clearWsStallTimer() {
+    if (this.wsStallTimer) clearInterval(this.wsStallTimer);
+    this.wsStallTimer = null;
+  }
+
+  /** Relay -> local server, with a bounded per-player pending-write budget (item 20). */
+  _writeToPlayer(conn, pc, chunk) {
+    if (pc.pendingBytes + chunk.length > MAX_PLAYER_PENDING_WRITE_BYTES) {
+      this.emit('log', 'A player\'s local connection could not keep up — disconnecting it.');
+      this._closePlayer(conn, true);
+      return;
+    }
+    pc.pendingBytes += chunk.length;
+    pc.sock.write(chunk, () => {
+      pc.pendingBytes -= chunk.length;
+    });
+  }
+
+  _emitPlayerCount() {
+    let count = 0;
+    for (const pc of this.players.values()) if (!pc.bedrock) count++;
+    this.emit('players', count);
+  }
+
+  _closePlayer(conn, notifyRelay) {
+    const pc = this.players.get(conn);
+    if (!pc || pc.closed) return;
+    pc.closed = true;
+    this.players.delete(conn);
+    pc.sock.destroy();
+    if (notifyRelay) this._send({ type: 'close', conn });
+    this._emitPlayerCount();
+  }
+
+  _openUdpSession(conn, voice = false) {
+    const sock = dgram.createSocket('udp4');
+    const s = { sock, voice, idleTimer: null, raw: HEX_CONN_ID.test(conn) ? Buffer.from(conn, 'hex') : null };
+    (voice ? this.voiceSessions : this.udpSessions).set(conn, s);
+    sock.on('message', (buf) => {
+      if (buf.length > MAX_UDP_DATAGRAM) return;
+      this._touchUdpSession(conn, s);
+      if (this.bin && s.raw) this._sendBinary(buildBinaryFrame(voice ? FRAME_VOICE_UDP : FRAME_UDP, s.raw, buf));
+      else this._send({ type: voice ? 'voice_udp' : 'udp', conn, data: buf.toString('base64') });
+    });
+    sock.on('error', () => this._closeUdpSession(conn, true, voice));
+    return s;
+  }
+
+  _touchUdpSession(conn, s) {
+    clearTimeout(s.idleTimer);
+    s.idleTimer = setTimeout(() => this._closeUdpSession(conn, true, s.voice), UDP_SESSION_IDLE_MS);
+  }
+
+  _closeUdpSession(conn, notifyRelay, voice = false) {
+    const sessions = voice ? this.voiceSessions : this.udpSessions;
+    const s = sessions.get(conn);
+    if (!s) return;
+    sessions.delete(conn);
+    clearTimeout(s.idleTimer);
+    try { s.sock.close(); } catch { /* already closed */ }
+    if (notifyRelay) this._send({ type: voice ? 'voice_udp_close' : 'udp_close', conn });
+  }
+
+  _teardownUdp() {
+    for (const conn of [...this.udpSessions.keys()]) this._closeUdpSession(conn, false);
+    for (const conn of [...this.voiceSessions.keys()]) this._closeUdpSession(conn, false, true);
+    this.voicePublicPort = null;
+    this.emit('voiceAssigned', null);
+  }
+
+  /** Asks the relay for the custom address `name` (answered by 'name' or 'nameError'). */
+  claimName(name) {
+    this._send({ type: 'claim_name', name: String(name || '').trim().toLowerCase() });
+  }
+
+  releaseName() {
+    this._send({ type: 'release_name' });
+  }
+
+  /** Publishes (or, with null, withdraws) this server's public-list entry. */
+  setListing(listing) {
+    this.listing = listing || null;
+    if (this.running) this._send(listing ? { type: 'listing', listing } : { type: 'listing' });
+  }
+
+  _startPing() {
+    this._stopPing();
+    this.pingTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.lastPingSent = Date.now();
+        this._send({ type: 'ping' });
+      }
+    }, 15000);
+  }
+
+  _stopPing() {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = null;
+  }
+
+  _teardownPlayers() {
+    for (const pc of this.players.values()) {
+      pc.closed = true;
+      pc.sock.destroy();
+    }
+    this.players.clear();
+    this.emit('players', 0);
+  }
+
+  _send(obj) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(obj));
+    }
+  }
+
+  _sendBinary(frame) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(frame, { binary: true });
+    }
+  }
+
+  stop() {
+    if (!this.live || this.manualStop) return; // never started, or already stopping: one 'stopped' per life
+    this.manualStop = true;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this._stopPing();
+    this._clearWsStallTimer();
+    this._teardownPlayers();
+    this._teardownUdp();
+    this.running = false;
+    this.bedrockPublicPort = null;
+    // If we're mid-reconnect-backoff, this.ws is already closed and its
+    // 'close' handler already ran (with manualStop still false at the
+    // time) — it will never fire again, so ws.close() here would be a
+    // silent no-op and 'stopped' would never be emitted, leaving a caller
+    // waiting forever. Only rely on the 'close' handler when the socket is
+    // actually still open/connecting; otherwise finish directly.
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.ws.close();
+    } else {
+      this._finish();
+    }
+  }
+}
+
+module.exports = { Tunnel, isValidRelayMessage, parseBinaryFrame, buildBinaryFrame, MAX_LOCAL_PLAYERS, FRAME_TCP, FRAME_UDP, FRAME_HEADER_LEN };

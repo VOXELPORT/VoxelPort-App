@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the VoxelPort window may do: call the one backend command, and listen for events.",
+  "windows": ["main"],
+  "permissions": ["allow-ipc", "core:event:allow-listen", "core:event:allow-unlisten"]
+}
