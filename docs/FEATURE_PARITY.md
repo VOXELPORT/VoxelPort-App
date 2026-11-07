@@ -116,4 +116,4 @@ Web control is not part of this migration: it is unreleased, and the base is the
 | `yauzl` / `yazl` | zip read and write for backups and modpacks | the `zip` crate, with path-traversal checks | **Done** |
 | `https` downloads | installers, add-ons, support data | the shared download client: allow-listed hosts, checksums, size caps | **Done** |
 | Discord Rich Presence (`net` to Discord's pipe) | the "Hosting a server" line | a Windows named pipe client | **Done** |
-| Microsoft Store package (MSIX) | the live Store listing | Tauri has no MSIX target; needs a separate packaging step | **Open question** (a packaged build already reports "the Store updates it") |
+| Microsoft Store package (MSIX) | the live Store listing | none: the Tauri build is distributed as a direct installer only | **Decided: not shipped** (the Store listing stays the Electron app) |

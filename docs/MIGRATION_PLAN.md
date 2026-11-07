@@ -50,14 +50,14 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 8 done | relay tunnel, regions, custom address, Bedrock endpoint, public list entry | tunnel 688, regions 97, bedrockEndpoint 48, relayUrlSafety | the core of the product. Automatic voice-chat setup (`voiceSetup.js`) and the in-game relay announcement (`notice.js`) are left for later |
 | 9 done | add-ons, modpacks, Bedrock install, runtime info, crash explain, perf | addons 272, modpackImport 239, bedrock 284, runtimeInfo 98, crashExplain 169, perfMonitor 168 | Modrinth and Geyser downloads, checksums. CPU and memory are read from the operating system directly (no PowerShell process); a chat line can no longer pass for the server's `tick query` answer or its lag warning |
 | 10 done | updater, support, presence, notices, diagnostics, voice chat, one-copy lock | updater 120, support 159, discordPresence 158, notice 99, diagnostics 62, voiceSetup 78 | polish and release plumbing. The updater is Tauri's (minisign signature, bound to the version, so a validly signed older release cannot be passed off as a newer one); it says `not-configured` in release builds until a signing key is set. Voice chat now installs its plugin by the real Modrinth id (Electron's install of a missing voice plugin always failed). A player's chat can no longer pass for the relay's or the server's own lines |
-| 11 | installer, signing, Store path | n/a | see risks |
+| 11 | installer, signing | n/a | the NSIS installer (direct download only, no Microsoft Store build), the update signing key, optional code signing; see risks |
 
 The 57 Electron test files are the specification for steps 3 to 10: each module's tests should be ported with it.
 
 ## 4. Risks and open questions
 
-- **Microsoft Store.** VoxelPort is live on the Store as an MSIX. Tauri produces NSIS and MSI, not MSIX. Shipping a
-  Tauri build there needs a separate packaging step and a decision on whether it replaces the Store build.
+- **Microsoft Store: decided not to ship it.** The Tauri build is distributed as a direct installer only (NSIS), not as a Store package.
+  The existing Store listing is the Electron app and stays what it is; the Store, not this build, updates it. (Tauri has no MSIX target anyway.)
 - **Auto-update.** `electron-updater` and `tauri-plugin-updater` use different manifests and signing keys. Installed
   Electron apps cannot update into Tauri by themselves; a one-time reinstall or a bridge release is needed.
 - **Stored secrets.** The Electron app encrypts the device token and Discord session with `safeStorage`, which on Windows
