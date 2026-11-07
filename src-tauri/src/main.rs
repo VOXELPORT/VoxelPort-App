@@ -7,6 +7,7 @@ mod ipc;
 mod javasetup;
 
 mod secrets;
+mod serverconfig;
 mod serversetup;
 mod sys;
 
@@ -52,6 +53,7 @@ pub struct AppState {
     pub account: AppAccount,
     pub link_error: Mutex<Option<String>>,
     pub backup_busy: AtomicBool,
+    pub accounts_busy: AtomicBool,
     /// Set while a Java install runs before a start: the screens see the server as "starting".
     pub preparing_java: AtomicBool,
     pub java_watch: Mutex<Option<JavaWatch>>,
@@ -112,6 +114,7 @@ fn main() {
                 account,
                 link_error: Mutex::new(None),
                 backup_busy: AtomicBool::new(false),
+                accounts_busy: AtomicBool::new(false),
                 preparing_java: AtomicBool::new(false),
                 java_watch: Mutex::new(None),
                 java_lock: tokio::sync::Mutex::new(()),

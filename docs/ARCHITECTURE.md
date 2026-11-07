@@ -46,11 +46,28 @@ The Rust command checks the channel against `channels.in` (also generated) and d
 - **Join/leave tracking** parses the whole message after the log prefix, so chat text cannot pose as the server.
 - **One server at a time**, like Electron. Starting a second returns `AlreadyRunning`.
 
+## Managing a server (`settings.rs`, `whitelist.rs`, `server_files.rs`, `cracked.rs`, `addon_registry.rs`)
+
+- **Settings**: a table of the twelve `server.properties` keys the screen may change, each with a validator. Anything else is refused, and
+`online-mode`, `enable-rcon`, `rcon.password` and `enable-command-block` are deliberately not in it. Values are escaped (backslash, non-ASCII
+as `\uXXXX`, control characters dropped) so a value cannot start another line. Only the changed keys of the file are rewritten.
+- **Friends-only**: usernames are 3 to 16 of letters, digits, underscore; the list is the server's own `whitelist.json`. A running server is
+also sent the `whitelist ...` commands (collected during the call and sent after it, so nothing waits on the server while a file is being
+edited); a stopped one is just edited and needs a restart.
+- **Files**: the page sends a path relative to the server folder. It must contain no `..`, drive letter, NUL or `:` (which also blocks
+Windows alternate data streams), and the real path of the deepest part that exists must stay inside the real folder, so a junction or
+symlink cannot lead out. Only existing plain-text files of a fixed set of types are read or replaced; logs are read-only; `.json` must
+parse; nothing can be created.
+- **Cracked mode** is the one confirmed way to change `online-mode`, and it touches only that key and `enforce-secure-profile`. Setting a
+server up for it installs the login plugin (AuthMe, checksum-verified from Modrinth) **first**, switches offline mode on only once the
+plugin is really on disk, then adds skins. If the login plugin cannot be had the server stays on normal accounts and says so.
+- `addon_registry.rs` is the record of plugins VoxelPort itself installed, so the Plugins screen lists them and Remove only touches those.
+
 ## Downloads (`net.rs`)
 
-Everything that fetches a program or archive (Java, server jars; add-ons later) goes through one `Fetcher`: HTTPS only, every
+Everything that fetches a program or archive (Java, server jars, the login and skins plugins; add-ons later) goes through one `Fetcher`: HTTPS only, every
 request and every redirect hop checked against a host allow-list (a domain rule matches the domain and its subdomains, not
-look-alikes), a size cap, a stall cut-off, a checksum check (SHA-1 or SHA-256) and a write to a temporary file that only
+look-alikes), a size cap, a stall cut-off, a checksum check (SHA-1, SHA-256 or SHA-512) and a write to a temporary file that only
 replaces the destination once the download is complete and verified. Java and the server jars share it, so one set of tests
 covers both.
 

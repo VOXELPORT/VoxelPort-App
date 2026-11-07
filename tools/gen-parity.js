@@ -11,20 +11,21 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const channels = [...fs.readFileSync(path.join(root, 'src-tauri', 'src', 'channels.in'), 'utf8').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 const ipc = fs.readFileSync(path.join(root, 'src-tauri', 'src', 'ipc.rs'), 'utf8');
-const arms = new Set([...ipc.matchAll(/^\s+"([A-Za-z:]+)"(?:\s*\|\s*"[A-Za-z:]+")*\s*=>/gm)].map((m) => m[1]));
+// A match arm may list several channels ("a" | "b" => ...): every one of them is answered by that arm.
+const arms = new Set([...ipc.matchAll(/^\s+((?:"[A-Za-z:]+"\s*\|?\s*)+)=>/gm)].flatMap((m) => [...m[1].matchAll(/"([A-Za-z:]+)"/g)].map((x) => x[1])));
 
 // Answered, but with a fixed value rather than the real behaviour.
 // Ported channels that still have a known gap: shown as Ported, with the gap in the note.
 const CAVEATS = {
   'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Not yet: Bedrock/Geyser launch, backup-busy check, the "switch to another server" question',
-  'server:install': 'Verified jar, files and profile. Template extras that need other modules are skipped with a plain warning: Bedrock (Geyser) and cracked setup (login plugin, skins)',
+  'server:install': 'Verified jar, files and profile; cracked templates get the login plugin, then offline mode, then skins. The Bedrock (Geyser) extra is skipped with a plain warning',
+  'app:info': 'masked token and VoxelPort ID are real; copying the token to the clipboard is not ported',
+  'server:settings:save': 'does not yet update a live public-server-list entry (tunnel not ported)',
   'server:profiles:delete': 'Native confirmation, Recycle Bin, folder safety checks. Does not yet stop a public tunnel (tunnel not ported)',
   'server:chooseFolder': 'native folder picker, not yet tested by hand',
 };
 
 const STUBS = {
-  'app:info': 'token fields are placeholders; the device token is not ported',
-  'app:versions': 'Java detection not ported (systemJava is null, managedJava empty)',
   'app:setLanguage': 'accepted and ignored (messages the backend writes are not translated yet)',
   'update:state': 'always "nothing to install" (updater not ported)',
   'region:get': 'preference is always "auto", no active region (tunnel not ported)',

@@ -51,6 +51,7 @@ Starting a server goes through the real Discord gate: a fresh install is blocked
 | `VOXELPORT_NO_BROWSER=1` | the app follows the sign-in URL itself instead of opening a browser tab |
 | `VOXELPORT_JAVA_API` | use this Adoptium-style API (plain HTTP on 127.0.0.1 only) instead of the real one |
 | `VOXELPORT_MC_API=http://127.0.0.1:<port>` | use a local copy of the Mojang, Paper and Fabric services (plain HTTP on 127.0.0.1 only) |
+| `VOXELPORT_MODRINTH_API=http://127.0.0.1:<port>/v2` | use a local copy of Modrinth for the login and skins plugins (plain HTTP on 127.0.0.1 only) |
 | `VOXELPORT_TEST_FOLDER=<path>` | answer the folder picker with this path |
 | `VOXELPORT_TEST_REMOVE=cancel\|list\|delete` | answer the delete question |
 
@@ -78,7 +79,10 @@ node tools/e2e-install.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in
 ```
 
 It backs up and restores the dev profile list, and wipes only its own test folder (the path must contain `vp-tauri-test`).
-The three scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
+`tools/e2e-config.mjs` covers the Settings screen, friends-only (also against a running server), the file browser, cracked mode,
+the EULA fix and restart (37 checks; same arguments as the install script, test folder `...\e2e-config`).
+
+The four scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
 
 ## Release build

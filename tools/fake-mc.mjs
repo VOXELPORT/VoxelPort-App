@@ -10,7 +10,8 @@ const hex = (algo, b) => crypto.createHash(algo).update(b).digest('hex');
 
 export function startFakeMc(port) {
   const base = `http://127.0.0.1:${port}`;
-  const state = { hits: 0, mode: { wrongVersion: false } };
+  const state = { hits: 0, mode: { wrongVersion: false, noAuthMe: false } };
+  const AUTHME = Buffer.from('AuthMe jar bytes'), SKINS = Buffer.from('SkinsRestorer jar bytes');
   const jar = (version) => storedZip([['META-INF/MANIFEST.MF', Buffer.from('Manifest-Version: 1.0\n')], ...(version ? [['version.json', Buffer.from(JSON.stringify({ id: version, name: version }))]] : [])]);
   const claimed = (v) => (state.mode.wrongVersion ? '9.9.9' : v);
   const json = (res, v) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(v)); };
@@ -35,6 +36,16 @@ export function startFakeMc(port) {
     if (p.match(/^\/fabric\/versions\/loader\/[^/]+$/)) return json(res, [{ loader: { version: '0.16.9', stable: false } }, { loader: { version: '0.16.8', stable: true } }]);
     if (p === '/fabric/versions/installer') return json(res, [{ version: '1.0.1', stable: true }]);
     if (p.match(/^\/fabric\/versions\/loader\/.+\/server\/jar$/)) { res.writeHead(200); return res.end(jar(null)); }
+    // Modrinth: the login and skins plugins, for Paper.
+    if ((m = p.match(/^\/v2\/project\/(3IEZ9vol|TsLS8Py5)\/version$/))) {
+      const authme = m[1] === '3IEZ9vol';
+      if (authme && state.mode.noAuthMe) return json(res, []);
+      const jarBytes = authme ? AUTHME : SKINS;
+      return json(res, [{ version_type: 'release', files: [{ primary: true, url: `${base}/data/${authme ? 'authme' : 'skins'}.jar`, filename: authme ? 'AuthMe-5.7.0.jar' : 'SkinsRestorer.jar', hashes: { sha512: hex('sha512', jarBytes) } }] }]);
+    }
+    if ((m = p.match(/^\/v2\/project\/(3IEZ9vol|TsLS8Py5)$/))) return json(res, { icon_url: `https://cdn.modrinth.com/data/${m[1]}/icon.png` });
+    if (p === '/data/authme.jar') { res.writeHead(200); return res.end(AUTHME); }
+    if (p === '/data/skins.jar') { res.writeHead(200); return res.end(SKINS); }
     res.writeHead(404); res.end();
   });
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ state, base, close: () => server.close() })));

@@ -26,7 +26,7 @@ await sleep(600);
 
 /** One app run with the given dialog answer. */
 async function session(removeAnswer, fn) {
-  const app = launch(exe, { env: { PATH: `${javaDir};${process.env.PATH}`, VOXELPORT_ACCOUNTS_URL: `http://127.0.0.1:${ACCOUNTS}`, VOXELPORT_NO_BROWSER: '1', VOXELPORT_MC_API: mc.base, VOXELPORT_TEST_REMOVE: removeAnswer } });
+  const app = launch(exe, { env: { PATH: `${javaDir};${process.env.PATH}`, VOXELPORT_ACCOUNTS_URL: `http://127.0.0.1:${ACCOUNTS}`, VOXELPORT_NO_BROWSER: '1', VOXELPORT_MC_API: mc.base, VOXELPORT_MODRINTH_API: `${mc.base}/v2`, VOXELPORT_TEST_REMOVE: removeAnswer } });
   const page = await connect();
   try { await fn(page); } finally { page.close(); kill(app); await sleep(1200); }
 }
@@ -76,7 +76,11 @@ try {
     check('a cracked server is refused until the risks are confirmed', /Confirm that you want to allow cracked players first/.test(await rejects(page, `vp.server.install({ type: 'paper', version: '1.21.4', port: 25572, minRamMb: 1024, maxRamMb: 2048, serverDir: ${JSON.stringify(dir('cracked'))}, templateId: 'cracked' })`)) && !exists(dir('cracked')));
     const cr = await page.ev(`vp.server.install({ type: 'paper', version: '1.21.4', port: 25572, minRamMb: 1024, maxRamMb: 2048, serverDir: ${JSON.stringify(dir('cracked'))}, templateId: 'cracked', crackedConfirmed: true })`);
     const crProps = fs.readFileSync(path.join(dir('cracked'), 'server.properties'), 'utf8');
-    check('once confirmed it installs, says plainly what is missing, and keeps online-mode on', cr.ok && /Cracked-server setup/.test(cr.warning) && /online-mode=true/.test(crProps), JSON.stringify(cr));
+    check('once confirmed it installs with the login plugin first, then offline mode, then skins, and no warning', cr.ok && cr.warning === null && /online-mode=false/.test(crProps) && /enforce-secure-profile=false/.test(crProps) && fs.existsSync(path.join(dir('cracked'), 'plugins', 'AuthMe-5.7.0.jar')) && fs.existsSync(path.join(dir('cracked'), 'plugins', 'SkinsRestorer.jar')), JSON.stringify(cr) + crProps);
+    mc.state.mode.noAuthMe = true;
+    const nc = await page.ev(`vp.server.install({ type: 'paper', version: '1.21.4', port: 25577, minRamMb: 1024, maxRamMb: 2048, serverDir: ${JSON.stringify(dir('cracked2'))}, templateId: 'cracked', crackedConfirmed: true })`);
+    mc.state.mode.noAuthMe = false;
+    check('if the login plugin cannot be had, offline mode is never switched on and the warning says so', nc.ok && /Cracked mode was NOT turned on/.test(nc.warning) && /online-mode=true/.test(fs.readFileSync(path.join(dir('cracked2'), 'server.properties'), 'utf8')) && !exists(path.join(dir('cracked2'), 'plugins', 'SkinsRestorer.jar')), JSON.stringify(nc));
     const bd = await page.ev(`vp.server.install({ type: 'paper', version: '1.21.4', port: 25573, minRamMb: 1024, maxRamMb: 2048, serverDir: ${JSON.stringify(dir('bedrock'))}, templateId: 'crossplay' })`);
     check('a Bedrock template installs with a plain note that Bedrock is not here yet', bd.ok && /Bedrock support isn't in the Tauri build yet/.test(bd.warning) && !bd.profile.bedrock, JSON.stringify(bd));
 

@@ -7,6 +7,7 @@
 //!   flood N         print N lines as fast as it can
 //!   long N          print one line of N bytes
 //!   say TEXT        print TEXT
+//!   anything else   print "Unknown command: <the line>"
 //!   needjava N      print the message Paper prints when it needs Java N, then exit 1
 //! Run as `java -version` (first argument), it prints a Java banner to stderr and exits 0, like a real Java does.
 //! The major comes from a `java-major.txt` next to the executable (default 21; 8 prints the old "1.8.0_351" form), so
@@ -59,7 +60,9 @@ fn main() {
                 let _ = writeln!(out, "{}", "x".repeat(n));
             }
             "say" => { let _ = writeln!(out, "{rest}"); }
-            _ => {}
+            // Like a real server, say so about a command it does not know, so tests can see what was sent to it.
+            "" => {}
+            _ => { let _ = writeln!(out, "[12:00:06] [Server thread/INFO]: Unknown command: {line}"); }
         }
         let _ = out.flush();
     }

@@ -73,6 +73,100 @@ fn valid_label(label: &str) -> bool {
         && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-')
 }
 
+// ─── Which local port Geyser uses ───────────────────────────────────────────
+
+pub const DEFAULT_BEDROCK_PORT: u16 = 19132;
+
+/// A configured Bedrock port, before VoxelPort's startup overrides: read from Geyser's own config file.
+pub fn configured_bedrock_port(server_dir: &std::path::Path) -> u16 {
+    use regex::Regex;
+    let block = Regex::new(r"(?m)^bedrock:[ \t]*\n((?:[ \t]+.*\n|[ \t]*\n|#.*\n)*)").unwrap();
+    let port = Regex::new(r#"(?m)^[ \t]+port:[ \t]*(?:(\d{1,5})|'(\d{1,5})'|"(\d{1,5})")[ \t]*(?:#.*)?$"#).unwrap();
+    for rel in [["plugins", "Geyser-Spigot", "config.yml"], ["config", "Geyser-Fabric", "config.yml"]] {
+        let Ok(text) = std::fs::read_to_string(rel.iter().fold(server_dir.to_path_buf(), |p, part| p.join(part))) else { continue };
+        let text = text.replace("\r\n", "\n").replace('\r', "\n") + "\n";
+        let found = block.captures(&text).and_then(|b| port.captures(b.get(1)?.as_str()).and_then(|c| c.get(1).or(c.get(2)).or(c.get(3)).and_then(|m| m.as_str().parse::<u32>().ok())));
+        if let Some(p) = found.filter(|p| (1..=65535).contains(p)) {
+            return p as u16;
+        }
+    }
+    DEFAULT_BEDROCK_PORT
+}
+
+/// The one local port (TCP and UDP) for Bedrock: the configured one if it is free, otherwise 19132 or the next free port
+/// upward, never one Java, the query listener or the voice plugin uses. Nothing is changed or reserved.
+pub fn bedrock_port(server_dir: &std::path::Path, java_port: Option<u16>, query_port: Option<u16>, voice_port: Option<u16>) -> u16 {
+    use crate::settings::read_properties_file;
+    let mut used: std::collections::HashSet<u16> = [java_port, query_port, voice_port].into_iter().flatten().collect();
+    let props = read_properties_file(server_dir);
+    let property_port = |key: &str| -> u16 {
+        let raw = props.get(key).map(|v| v.trim()).unwrap_or("");
+        let n: u32 = if !raw.is_empty() && raw.len() <= 5 && raw.bytes().all(|b| b.is_ascii_digit()) { raw.parse().unwrap_or(0) } else { 0 };
+        if (1..=65535).contains(&n) { n as u16 } else { 25565 }
+    };
+    if java_port.is_none() {
+        used.insert(property_port("server-port"));
+    }
+    if query_port.is_none() && props.get("enable-query").is_some_and(|v| v.trim().eq_ignore_ascii_case("true")) {
+        used.insert(property_port("query.port"));
+    }
+    let configured = configured_bedrock_port(server_dir);
+    if !used.contains(&configured) {
+        return configured;
+    }
+    let mut port = DEFAULT_BEDROCK_PORT;
+    while used.contains(&port) && port < 65535 {
+        port += 1;
+    }
+    port
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    fn geyser_config(dir: &std::path::Path, text: &str) {
+        let d = dir.join("plugins").join("Geyser-Spigot");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("config.yml"), text).unwrap();
+    }
+
+    #[test]
+    fn the_default_is_19132_until_geyser_writes_a_config() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(configured_bedrock_port(d.path()), 19132);
+        assert_eq!(bedrock_port(d.path(), Some(25565), None, None), 19132);
+    }
+
+    #[test]
+    fn the_port_in_geysers_config_is_read_in_every_quoting() {
+        for (text, want) in [
+            ("bedrock:\n  address: 0.0.0.0\n  port: 19200\n", 19200),
+            ("bedrock:\n  port: '19201'\n", 19201),
+            ("bedrock:\r\n  port: \"19202\" # note\r\n", 19202),
+            ("remote:\n  port: 25565\nbedrock:\n  port: 19203", 19203),
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            geyser_config(d.path(), text);
+            assert_eq!(configured_bedrock_port(d.path()), want, "{text:?}");
+        }
+        let d = tempfile::tempdir().unwrap();
+        geyser_config(d.path(), "bedrock:\n  port: 99999\n");
+        assert_eq!(configured_bedrock_port(d.path()), 19132, "out of range falls back");
+    }
+
+    #[test]
+    fn a_port_something_else_uses_is_skipped() {
+        let d = tempfile::tempdir().unwrap();
+        geyser_config(d.path(), "bedrock:\n  port: 25570\n");
+        assert_eq!(bedrock_port(d.path(), Some(25570), None, None), 19132, "Java has the configured port: take the default instead");
+        assert_eq!(bedrock_port(d.path(), Some(19132), None, Some(19133)), 25570, "the configured port is free");
+        std::fs::write(d.path().join("server.properties"), "server-port=19132\nenable-query=true\nquery.port=19133\n").unwrap();
+        geyser_config(d.path(), "bedrock:\n  port: 19132\n");
+        assert_eq!(bedrock_port(d.path(), None, None, None), 19134, "Java and query ports read from server.properties");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

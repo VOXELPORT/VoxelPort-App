@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, about 34% of the screens' backend is ported (30 of 87 channels; steps 1 to 5 done, step 5 except `server:changeVersion`)** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **started, 48 of 87 channels ported (55%); steps 1 to 6 done** (step 5 except `server:changeVersion`, which waits for backups) (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -45,7 +45,7 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 3 done | account + Discord gate, token storage (DPAPI), session, address backup | appAccount 198, discordGate 64, token 158, identityBackup | the gate guards `server:start` |
 | 4 done | Java detection and install, automatic restart on a newer Java | javaCheck 87, javaInstall 268 | needed to start a real server |
 | 5 done* | server install, versions, import, profiles (write), delete to the Recycle Bin | serverInstall 303, mcVersions 109, jarVersion 106, serverProfiles, serverRemoval | creating servers. *`server:changeVersion` waits for backups (step 7), which it must run first |
-| 6 | settings, templates, whitelist, files, accounts (cracked mode) | serverSettings 175, whitelist 173, serverFiles 110, accounts 191 | day-to-day management |
+| 6 done | settings, templates, whitelist, files, accounts (cracked mode), repair, restart | serverSettings 175, whitelist 173, serverFiles 110, accounts 191 | day-to-day management. The cracked template now really installs (login plugin, offline mode, skins) |
 | 7 | backups | backups 536, backupService 227 | needs zip with traversal checks |
 | 8 | relay tunnel, regions, custom address, Bedrock endpoint | tunnel 688, regions 97, bedrockEndpoint 48 | the core of the product; needs `tokio-tungstenite` and UDP |
 | 9 | add-ons, modpacks, Bedrock install, crash explain, perf | addons 272, modpackImport 239, bedrock 284, crashExplain 169, perfMonitor 168 | Modrinth and Geyser downloads, checksums |

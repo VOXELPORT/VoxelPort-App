@@ -1,6 +1,6 @@
 # Test results
 
-Run on 2026-11-07 with `cargo test --workspace` (Rust 1.99.1, Windows 11). **147 tests, 147 passed, 0 failed**, plus end-to-end runs through the real window of 20, 24 and 40 checks (below). The process-manager integration tests
+Run on 2026-11-07 with `cargo test --workspace` (Rust 1.99.1, Windows 11). **200 tests, 200 passed, 0 failed**, plus end-to-end runs through the real window of 20, 24, 41 and 37 checks (below). The process-manager integration tests
 were also run three times in a row earlier to check for flakiness; all passed each time.
 
 ## Automated (Rust)
@@ -14,6 +14,8 @@ were also run three times in a row earlier to check for flakiness; all passed ea
 | `voxelport-core` unit: downloads (`net.rs`) | 2 | domain rules allow subdomains but not look-alikes; URLs must be HTTPS to an allowed host |
 | `voxelport-core` unit: servers (`server_install.rs`, `profiles.rs`, `removal.rs`) | 8 + 14 + 7 | **ported from `serverProfiles.test.js` and new**: properties defaults and protected keys, port can't inject lines, editing keeps other lines and line endings, existing-server detection; profile validation, create/get/list/update/delete/touch, key order, coercion, invalid entries and unknown fields surviving writes, a corrupt store copied aside, one-time legacy migration; every deletion refusal (too broad, protected, shared, `..`, missing, not a server) |
 | `voxelport-core` integration (`tests/server_install.rs`, scripted Mojang/Paper/Fabric over a local socket) | 12 | **new**: version lists and their order, each type's resolution (newest stable Paper build, stable Fabric loader), verified installs of all three types with phases, wrong-version jar, wrong checksum, jar with no readable version, existing server refused before any network, off-list address inside an API answer, service errors |
+| `voxelport-core` unit: settings, friends-only, files, cracked mode, registry, Bedrock port (`settings.rs`, `whitelist.rs`, `server_files.rs`, `cracked.rs`, `addon_registry.rs`, `bedrock.rs`) | 10 + 12 + 10 + 6 + 4 + 3 | **ported from `serverSettings`, `whitelist`, `serverFiles` and `accounts` tests, plus new**: properties parsing and escaping, typed values with defaults, every refusal (unknown/dangerous keys, bad values, character-counted MOTD limit), template settings obey the protected-key rules; names, duplicates, commands only to a running server, line endings kept; path traversal, drive letters, streams, a junction leaving the folder, size and JSON rules; the two-key cracked flip that round-trips exactly, confirmation rule; registry; Geyser port lookup in every quoting |
+| `voxelport-core` integration (`tests/cracked.rs`, scripted Modrinth over a local socket) | 8 | **new**: loaders/version asked for, release and primary file preferred, no-hash or unsafe-name downloads refused, old plugin copies replaced only, registry entry and icon rule, **login plugin first then offline mode then skins**, a missing login plugin never switches offline mode on, missing skins only warn |
 | `voxelport-tauri` unit | 6 | profile validation (valid, broken, optional fields, corrupt or missing store); RAM recommendation steps equal Electron's; memory read; catalog snapshot shape; only exact discord.gg invites open; backup error wording; DPAPI round trip (rejects a foreign blob) |
 
 | `voxelport-core` unit: gate (`gate.rs`) | 12 | ported from Electron's `discordGate.test.js`: new/existing installs, grace by server time, clock set back, 7-day offline hold, rejected session, signed-out never rescued by fail-open, install record kept once |
@@ -60,6 +62,10 @@ server active again).
 
 Real debug window, stand-in Mojang/Paper/Fabric services, stand-in Java. Covers: types and versions; the suggested folder; install of Paper (with the Creative template), Fabric and Vanilla with progress through every phase; the files and template settings; refusals (existing server, bad port/RAM/type/folder/template, cracked without confirmation, wrong-version jar leaving no folder); import (files untouched), detection, editing (only name/port/RAM, port written into `server.properties` only on its own line); starting and stopping an installed server, `lastUsedAt`; and delete: cancel changes nothing, a running server cannot be removed, a shared folder or non-server folder is only taken off the list, a clearly-its-own folder goes to the Recycle Bin, a missing folder is just forgotten.
 
+## End-to-end: managing a server (`tools/e2e-config.mjs`, 37 checks, 37 passed)
+
+Settings (the 12 fields and no dangerous key; saving name, port, RAM, listing, voice; only the asked-for lines change; refusals with the Electron wording; a refused save changes nothing); friends-only (add with invalid/duplicate names, remove, off keeps names, **commands reach a running server at once**); the file browser (listing, edit marks, read-only log, traversal/drive/stream paths refused, JSON validity, no new files); cracked mode (refused until confirmed, login plugin from the stand-in Modrinth with progress, only two keys change, warning on friends-only, back off); the EULA fix; running-server flags; **restart**. The install run also checks that the cracked template installs login plugin, offline mode and skins, and that a missing login plugin leaves online-mode on.
+
 ## Not tested
 
 - Closing the window while a server runs (the quit handler is written; the stop-and-wait logic is covered by the core
@@ -70,6 +76,8 @@ Real debug window, stand-in Mojang/Paper/Fabric services, stand-in Java. Covers:
 - Server installation, backups and restore, add-ons, the relay tunnel: **not ported**, so not testable.
 - The real accounts service and a real Discord sign-in (the stand-in is used; a real run needs the user's own Discord).
 - The native folder picker and the native delete dialog themselves: the end-to-end runs answer them from a debug-only switch, and I did not click through them by hand (the person was away from the screen).
+- A real Modrinth download of AuthMe or SkinsRestorer (the stand-in is used).
+- `server:runtimeInfo` (not ported).
 - `server:changeVersion` (not ported: it must run a backup first).
 - A real download of a real Vanilla/Paper/Fabric jar (the stand-ins are used).
 - Reading Electron's `safeStorage` files (different format, see MIGRATION_PLAN.md risks).

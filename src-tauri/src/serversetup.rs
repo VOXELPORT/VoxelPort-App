@@ -156,17 +156,29 @@ pub async fn install(state: &AppState, args: &Value) -> Result<Value, String> {
         &json!({ "name": name, "type": ty, "version": version, "serverDir": dir.to_string_lossy(), "port": port, "minRamMb": min_ram, "maxRamMb": max_ram, "build": resolved.build, "template": template_id }),
     )?;
 
-    // Parts of a template that need modules not in this build yet. The server itself is complete and works; these are said
-    // plainly rather than half done.
+    // Parts of a template that need modules not in this build yet (Bedrock/Geyser). The server itself is complete and works;
+    // these are said plainly rather than half done.
     let mut warnings: Vec<&str> = Vec::new();
     if bedrock {
         warnings.push("Bedrock support isn't in the Tauri build yet, so this server is Java-only for now.");
     }
+    // A cracked template: login plugin first, then offline mode (only if the plugin is really there), then skins. A download
+    // problem is a warning and leaves the server on normal Minecraft accounts.
+    let mut cracked_warnings: Vec<String> = Vec::new();
     if cracked {
-        warnings.push("Cracked-server setup (the login plugin and skins) isn't in the Tauri build yet, so this server still uses normal Minecraft accounts.");
+        progress(&state.app, json!({ "phase": "cracked" }));
+        let (cdir, cty, cver) = (dir.clone(), ty.clone(), version.clone());
+        let setup = tokio::task::spawn_blocking(move || {
+            let (f, api) = crate::serverconfig::modrinth();
+            voxelport_core::cracked::set_up_cracked_server(&voxelport_core::cracked::Modrinth { fetcher: &f, api: &api }, &cdir, &cty, &cver, &|_, _| {})
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        cracked_warnings = setup.warnings;
     }
     progress(&state.app, json!({ "phase": "done" }));
-    Ok(json!({ "ok": true, "profile": profile, "warning": if warnings.is_empty() { Value::Null } else { json!(warnings.join(" ")) } }))
+    let all: Vec<String> = warnings.iter().map(|w| w.to_string()).chain(cracked_warnings).collect();
+    Ok(json!({ "ok": true, "profile": profile, "warning": if all.is_empty() { Value::Null } else { json!(all.join(" ")) } }))
 }
 
 /// Name, port and RAM are the only things the screens may change here. A new port is also written into the server's

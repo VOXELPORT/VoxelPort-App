@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use sha1::Sha1;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
 
 const MAX_REDIRECTS: u32 = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -58,6 +58,7 @@ impl HostPolicy {
 pub enum Algo {
     Sha1,
     Sha256,
+    Sha512,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -71,6 +72,7 @@ impl Algo {
         match self {
             Algo::Sha1 => "SHA-1",
             Algo::Sha256 => "SHA-256",
+            Algo::Sha512 => "SHA-512",
         }
     }
 }
@@ -78,24 +80,28 @@ impl Algo {
 enum Hasher {
     Sha1(Sha1),
     Sha256(Sha256),
+    Sha512(Sha512),
 }
 impl Hasher {
     fn new(a: Algo) -> Self {
         match a {
             Algo::Sha1 => Hasher::Sha1(Sha1::new()),
             Algo::Sha256 => Hasher::Sha256(Sha256::new()),
+            Algo::Sha512 => Hasher::Sha512(Sha512::new()),
         }
     }
     fn update(&mut self, b: &[u8]) {
         match self {
             Hasher::Sha1(h) => h.update(b),
             Hasher::Sha256(h) => h.update(b),
+            Hasher::Sha512(h) => h.update(b),
         }
     }
     fn hex(self) -> String {
         let bytes: Vec<u8> = match self {
             Hasher::Sha1(h) => h.finalize().to_vec(),
             Hasher::Sha256(h) => h.finalize().to_vec(),
+            Hasher::Sha512(h) => h.finalize().to_vec(),
         };
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }

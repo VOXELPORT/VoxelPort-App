@@ -10,7 +10,7 @@ use voxelport_core::{StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{catalog, discord, javasetup, secrets, serversetup, sys, AppState};
+use crate::{catalog, discord, javasetup, secrets, serverconfig, serversetup, sys, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -103,6 +103,22 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "server:profiles:update" => serversetup::update_profile(state, &args),
         "server:profiles:delete" => Ok(serversetup::delete_profile(state, &args).await),
         "server:openFolder" => Ok(serversetup::open_folder(state, &args)),
+
+        // Settings, friends-only, files, accounts and small fixes for an installed server.
+        "server:settings:get" => serverconfig::settings_get(state, &args),
+        "server:settings:save" => serverconfig::settings_save(state, &args),
+        "files:list" => Ok(serverconfig::files_list(state, &args)),
+        "files:read" => Ok(serverconfig::files_read(state, &args)),
+        "files:write" => Ok(serverconfig::files_write(state, &args)),
+        "whitelist:status" => Ok(serverconfig::whitelist_status(state, &args).await),
+        "whitelist:add" => Ok(serverconfig::whitelist_add(state, &args).await),
+        "whitelist:remove" => Ok(serverconfig::whitelist_remove(state, &args).await),
+        "whitelist:setEnabled" => Ok(serverconfig::whitelist_set_enabled(state, &args).await),
+        "server:accounts:get" => serverconfig::accounts_get(state, &args),
+        "server:accounts:set" => Ok(serverconfig::accounts_set(state, &args)),
+        "server:accounts:installLogin" => Ok(serverconfig::accounts_install_login(state, &args).await),
+        "server:fix" => Ok(serverconfig::fix(state, &args)),
+        "server:restart" => serverconfig::restart(state).await,
 
         "server:profiles:list" => Ok(Value::Array(profiles::list(&state.data_dir))),
         "server:profiles:get" => Ok(str_arg(&args, "id").and_then(|id| profiles::get(&state.data_dir, id)).unwrap_or(Value::Null)),
