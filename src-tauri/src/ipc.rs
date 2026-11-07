@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use tauri::State;
 use voxelport_core::{StartConfig, Status};
 
-use crate::{catalog, profiles, sys, AppState};
+use crate::{catalog, discord, profiles, sys, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -25,15 +25,7 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 
 async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value, String> {
     match channel {
-        "app:info" => Ok(json!({
-            "publicHost": "play.voxelport.in",
-            "defaultRelayUrl": "wss://relay.voxelport.in",
-            "maskedToken": "(not migrated yet)",
-            "supporterID": "",
-            "tokenEncryptedAtRest": false,
-            "tokenUnreadable": false,
-            "version": env!("CARGO_PKG_VERSION"),
-        })),
+        "app:info" => Ok(discord::app_info(state)),
         "app:versions" => Ok(json!({
             "app": env!("CARGO_PKG_VERSION"),
             // The About text prints "(Electron <this>)", so say what this build runs on.
@@ -51,7 +43,29 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
             *state.theme.lock().unwrap() = theme.to_string();
             Ok(json!({ "ok": true, "theme": theme }))
         }
-        "app:setLanguage" => Ok(json!({ "ok": true })),
+        "app:setLanguage" => {
+            let lang = if str_arg(&args, "lang") == Some("hinglish") { "hinglish" } else { "en" };
+            *state.lang.lock().unwrap() = lang.to_string();
+            Ok(json!({ "ok": true }))
+        }
+
+        // The Discord gate and the address backup.
+        "discord:state" => Ok(discord::discord_state(state)),
+        "discord:signIn" => Ok(discord::sign_in(state).await),
+        "discord:cancel" => {
+            state.account.cancel_sign_in();
+            Ok(json!({ "ok": true }))
+        }
+        "discord:recheck" => {
+            discord::refresh(state).await;
+            Ok(discord::discord_state(state))
+        }
+        "discord:signOut" => Ok(discord::sign_out(state).await),
+        "discord:openInvite" => Ok(discord::open_invite(state)),
+        "identity:save" | "identity:restore" | "identity:delete" => {
+            let passphrase = args.get("passphrase").and_then(Value::as_str).or_else(|| args.as_str()).unwrap_or("");
+            Ok(discord::identity(state, channel.trim_start_matches("identity:"), passphrase).await)
+        }
         "system:specs" => {
             let total = sys::total_memory_mb().unwrap_or(8192);
             Ok(json!({ "totalMemMb": total, "recommendedRamMb": sys::recommended_ram_mb(total) }))
@@ -92,12 +106,12 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
     }
 }
 
-/// Start a profile's server with the Java on the PATH. Not yet ported: the Discord join gate, managed Java
-/// install, Bedrock/Geyser startup, backups-busy check. Until the gate is ported a start is refused unless this is
-/// a development run that says so, so a build can never ship with the gate silently skipped.
+/// Start a profile's server with the Java on the PATH. Not yet ported: managed Java install, Bedrock/Geyser startup,
+/// backups-busy check. The Discord gate is the real one: joining the VoxelPort Discord is required to use the app.
 async fn start_server(state: &AppState, args: &Value) -> Result<Value, String> {
-    if std::env::var("VOXELPORT_DEV_ALLOW_START").as_deref() != Ok("1") {
-        return Ok(json!({ "ok": false, "error": "Starting servers is switched off in this development build until the Discord gate is ported (set VOXELPORT_DEV_ALLOW_START=1 to test)." }));
+    if !discord::current_gate(state).allowed {
+        discord::emit_state(state);
+        return Ok(discord::gate_refusal(state));
     }
     let not_found = json!({ "ok": false, "error": "Server profile not found." });
     let Some(id) = str_arg(args, "id") else { return Ok(not_found) };

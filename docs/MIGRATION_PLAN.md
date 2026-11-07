@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, about 11% of the screens' backend is ported** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **started, about 20% of the screens' backend is ported (17 of 87 channels; step 3 done)** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -31,7 +31,7 @@ management, and a persistent background service. Adding either would be new prod
    validation, log bounds) are tested on their own and could be reused by a command-line tool.
 3. **One command, `ipc`, scoped to the main window**, with a channel allow-list generated from the Electron preload.
 4. **Pin the reference.** Parity is measured against a frozen copy of v1.17.1, not a moving working tree.
-5. **Fail closed on the Discord gate.** Until it is ported, `server:start` refuses unless a development switch is set.
+5. **Fail closed on the Discord gate.** `server:start` now runs the real gate (ported in step 3). The earlier development switch `VOXELPORT_DEV_ALLOW_START` is gone.
 6. **No data migration yet.** The dev build uses its own identifier (`in.voxelport.app.dev`) and data folder.
 
 ## 3. Order of work (largest dependencies first)
@@ -42,7 +42,7 @@ Sizes are the Electron module's line count, as a rough guide only.
 |---|---|---|---|
 | 1 done | process manager, Bedrock args, log bounds | serverProcess 180, bedrock args, quitGate 35 | everything else needs it |
 | 2 done | bridge, shell, profiles (read), catalog, state events | preload 186, serverProfiles 233 | lets the screens run |
-| 3 | account + Discord gate, token storage (DPAPI), session | appAccount 198, discordGate 64, token 158 | the gate guards `server:start` |
+| 3 done | account + Discord gate, token storage (DPAPI), session, address backup | appAccount 198, discordGate 64, token 158, identityBackup | the gate guards `server:start` |
 | 4 | Java detection and install | javaCheck 87, javaInstall 268 | needed to start a real server |
 | 5 | server install, versions, import, profiles (write) | serverInstall 303, mcVersions 109, jarVersion 106, serverProfiles | creating servers |
 | 6 | settings, templates, whitelist, files, accounts (cracked mode) | serverSettings 175, whitelist 173, serverFiles 110, accounts 191 | day-to-day management |
@@ -60,8 +60,12 @@ The 57 Electron test files are the specification for steps 3 to 10: each module'
   Tauri build there needs a separate packaging step and a decision on whether it replaces the Store build.
 - **Auto-update.** `electron-updater` and `tauri-plugin-updater` use different manifests and signing keys. Installed
   Electron apps cannot update into Tauri by themselves; a one-time reinstall or a bridge release is needed.
-- **Stored secrets.** The device token and Discord session are encrypted with `safeStorage` (Windows DPAPI). Reading
-  them from Rust is possible, but moving users across needs a tested backup and rollback plan. Not started.
+- **Stored secrets.** The Electron app encrypts the device token and Discord session with `safeStorage`, which on Windows
+  is Chromium's `os_crypt` (an AES-GCM key in `Local State`, itself DPAPI-protected), **not** plain DPAPI. The Tauri build
+  stores its own with plain DPAPI (`CryptProtectData`, per Windows user, plus a fixed entropy string), so it cannot read
+  Electron's files today and vice versa. A one-way reader for the `os_crypt` format (read `Local State`, unprotect the key,
+  AES-GCM decrypt the `v10` blob) is needed before the Tauri build may share the Electron app's data folder. Not started;
+  the dev build uses its own identity, so no real device token or Discord session is touched.
 - **Web view differences.** Electron ships its own Chromium; Tauri uses the system WebView2. The renderer's CSS and
   fonts matched in the screens captured so far, but every screen needs a visual pass.
 - **Size will grow.** The 4.4 MB executable has about 11% of the backend. HTTP, zip, WebSocket and TLS support will add

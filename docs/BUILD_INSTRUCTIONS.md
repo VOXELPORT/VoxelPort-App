@@ -42,16 +42,25 @@ or `npx tauri dev`. The app's data lives in `%APPDATA%\in.voxelport.app.dev`, se
 To see a server in the list, put a `server-profiles.json` there (same format as the Electron app's) with an absolute
 `serverDir` that you created for testing.
 
-Starting a server is refused unless `VOXELPORT_DEV_ALLOW_START=1` is set (the Discord gate is not ported yet). To
-exercise the whole start/console/stop flow with no Minecraft at all, put the test stand-in first on the PATH under the
-name `java.exe`:
+Starting a server goes through the real Discord gate: a fresh install is blocked until it signs in. Two switches exist
+**in development builds only** (they are compiled out of release builds) so the gate can be tested without Discord:
+
+| Variable | Effect |
+|---|---|
+| `VOXELPORT_ACCOUNTS_URL` | use this accounts service instead of `https://accounts.voxelport.in` |
+| `VOXELPORT_NO_BROWSER=1` | the app follows the sign-in URL itself instead of opening a browser tab |
+
+`tools/fake-accounts.mjs` is a stand-in accounts service that checks PKCE like the real one. `tools/e2e-gate.mjs` starts
+it, launches the debug build, and drives the whole gate through the real window (20 checks). To exercise server start
+with no Minecraft at all, a stand-in program named `java.exe` goes in a folder passed as the third argument:
 
 ```
 copy target\debug\vp-fake-server.exe C:\some\test\folder\java.exe
-set PATH=C:\some\test\folder;%PATH%
-set VOXELPORT_DEV_ALLOW_START=1
-target\debug\voxelport-tauri.exe
+node tools/e2e-gate.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" C:\some\test\folder
 ```
+
+It deletes only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
+`app-session.json`) and ends only the processes it started, by PID.
 
 ## Release build
 

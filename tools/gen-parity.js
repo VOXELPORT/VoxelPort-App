@@ -23,7 +23,7 @@ const STUBS = {
   'name:get': 'always "no custom address" (relay naming not ported)',
   'voice:state': 'fixed text (supporter-rank sync not ported)',
   'presence:get': 'always "not available" (Discord presence not ported)',
-  'server:start': 'GATED: refuses unless VOXELPORT_DEV_ALLOW_START=1, because the Discord join gate is not ported; uses java from PATH only (no managed Java, no Bedrock/Geyser launch, no backup-busy check)',
+  'server:start': 'Real Discord gate; uses java from PATH only (no managed Java, no Bedrock/Geyser launch, no backup-busy check)',
 };
 
 // channel prefix or exact name -> [area, Electron module(s)]

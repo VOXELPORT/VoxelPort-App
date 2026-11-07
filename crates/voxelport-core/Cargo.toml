@@ -2,15 +2,25 @@
 name = "voxelport-core"
 version = "0.1.0"
 edition = "2021"
-description = "VoxelPort's native core: managed Minecraft server process, log buffering, argument validation. No UI code."
+description = "VoxelPort's native core: managed Minecraft server process, log buffering, argument validation, account gate. No UI code."
 license = "MIT"
 
 [dependencies]
-tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "sync", "time"] }
+tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "sync", "time", "net"] }
 regex = "1"
+serde_json = "1"
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+aes-gcm = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+unicode-normalization = "0.1"
+# Blocking HTTP client, run on a worker thread. Redirects are switched off per request, as Electron's fetch did.
+ureq = { version = "2", default-features = false, features = ["tls"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "net"] }
+tempfile = "3"
 
 # A stand-in for a Minecraft server, used only by the tests (it speaks just enough of the console protocol).
 [[bin]]

@@ -9,3 +9,7 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Tests run PBKDF2 with 600,000 rounds; unoptimised crypto would make them crawl.
+[profile.dev.package."*"]
+opt-level = 3
