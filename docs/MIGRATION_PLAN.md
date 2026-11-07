@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, 61 of 87 channels ported (70%); steps 1 to 8 done** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **started, 63 of 87 channels ported (72%); steps 1 to 8 done** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
