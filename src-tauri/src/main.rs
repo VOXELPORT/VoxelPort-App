@@ -1,11 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod catalog;
+mod dialogs;
 mod discord;
 mod ipc;
 mod javasetup;
-mod profiles;
+
 mod secrets;
+mod serversetup;
 mod sys;
 
 use std::path::PathBuf;

@@ -8,6 +8,11 @@ pub mod gate;
 pub mod identity;
 pub mod java;
 pub mod log_buffer;
+pub mod mc_versions;
+pub mod net;
+pub mod profiles;
+pub mod removal;
+pub mod server_install;
 pub mod server_process;
 
 pub use fsutil::atomic_write;

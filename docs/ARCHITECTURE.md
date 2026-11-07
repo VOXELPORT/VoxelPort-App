@@ -46,6 +46,31 @@ The Rust command checks the channel against `channels.in` (also generated) and d
 - **Join/leave tracking** parses the whole message after the log prefix, so chat text cannot pose as the server.
 - **One server at a time**, like Electron. Starting a second returns `AlreadyRunning`.
 
+## Downloads (`net.rs`)
+
+Everything that fetches a program or archive (Java, server jars; add-ons later) goes through one `Fetcher`: HTTPS only, every
+request and every redirect hop checked against a host allow-list (a domain rule matches the domain and its subdomains, not
+look-alikes), a size cap, a stall cut-off, a checksum check (SHA-1 or SHA-256) and a write to a temporary file that only
+replaces the destination once the download is complete and verified. Java and the server jars share it, so one set of tests
+covers both.
+
+## Servers (`mc_versions.rs`, `server_install.rs`, `profiles.rs`, `removal.rs`)
+
+- **Versions and jars**: Vanilla (Mojang manifest, SHA-1), Paper (Fill API: newest *stable* build, SHA-256; the version list keeps
+the service's order, newest group first) and Fabric (stable loader and installer; no published hash). Only official domains
+(`mojang.com`, `minecraft.net`, `papermc.io`, `fabricmc.net`, `geysermc.org`, `modrinth.com`).
+- **Install**: refuses a folder that already holds a server before any network call; downloads and verifies the jar; reads the
+real Minecraft version out of the jar and refuses a mismatch (a Fabric launcher jar has none and is accepted for Fabric only);
+writes `eula.txt` and a `server.properties` whose port is a plain integer and whose template settings can never override
+`online-mode`, `server-port`, `enable-rcon` or `enable-command-block`. A folder the install created is removed again if it fails.
+- **Profiles** live in core (`profiles.rs`). Entries that fail validation and fields this build does not know are left in the
+file on every write, and a store that cannot be parsed is copied aside before a new one starts (Electron overwrote it).
+- **Delete** asks in the backend (the page cannot skip the question). Files go to the Recycle Bin only if the folder is clearly
+the server's own: not a drive root or top-level folder, not home/Desktop/Documents/Downloads/AppData/temp or anything holding
+one, not shared with or inside another saved server, and it must look like a server. Otherwise only the list entry is removed.
+- Template extras that need later modules (Bedrock/Geyser, the cracked-server login plugin) are **not** installed; the install
+succeeds and says so, and the server keeps normal Minecraft accounts (never a half-set-up offline mode).
+
 ## Java (`java.rs`, `src-tauri/src/javasetup.rs`)
 
 - **Which Java**: the same table as Electron (26.x needs 25, 1.20.5 needs 21, 1.18 needs 17, 1.17 needs 16, older 8). A

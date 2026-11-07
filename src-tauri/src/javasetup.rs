@@ -133,7 +133,7 @@ pub fn on_exit(app: &tauri::AppHandle, code: Option<i32>) {
         return;
     }
     say(app, format!("[VoxelPort] This server needs Java {needed} — fixing that and restarting…"));
-    crate::profiles::set_java_major(&state.data_dir, &watch.profile_id, needed);
+    voxelport_core::profiles::set_java_major(&state.data_dir, &watch.profile_id, needed);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();

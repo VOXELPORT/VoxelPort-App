@@ -8,7 +8,9 @@ use std::sync::atomic::Ordering;
 use tauri::{Emitter, State};
 use voxelport_core::{StartConfig, Status};
 
-use crate::{catalog, discord, javasetup, profiles, secrets, sys, AppState};
+use voxelport_core::profiles;
+
+use crate::{catalog, discord, javasetup, secrets, serversetup, sys, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -91,6 +93,17 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "voice:state" => Ok(json!({ "rank": Value::Null, "message": "Make your server public to sync your supporter rank." })),
         "presence:get" => Ok(json!({ "available": false, "enabled": false })),
 
+        // Creating, importing, editing and removing servers.
+        "server:versions" => serversetup::versions(str_arg(&args, "type").unwrap_or("")).await,
+        "server:defaultDir" => Ok(serversetup::default_dir(state)),
+        "server:chooseFolder" => Ok(serversetup::choose_folder(state).await),
+        "server:detectExisting" => serversetup::detect_existing(&args),
+        "server:import" => serversetup::import(state, &args),
+        "server:install" => serversetup::install(state, &args).await,
+        "server:profiles:update" => serversetup::update_profile(state, &args),
+        "server:profiles:delete" => Ok(serversetup::delete_profile(state, &args).await),
+        "server:openFolder" => Ok(serversetup::open_folder(state, &args)),
+
         "server:profiles:list" => Ok(Value::Array(profiles::list(&state.data_dir))),
         "server:profiles:get" => Ok(str_arg(&args, "id").and_then(|id| profiles::get(&state.data_dir, id)).unwrap_or(Value::Null)),
         "server:state" => Ok(app_state(state)),
@@ -140,6 +153,7 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
     if state.preparing_java.load(Ordering::SeqCst) {
         return Ok(json!({ "ok": false, "error": "Already getting Java ready for a server — one moment." }));
     }
+    profiles::touch(&state.data_dir, id);
     let name = profile["name"].as_str().unwrap_or("This server").to_string();
     let mut cfg = StartConfig::new(
         profile["serverDir"].as_str().unwrap_or_default(),

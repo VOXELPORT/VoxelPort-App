@@ -8,7 +8,7 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 
 /** A zip with every entry stored (no compression), built by hand so the tools need no dependencies. */
-function storedZip(entries) {
+export function storedZip(entries) {
   const locals = [], central = [];
   let offset = 0;
   for (const [name, data] of entries) {

@@ -71,6 +71,52 @@
       "cracked": false
     }
   ],
+  "templateProperties": {
+    "survival": {
+      "gamemode": "survival",
+      "difficulty": "normal",
+      "pvp": "true",
+      "max-players": "20",
+      "motd": "Survival SMP"
+    },
+    "crossplay": {
+      "gamemode": "survival",
+      "difficulty": "normal",
+      "max-players": "20",
+      "motd": "Java + Bedrock SMP"
+    },
+    "cracked": {
+      "gamemode": "survival",
+      "difficulty": "normal",
+      "pvp": "true",
+      "max-players": "20",
+      "motd": "Cracked SMP"
+    },
+    "creative": {
+      "gamemode": "creative",
+      "force-gamemode": "true",
+      "difficulty": "peaceful",
+      "level-type": "minecraft\\:flat",
+      "generate-structures": "false",
+      "pvp": "false",
+      "motd": "Creative build server"
+    },
+    "hardcore": {
+      "gamemode": "survival",
+      "difficulty": "hard",
+      "hardcore": "true",
+      "motd": "Hardcore — one life"
+    },
+    "chill": {
+      "gamemode": "survival",
+      "difficulty": "peaceful",
+      "pvp": "false",
+      "motd": "Peaceful chill server"
+    },
+    "modded": {
+      "motd": "Modded Fabric server"
+    }
+  },
   "regions": [
     {
       "id": "in",

@@ -23,7 +23,10 @@ const STUBS = {
   'name:get': 'always "no custom address" (relay naming not ported)',
   'voice:state': 'fixed text (supporter-rank sync not ported)',
   'presence:get': 'always "not available" (Discord presence not ported)',
-  'server:start': 'Real Discord gate; uses java from PATH only (no managed Java, no Bedrock/Geyser launch, no backup-busy check)',
+  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Not yet: Bedrock/Geyser launch, backup-busy check, the "switch to another server" question',
+  'server:install': 'Verified jar, files and profile. Template extras that need other modules are skipped with a plain warning: Bedrock (Geyser) and cracked setup (login plugin, skins)',
+  'server:profiles:delete': 'Native confirmation, Recycle Bin, folder safety checks. Does not yet stop a public tunnel (tunnel not ported)',
+  'server:chooseFolder': 'native folder picker, not yet tested by hand',
 };
 
 // channel prefix or exact name -> [area, Electron module(s)]

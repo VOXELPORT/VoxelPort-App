@@ -50,6 +50,9 @@ Starting a server goes through the real Discord gate: a fresh install is blocked
 | `VOXELPORT_ACCOUNTS_URL` | use this accounts service instead of `https://accounts.voxelport.in` |
 | `VOXELPORT_NO_BROWSER=1` | the app follows the sign-in URL itself instead of opening a browser tab |
 | `VOXELPORT_JAVA_API` | use this Adoptium-style API (plain HTTP on 127.0.0.1 only) instead of the real one |
+| `VOXELPORT_MC_API=http://127.0.0.1:<port>` | use a local copy of the Mojang, Paper and Fabric services (plain HTTP on 127.0.0.1 only) |
+| `VOXELPORT_TEST_FOLDER=<path>` | answer the folder picker with this path |
+| `VOXELPORT_TEST_REMOVE=cancel\|list\|delete` | answer the delete question |
 
 `tools/fake-accounts.mjs` is a stand-in accounts service that checks PKCE like the real one. `tools/e2e-gate.mjs` starts
 it, launches the debug build, and drives the whole gate through the real window (20 checks). To exercise server start
@@ -68,7 +71,14 @@ automatic install, narration, the failure paths and the automatic restart on a n
 node tools/e2e-java.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" "%CD%\target\debug\vp-fake-server.exe"
 ```
 
-Both scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
+`tools/e2e-install.mjs` covers server types and versions, install, import, edit, run and delete against `tools/fake-mc.mjs` (40 checks):
+
+```
+node tools/e2e-install.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" C:\Users\<you>\vp-tauri-test\e2e-install C:\some\test\folder
+```
+
+It backs up and restores the dev profile list, and wipes only its own test folder (the path must contain `vp-tauri-test`).
+The three scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
 
 ## Release build

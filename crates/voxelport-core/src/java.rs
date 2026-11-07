@@ -9,14 +9,13 @@
 //! outside the target folder.
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
 use regex::Regex;
-use serde_json::Value;
-use sha2::{Digest, Sha256};
+use crate::net::{Algo, Checksum, Fetcher, HostPolicy};
 
 // ─── Which Java a Minecraft version needs ───────────────────────────────────
 
@@ -167,12 +166,9 @@ pub fn list_managed_java(user_data_dir: &Path) -> Vec<u32> {
 
 // ─── Download and install ───────────────────────────────────────────────────
 
-const MAX_REDIRECTS: u32 = 5;
 const MAX_API_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024; // a JDK unpacks to roughly 300 MB
 const MAX_ENTRIES: usize = 50_000;
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Where Java comes from. [`Source::adoptium`] is the only one the app uses; the fields are public so a test can
 /// point at a local server over plain HTTP.
@@ -230,49 +226,11 @@ fn platform(source: &Source) -> Result<(String, String), String> {
     Ok((os.into(), arch.into()))
 }
 
-fn check_host(source: &Source, url: &str) -> Result<url::Url, String> {
-    let u = url::Url::parse(url).map_err(|_| "Invalid Java download URL.".to_string())?;
-    let host_ok = u.host_str().map(|h| source.allowed_hosts.iter().any(|a| a.eq_ignore_ascii_case(h))).unwrap_or(false);
-    let scheme_ok = u.scheme() == "https" || (!source.https_only && u.scheme() == "http");
-    if !scheme_ok || !host_ok {
-        return Err(format!("Refusing Java download from untrusted host: {}://{}", u.scheme(), u.host_str().unwrap_or("")));
-    }
-    Ok(u)
-}
-
-/// GET following redirects, re-checking the host and scheme of every hop.
-fn get(source: &Source, url: &str) -> Result<ureq::Response, String> {
-    let agent = ureq::AgentBuilder::new().redirects(0).timeout_connect(CONNECT_TIMEOUT).timeout_read(INACTIVITY_TIMEOUT).user_agent("VoxelPort-App").build();
-    let mut current = check_host(source, url)?;
-    for _ in 0..=MAX_REDIRECTS {
-        let resp = match agent.get(current.as_str()).call() {
-            Ok(r) => r,
-            Err(ureq::Error::Status(code, _)) => return Err(format!("Java download failed: HTTP {code}")),
-            Err(e) => return Err(format!("Java download failed: {e}")),
-        };
-        let status = resp.status();
-        if (300..400).contains(&status) {
-            let location = resp.header("location").ok_or_else(|| format!("Java download failed: HTTP {status}"))?;
-            let next = current.join(location).map_err(|_| "Invalid Java download URL.".to_string())?;
-            current = check_host(source, next.as_str())?;
-            continue;
-        }
-        if status != 200 {
-            return Err(format!("Java download failed: HTTP {status}"));
-        }
-        return Ok(resp);
-    }
-    Err("Too many redirects while downloading Java.".into())
-}
-
-fn fetch_json(source: &Source, url: &str) -> Result<Value, String> {
-    let resp = get(source, url)?;
-    let mut body = Vec::new();
-    resp.into_reader().take(MAX_API_BYTES + 1).read_to_end(&mut body).map_err(|e| e.to_string())?;
-    if body.len() as u64 > MAX_API_BYTES {
-        return Err("Adoptium API response too large.".into());
-    }
-    serde_json::from_slice(&body).map_err(|_| "Could not read the Adoptium API response.".to_string())
+/// The download client for this source: its hosts only, HTTPS unless the (test) source says otherwise.
+fn fetcher(source: &Source) -> Fetcher {
+    let mut policy = HostPolicy::exact(&source.allowed_hosts.iter().map(String::as_str).collect::<Vec<_>>());
+    policy.https_only = source.https_only;
+    Fetcher::new(policy, "Java", "VoxelPort-App")
 }
 
 struct Package {
@@ -291,7 +249,7 @@ fn resolve_package(source: &Source, major: u32) -> Result<Package, String> {
     }
     for image_type in ["jre", "jdk"] {
         let url = format!("{}/{major}/hotspot?architecture={arch}&image_type={image_type}&os={os}&vendor=eclipse", source.api_base);
-        let assets = fetch_json(source, &url)?;
+        let assets = fetcher(source).fetch_json(&url, MAX_API_BYTES)?;
         let pkg = assets.as_array().and_then(|list| {
             list.iter().filter_map(|a| a.get("binary")?.get("package")).find(|p| p["link"].is_string() && p["name"].as_str().map(|n| n.ends_with(ext)).unwrap_or(false))
         });
@@ -307,35 +265,8 @@ fn resolve_package(source: &Source, major: u32) -> Result<Package, String> {
 }
 
 fn download(source: &Source, pkg: &Package, dest: &Path, on_progress: &dyn Fn(Progress)) -> Result<(), String> {
-    let resp = get(source, &pkg.link)?;
-    let declared: u64 = resp.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
-    if declared > source.max_archive_bytes {
-        return Err("Java archive is unexpectedly large.".into());
-    }
-    let total = if declared > 0 { declared } else { pkg.size };
-    let mut reader = resp.into_reader();
-    let mut file = fs::File::create(dest).map_err(|e| e.to_string())?;
-    let mut hash = Sha256::new();
-    let (mut received, mut buf) = (0u64, vec![0u8; 64 * 1024]);
-    loop {
-        let n = reader.read(&mut buf).map_err(|e| format!("Java download stalled or failed: {e}"))?;
-        if n == 0 {
-            break;
-        }
-        received += n as u64;
-        if received > source.max_archive_bytes {
-            return Err("Java archive exceeded the maximum allowed size.".into());
-        }
-        hash.update(&buf[..n]);
-        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
-        on_progress(Progress::Download { received, total });
-    }
-    file.sync_all().map_err(|e| e.to_string())?;
-    let actual: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
-    if actual != pkg.sha256 {
-        return Err(format!("Downloaded Java failed SHA-256 verification (expected {}, got {actual}).", pkg.sha256));
-    }
-    Ok(())
+    let checksum = Checksum { algo: Algo::Sha256, expected: pkg.sha256.clone() };
+    fetcher(source).download(&pkg.link, dest, source.max_archive_bytes, Some(&checksum), pkg.size, &|received, total| on_progress(Progress::Download { received, total }))
 }
 
 /// Unpacks a zip into `dest`. Every entry name must stay inside `dest` (no `..`, no absolute path, no drive letter),
@@ -527,12 +458,13 @@ mod tests {
     #[test]
     fn downloads_are_limited_to_adoptium_and_github_hosts_over_https() {
         let s = Source::adoptium();
+        let f = fetcher(&s);
         let mut hosts = s.allowed_hosts.clone();
         hosts.sort();
         assert_eq!(hosts, ["api.adoptium.net", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]);
-        assert!(check_host(&s, "https://github.com/adoptium/x.zip").is_ok());
+        assert!(f.check_url("https://github.com/adoptium/x.zip").is_ok());
         for bad in ["http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x", "https://api.adoptium.net.evil.example/", "ftp://github.com/x", "not a url", "file:///C:/x"] {
-            assert!(check_host(&s, bad).is_err(), "{bad}");
+            assert!(f.check_url(bad).is_err(), "{bad}");
         }
     }
 }

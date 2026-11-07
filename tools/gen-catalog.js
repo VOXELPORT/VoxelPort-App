@@ -19,6 +19,8 @@ const catalog = {
   templates: TEMPLATES.map((t) => ({
     id: t.id, label: t.label, blurb: t.blurb, type: t.type, bedrock: Boolean(t.bedrock), cracked: Boolean(t.cracked),
   })),
+  // The server.properties each template starts a server with (used by the installer, never shown to the screens).
+  templateProperties: Object.fromEntries(TEMPLATES.map((t) => [t.id, t.properties || {}])),
   // The same fields region:get lists.
   regions: Object.values(REGIONS).map((r) => ({ id: r.id, label: r.label })),
 };
