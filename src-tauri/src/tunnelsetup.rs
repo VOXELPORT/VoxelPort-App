@@ -2,8 +2,8 @@
 //! the public server-list entry, and the Bedrock address. The protocol itself is `voxelport-core::tunnel`; the rules for regions, relay
 //! URLs and the Bedrock address cache are in their own core modules. Ported from the tunnel section of `main.js`.
 //!
-//! Not ported here (later steps): automatic voice-chat setup (`voiceSetup.js`): a voice port the profile already has is passed to the
-//! relay, but no voice plugin is installed or configured; the in-game announcement of a relay notice (`notice.js`).
+//! Also here: the relay operator's announcements said in the game chat (`notice.rs`), and Supporter Plus voice chat set up automatically
+//! (`voice.rs`) from the rank and voice port the relay hands out.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -54,6 +54,12 @@ pub struct TunnelState {
     bedrock_restarting: AtomicBool,
     name_waiters: Mutex<Vec<oneshot::Sender<Value>>>,
     listing_pending: AtomicBool,
+    /// What the voice-chat status line says (merged from what has been published so far).
+    voice_state: Mutex<Value>,
+    /// Servers whose voice chat was changed while they ran: they need one restart.
+    voice_restart: Mutex<std::collections::HashSet<String>>,
+    /// One voice set-up at a time.
+    voice_lock: tokio::sync::Mutex<()>,
 }
 
 impl TunnelState {
@@ -297,7 +303,23 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
     }
     let public_host = region.map(|r| r.public_host.to_string()).unwrap_or_else(|| url::Url::parse(&resolved).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default());
     let profile = a.profile_id.as_deref().and_then(|id| profiles::get(&state.data_dir, id));
-    let voice_port = if region.is_some() { profile.as_ref().filter(|p| p["voice"]["enabled"] == true).and_then(|p| p["voice"]["port"].as_u64()).map(|p| p as u16) } else { None };
+    let mut voice_port = if region.is_some() { profile.as_ref().filter(|p| p["voice"]["enabled"] == true).and_then(|p| p["voice"]["port"].as_u64()).map(|p| p as u16) } else { None };
+    // On VoxelPort's own relays a Paper or Fabric server asks the relay for a voice port, and the plugin is set up when one is assigned.
+    // This is an extra: it must never keep a server from going public.
+    let mut voice_auto = false;
+    if let (Some(p), Some(_)) = (&profile, region) {
+        match voxelport_core::voice::voice_plan(p, a.udp_port) {
+            Ok(Some(plan)) => {
+                voice_port = Some(plan.port);
+                voice_auto = true;
+            }
+            Ok(None) => voice_port = None,
+            Err(e) => {
+                voice_port = None;
+                publish_voice_state(state, json!({ "message": e }));
+            }
+        }
+    }
 
     // Never leave an older tunnel behind: two of them would share this device's token and fight for it.
     let retiring = state.tunnels.retiring.lock().unwrap().clone().filter(Tunnel::is_live);
@@ -328,7 +350,7 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
         udp_port: a.udp_port,
         bedrock_port: a.udp_port,
         voice_port,
-        voice_auto: false,
+        voice_auto,
         client: Some(format!("desktop/{}", env!("CARGO_PKG_VERSION"))),
     });
     broadcast_state(state);
@@ -480,6 +502,114 @@ fn resolve_name_waiters(state: &AppState, answer: &Value) {
     }
 }
 
+// ─── Voice chat ─────────────────────────────────────────────────────────────
+
+/// Merges into the voice status line and tells the screens.
+pub fn publish_voice_state(state: &AppState, patch: Value) {
+    let mut current = state.tunnels.voice_state.lock().unwrap();
+    if !current.is_object() {
+        *current = voice_state_default();
+    }
+    if let (Some(base), Some(patch)) = (current.as_object_mut(), patch.as_object()) {
+        for (k, v) in patch {
+            base.insert(k.clone(), v.clone());
+        }
+    }
+    let snapshot = current.clone();
+    drop(current);
+    emit(state, "tunnel:voice", snapshot);
+}
+
+fn voice_state_default() -> Value {
+    json!({ "rank": null, "message": "Make your server public to sync your supporter rank." })
+}
+
+/// `voice:state`.
+pub fn voice_state(state: &AppState) -> Value {
+    let current = state.tunnels.voice_state.lock().unwrap().clone();
+    if current.is_object() { current } else { voice_state_default() }
+}
+
+/// The server just started: if its voice chat was changed while it ran, this start is the restart that was asked for.
+pub fn voice_started(state: &AppState, id: &str) {
+    if state.tunnels.voice_restart.lock().unwrap().remove(id) {
+        publish_voice_state(state, json!({ "message": "Voice chat is configured automatically. Players join using your server address and the matching voice mod." }));
+    }
+}
+
+/// The relay assigned (or took away) this server's public voice port. For a Supporter Plus server the voice plugin is installed if
+/// needed and pointed at that address; one set-up at a time, and each step checks the tunnel is still the current one.
+fn voice_assigned(app: &tauri::AppHandle, tunnel: Tunnel, host: String, port: Option<u16>) {
+    let state = app.state::<AppState>();
+    let Some(id) = state.tunnels.public_profile() else { return };
+    let Some(port) = port else {
+        if tunnel.rank().as_deref() == Some("supporter_plus") {
+            publish_voice_state(&state, json!({ "message": "Automatic voice chat needs a Paper or Fabric server and an updated relay." }));
+        }
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let _one_at_a_time = state.tunnels.voice_lock.lock().await;
+        let current = |state: &AppState| is_current(state, &tunnel) && state.tunnels.public_profile().as_deref() == Some(id.as_str()) && tunnel.rank().as_deref() == Some("supporter_plus") && tunnel.voice_public_port() == Some(port);
+        if !current(&state) {
+            return;
+        }
+        let Some(profile) = profiles::get(&state.data_dir, &id) else { return };
+        let bedrock = (profile["bedrock"] == true).then(|| crate::serverconfig::local_bedrock_port(&profile));
+        let plan = match voxelport_core::voice::voice_plan(&profile, bedrock) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => return,
+            Err(e) => {
+                publish_voice_state(&state, json!({ "message": format!("Voice setup could not finish: {e}. Make the server public again to retry.") }));
+                return;
+            }
+        };
+        let running = crate::serverconfig::is_running(&state, &id);
+        let (worker_app, worker_profile, worker_id) = (app.clone(), profile.clone(), id.clone());
+        let worker_tunnel = tunnel.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let (fetcher, api) = crate::serverconfig::modrinth();
+            let state = worker_app.state::<AppState>();
+            let still = || {
+                is_current(&state, &worker_tunnel)
+                    && state.tunnels.public_profile().as_deref() == Some(worker_id.as_str())
+                    && worker_tunnel.rank().as_deref() == Some("supporter_plus")
+                    && worker_tunnel.voice_public_port() == Some(port)
+            };
+            voxelport_core::voice::configure_voice(&voxelport_core::cracked::Modrinth { fetcher: &fetcher, api: &api }, &worker_profile, &plan, &host, port, running, &still)
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+        match result {
+            Ok(Some(done)) => {
+                if !current(&state) {
+                    return;
+                }
+                let mut change = serde_json::Map::new();
+                change.insert("voice".into(), json!({ "enabled": true, "plugin": done.plugin.name(), "port": done.port }));
+                let _ = profiles::update(&state.data_dir, &id, &change);
+                if done.changed && state.active_profile.lock().unwrap().as_deref() == Some(id.as_str()) && state.server.is_running() {
+                    state.tunnels.voice_restart.lock().unwrap().insert(id.clone());
+                }
+                let restart = state.tunnels.voice_restart.lock().unwrap().contains(&id);
+                publish_voice_state(
+                    &state,
+                    json!({ "message": if restart { "Voice chat is configured. Restart your server once to activate it. Players need the matching voice mod." } else { "Voice chat is configured automatically. Players join using your server address and the matching voice mod." } }),
+                );
+            }
+            Ok(None) => {}
+            Err(e) => {
+                if is_current(&state, &tunnel) && state.tunnels.public_profile().as_deref() == Some(id.as_str()) {
+                    publish_voice_state(&state, json!({ "message": format!("Voice setup could not finish: {e}. Make the server public again to retry.") }));
+                }
+            }
+        }
+    });
+}
+
 // ─── Events from the tunnel ─────────────────────────────────────────────────
 
 /// Forwards one tunnel's events to the screens under the channel names they already listen to. An event from a tunnel that has been
@@ -499,7 +629,22 @@ fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::Unboun
                     let ready = on_assigned(&app, &state, &tunnel, id.as_deref(), &public_host, bedrock_port);
                     emit(&state, "tunnel:assigned", json!({ "port": port, "host": public_host, "bedrockPort": bedrock_port, "bedrockReady": ready }));
                 }
-                TunnelEvent::Rank(_) | TunnelEvent::VoiceAssigned(_) => {} // automatic voice chat is a later step
+                TunnelEvent::Rank(rank) => {
+                    if !current {
+                        continue;
+                    }
+                    let message = match rank.as_deref() {
+                        Some("supporter_plus") => "Supporter Plus synced. Setting up voice chat…",
+                        Some(_) => "Your supporter rank is synced. Automatic voice chat requires Supporter Plus.",
+                        None => "This relay needs an update to sync your supporter rank.",
+                    };
+                    publish_voice_state(&state, json!({ "rank": rank, "profileId": state.tunnels.public_profile(), "message": message }));
+                }
+                TunnelEvent::VoiceAssigned(port) => {
+                    if current {
+                        voice_assigned(&app, tunnel.clone(), public_host.clone(), port);
+                    }
+                }
                 TunnelEvent::Players(n) => emit(&state, "tunnel:players", n),
                 TunnelEvent::Ping(ms) => emit(&state, "tunnel:ping", ms),
                 TunnelEvent::Log(l) => emit(&state, "tunnel:log", l),
@@ -521,6 +666,11 @@ fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::Unboun
                     // Only VoxelPort's own relays may announce things; a self-hosted relay is not trusted to talk to your players.
                     if state.tunnels.region.lock().unwrap().is_some() {
                         emit(&state, "tunnel:notice", json!({ "message": message, "seconds": seconds }));
+                        // The players never see the app, so it is also said in the game's chat (only for the server that is public).
+                        let public = state.tunnels.public_profile();
+                        if public.is_some() && public == *state.active_profile.lock().unwrap() {
+                            state.notices.handle(&message, seconds);
+                        }
                     }
                 }
                 TunnelEvent::UdpError(m) | TunnelEvent::VoiceError(m) => emit(&state, "server:log", format!("[VoxelPort] {m}")),
@@ -531,6 +681,7 @@ fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::Unboun
                         break;
                     }
                     emit(&state, "tunnel:notice", json!({ "message": "", "seconds": 0 }));
+                    state.notices.cancel();
                     *state.tunnels.public_profile.lock().unwrap() = None;
                     state.tunnels.manual.store(false, Ordering::SeqCst);
                     if current || state.tunnels.tunnel.lock().unwrap().is_none() {

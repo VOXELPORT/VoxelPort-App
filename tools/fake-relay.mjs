@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const { WebSocketServer } = require(path.join(import.meta.dirname, '..', 'reference', 'electron-v1.17.1', 'node_modules', 'ws'));
 
 export async function startFakeRelay(port = 0) {
-  const state = { registers: [], listings: [], frames: [], connections: 0, takenNames: new Set(['taken']), bedrockPort: 26138, rank: 'free', bedrockOn: true };
+  const state = { registers: [], listings: [], frames: [], connections: 0, takenNames: new Set(['taken']), bedrockPort: 26138, rank: 'free', bedrockOn: true, voicePort: null };
   const wss = new WebSocketServer({ port, host: '127.0.0.1' });
   await new Promise((r) => wss.on('listening', r));
   let host = null; // the current tunnel connection
@@ -33,6 +33,7 @@ export async function startFakeRelay(port = 0) {
         const port = { type: 'port', port: 26137, rank: state.rank };
         if (m.bin === 1) port.bin = 1;
         if (m.bedrock && state.bedrockOn) port.bedrock_port = state.bedrockPort;
+        if ((m.voice_auto || m.voice) && state.voicePort) port.voice_port = state.voicePort; // a public voice port, when the test gives one
         ws.send(JSON.stringify(port));
       } else if (m.type === 'listing') state.listings.push(m.listing ?? null);
       else if (m.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));

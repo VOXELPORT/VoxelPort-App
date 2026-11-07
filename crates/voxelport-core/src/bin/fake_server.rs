@@ -41,6 +41,10 @@ fn main() {
             "stop" if !hang => {
                 let _ = writeln!(out, "[12:00:01] [Server thread/INFO]: Stopping the server");
                 let _ = out.flush();
+                // The tests can ask for proof of when it stopped: the file named by VP_FAKE_STOP_MARK is written first.
+                if let Ok(mark) = std::env::var("VP_FAKE_STOP_MARK") {
+                    let _ = std::fs::write(mark, "stopped\n");
+                }
                 return;
             }
             "crash" => std::process::exit(1),

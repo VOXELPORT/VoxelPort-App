@@ -29,11 +29,17 @@ ureq = { version = "2", default-features = false, features = ["tls"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "net", "test-util"] }
 tempfile = "3"
 
 # A stand-in for a Minecraft server, used only by the tests (it speaks just enough of the console protocol).
 [[bin]]
 name = "vp-fake-server"
 path = "src/bin/fake_server.rs"
+test = false
+
+# A stand-in for an app installer, used only by the update tests.
+[[bin]]
+name = "vp-fake-installer"
+path = "src/bin/fake_installer.rs"
 test = false

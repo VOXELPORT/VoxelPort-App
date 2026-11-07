@@ -91,7 +91,8 @@ pub fn is_valid(p: &Value) -> bool {
 
 // ─── The store ──────────────────────────────────────────────────────────────
 
-fn iso_now() -> String {
+/// The current time as ISO 8601 in UTC with milliseconds, like the Electron app writes it.
+pub fn iso_now() -> String {
     let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     let (secs, milli) = (ms.div_euclid(1000), ms.rem_euclid(1000));
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));

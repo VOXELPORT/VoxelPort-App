@@ -22,6 +22,9 @@
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; base-uri 'none'; form-action 'none'; object-src 'none'"
     }
   },
+  "plugins": {
+    "updater": { "pubkey": "", "endpoints": [], "requireSignedVersion": true }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],

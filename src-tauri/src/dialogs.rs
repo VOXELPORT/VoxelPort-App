@@ -54,6 +54,27 @@ pub async fn pick_file(app: &tauri::AppHandle, title: String, filter_name: &str,
     .flatten()
 }
 
+/// Asks where to save a file. None when the person cancels. A development build can answer from the environment
+/// (`VOXELPORT_TEST_SAVE_FILE=<path>`).
+pub async fn pick_save(app: &tauri::AppHandle, title: String, default_name: String, filter_name: &str, extensions: &[&str]) -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Ok(p) = std::env::var("VOXELPORT_TEST_SAVE_FILE") {
+        return (!p.is_empty()).then(|| PathBuf::from(p));
+    }
+    let window = app.get_webview_window("main");
+    let (name, exts): (String, Vec<String>) = (filter_name.to_string(), extensions.iter().map(|e| e.to_string()).collect());
+    tokio::task::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new().set_title(title).set_file_name(default_name).add_filter(name, &exts);
+        if let Some(w) = &window {
+            dialog = dialog.set_parent(w);
+        }
+        dialog.save_file()
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
 /// The delete question. With `can_delete` there are three answers (cancel, only remove from the list, delete the files
 /// to the Recycle Bin); without it only "remove from the list" or cancel.
 pub async fn confirm_removal(app: &tauri::AppHandle, title: String, detail: String, can_delete: bool, labels: [String; 3]) -> RemoveChoice {

@@ -105,6 +105,9 @@ try {
     relay.notice('The VoxelPort relay will restart.', 600);
     check('a relay notice reaches the screen', await waitFor('notice', async () => (await events(page, 'tunnel:notice')).some((n) => n.message === 'The VoxelPort relay will restart.' && n.seconds === 600)));
 
+    check('and is said in the game chat for the players, with the time left', await waitFor('chat', async () => (await events(page, 'server:log')).some((l) => /^\[VoxelPort\] The VoxelPort relay will restart\. \(in 10 minutes\)$/.test(l))), J((await events(page, 'server:log')).slice(-5)));
+    relay.notice('', 0);
+
     // Safety nets while public.
     check('a public server cannot be removed', (await page.ev(`vp.server.remove(${J(id)})`)).error === 'Stop and un-publish this server before removing it.');
     check('restoring the address from a backup is refused while public', (await page.ev("vp.identityRestore('correct horse battery staple')")).error === 'Stop the public address first, then restore.');

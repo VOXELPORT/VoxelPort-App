@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, 73 of 87 channels ported (84%); steps 1 to 9 done** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **started, all 87 of 87 channels ported; steps 1 to 10 done** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -49,7 +49,7 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 7 done | backups, restore, schedule, live save, change version | backups 536, backupService 227 | needs zip with traversal checks |
 | 8 done | relay tunnel, regions, custom address, Bedrock endpoint, public list entry | tunnel 688, regions 97, bedrockEndpoint 48, relayUrlSafety | the core of the product. Automatic voice-chat setup (`voiceSetup.js`) and the in-game relay announcement (`notice.js`) are left for later |
 | 9 done | add-ons, modpacks, Bedrock install, runtime info, crash explain, perf | addons 272, modpackImport 239, bedrock 284, runtimeInfo 98, crashExplain 169, perfMonitor 168 | Modrinth and Geyser downloads, checksums. CPU and memory are read from the operating system directly (no PowerShell process); a chat line can no longer pass for the server's `tick query` answer or its lag warning |
-| 10 | updater, support, presence, notices, diagnostics | updater 120, support 159, discordPresence 158, notice 99, diagnostics 62 | polish and release plumbing |
+| 10 done | updater, support, presence, notices, diagnostics, voice chat, one-copy lock | updater 120, support 159, discordPresence 158, notice 99, diagnostics 62, voiceSetup 78 | polish and release plumbing. The updater is Tauri's (minisign signature, bound to the version, so a validly signed older release cannot be passed off as a newer one); it says `not-configured` in release builds until a signing key is set. Voice chat now installs its plugin by the real Modrinth id (Electron's install of a missing voice plugin always failed). A player's chat can no longer pass for the relay's or the server's own lines |
 | 11 | installer, signing, Store path | n/a | see risks |
 
 The 57 Electron test files are the specification for steps 3 to 10: each module's tests should be ported with it.

@@ -17,22 +17,20 @@ const arms = new Set([...ipc.matchAll(/^\s+((?:"[A-Za-z:]+"\s*\|?\s*)+)=>/gm)].f
 // Answered, but with a fixed value rather than the real behaviour.
 // Ported channels that still have a known gap: shown as Ported, with the gap in the note.
 const CAVEATS = {
-  'server:makePublic': 'Region choice, relay, players, listing, custom address, Bedrock address and its one restart. Not yet: automatic voice-chat setup (a voice port already on the profile is passed to the relay, but no plugin is installed)',
-  'tunnel:start': 'The manual tunnel. Relay notices reach the screen but are not yet said in the game chat (notice.js is step 10)',
-  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Bedrock launch arguments and the Geyser version warning. Not yet: backup-busy check, the "switch to another server" question',
-  'server:install': 'Verified jar, files and profile; cracked templates get the login plugin, then offline mode, then skins. Bedrock templates also get Geyser and Floodgate (a failure is a plain warning; the Java server still works)',
-  'app:info': 'masked token and VoxelPort ID are real; copying the token to the clipboard is not ported',
+  'server:makePublic': 'Region choice, relay, players, listing, custom address, Bedrock address and its one restart, and automatic voice chat for Supporter Plus (the plugin is installed by its real Modrinth id, which Electron never managed to do)',
+  'tunnel:start': 'The manual tunnel. Relay notices reach the screen, and are said in the game chat for a public server',
+  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java, Bedrock launch arguments and the Geyser version warning. Not yet: backup-busy check, the "switch to another server" question',
+  'server:install': 'Verified jar, files and profile; cracked templates get the login plugin, then offline mode, then skins; Bedrock templates also get Geyser and Floodgate (a failure is a plain warning; the Java server still works)',
   'server:settings:save': 'does not yet update a live public-server-list entry (tunnel not ported)',
   'server:profiles:delete': 'Native confirmation, Recycle Bin, folder safety checks. Does not yet stop a public tunnel (tunnel not ported)',
   'server:chooseFolder': 'native folder picker, not yet tested by hand',
+  'modpack:choose': 'native file picker, not yet tested by hand',
+  'diagnostics:export': 'native save dialog, not yet tested by hand',
+  'app:setLanguage': 'English or Hinglish for the messages the backend writes (refusals, the update question, crash explanations, chat announcements); not every backend message has a Hinglish version yet',
+  'update:check': 'The signed-update flow works end to end against a test server. Release builds say "not configured" until a signing key is set (see BUILD_INSTRUCTIONS.md)',
 };
 
-const STUBS = {
-  'app:setLanguage': 'accepted and ignored (messages the backend writes are not translated yet)',
-  'update:state': 'always "nothing to install" (updater not ported)',
-  'voice:state': 'fixed text (supporter-rank sync not ported)',
-  'presence:get': 'always "not available" (Discord presence not ported)',
-};
+const STUBS = {};
 
 // channel prefix or exact name -> [area, Electron module(s)]
 const AREAS = [
@@ -88,20 +86,21 @@ md += `
 
 | Electron | Used for | Tauri replacement | Status |
 |---|---|---|---|
-| \`safeStorage\` | device token and Discord session encrypted at rest | Windows DPAPI (\`CryptProtectData\`) via a small Rust wrapper; must read the Electron app's existing files if users are migrated | Not started |
-| \`electron-updater\` | signed auto-update from GitHub releases | \`tauri-plugin-updater\` (needs its own signing key and a new update manifest; the NSIS flow differs) | Not started |
-| \`dialog\` (open, save, message) | folder chooser, modpack chooser, confirmations | \`tauri-plugin-dialog\` | Not started |
-| \`shell.openExternal / openPath / trashItem\` | open links and folders, delete to the recycle bin | \`tauri-plugin-opener\` plus the \`trash\` crate | Not started |
-| \`clipboard\` | copy token, invite, UPI ID | \`tauri-plugin-clipboard-manager\` | Not started |
-| \`nativeTheme\` | follow the system light/dark setting | window theme APIs plus the page's own \`prefers-color-scheme\` | Not started |
-| \`Notification\` | desktop notifications | \`tauri-plugin-notification\` | Not started |
-| \`requestSingleInstanceLock\` | one app window | \`tauri-plugin-single-instance\` | Not started |
+| \`safeStorage\` | device token and Discord session encrypted at rest | Windows DPAPI (\`CryptProtectData\`) via a small Rust wrapper | **Done** for this build's own files. Reading the Electron app's existing files (a different format) is **not started**, and is needed before this build may share its data folder |
+| \`electron-updater\` | signed auto-update from GitHub releases | \`tauri-plugin-updater\` (minisign signatures checked against a key built into the app, signature bound to the version) | **Done and tested end to end**; a release build needs the signing key set and \`latest.json\` published (BUILD_INSTRUCTIONS.md) |
+| \`dialog\` (open, save, message) | folder chooser, modpack chooser, report save, confirmations | \`rfd\` (native dialogs) | **Done** |
+| \`shell.openExternal / openPath / trashItem\` | open links and folders, delete to the recycle bin | \`ShellExecuteW\` and \`SHFileOperationW\` | **Done** |
+| \`clipboard\` | copy token, supporter ID, UPI ID | the Win32 clipboard (Unicode text) | **Done** |
+| \`nativeTheme\` | follow the system light/dark setting; window background | window theme APIs plus the page's own \`prefers-color-scheme\` | Not started (the page paints its own theme; the window frame and the saved theme choice are not applied) |
+| \`Notification\` | (Electron v1.17.1 does not use it) | n/a | Not needed |
+| \`requestSingleInstanceLock\` | one app window | \`tauri-plugin-single-instance\` | **Done** |
 | Quit gate (\`before-quit\`) | stop the server before exiting | window close handler in \`main.rs\` | **Done** (tested in core, not on a window close) |
-| \`ws\` (WebSocket client) | relay tunnel | \`tokio-tungstenite\` | Not started |
-| \`dgram\` / \`net\` | UDP and TCP forwarding for the tunnel | \`tokio::net\` | Not started |
-| \`yauzl\` / \`yazl\` | zip read and write for backups and modpacks | the \`zip\` crate, with path-traversal checks | Not started |
-| \`https\` downloads | installers, add-ons, support data | \`reqwest\` with checksum verification and an allow-list of download domains | Not started |
-| Microsoft Store package (MSIX) | the live Store listing | Tauri has no MSIX target; needs a separate packaging step | **Open question** |
+| \`ws\` (WebSocket client) | relay tunnel | \`tokio-tungstenite\` | **Done** |
+| \`dgram\` / \`net\` | UDP and TCP forwarding for the tunnel | \`tokio::net\` | **Done** |
+| \`yauzl\` / \`yazl\` | zip read and write for backups and modpacks | the \`zip\` crate, with path-traversal checks | **Done** |
+| \`https\` downloads | installers, add-ons, support data | the shared download client: allow-listed hosts, checksums, size caps | **Done** |
+| Discord Rich Presence (\`net\` to Discord's pipe) | the "Hosting a server" line | a Windows named pipe client | **Done** |
+| Microsoft Store package (MSIX) | the live Store listing | Tauri has no MSIX target; needs a separate packaging step | **Open question** (a packaged build already reports "the Store updates it") |
 `;
 fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
 fs.writeFileSync(path.join(root, 'docs', 'FEATURE_PARITY.md'), md);

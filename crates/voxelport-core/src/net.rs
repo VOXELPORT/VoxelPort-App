@@ -113,11 +113,18 @@ pub struct Fetcher {
     pub policy: HostPolicy,
     pub what: &'static str,
     pub user_agent: &'static str,
+    /// Replaces the connect and stall time limits (a screen that must not hang waits less than a big download does).
+    pub timeout: Option<Duration>,
 }
 
 impl Fetcher {
     pub fn new(policy: HostPolicy, what: &'static str, user_agent: &'static str) -> Self {
-        Self { policy, what, user_agent }
+        Self { policy, what, user_agent, timeout: None }
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
     }
 
     pub fn check_url(&self, url: &str) -> Result<url::Url, String> {
@@ -132,7 +139,7 @@ impl Fetcher {
 
     /// GET following redirects, re-checking the host and scheme of every hop.
     pub fn get(&self, url: &str) -> Result<ureq::Response, String> {
-        let agent = ureq::AgentBuilder::new().redirects(0).timeout_connect(CONNECT_TIMEOUT).timeout_read(INACTIVITY_TIMEOUT).user_agent(self.user_agent).build();
+        let agent = ureq::AgentBuilder::new().redirects(0).timeout_connect(self.timeout.unwrap_or(CONNECT_TIMEOUT)).timeout_read(self.timeout.unwrap_or(INACTIVITY_TIMEOUT)).user_agent(self.user_agent).build();
         let mut current = self.check_url(url)?;
         for _ in 0..=MAX_REDIRECTS {
             let resp = match agent.get(current.as_str()).call() {
@@ -168,7 +175,7 @@ impl Fetcher {
     /// POSTs `body` as JSON and reads a JSON answer. One request, no redirects: the address must already be on the allow-list.
     pub fn post_json(&self, url: &str, body: &Value, max_bytes: u64) -> Result<Value, String> {
         let target = self.check_url(url)?;
-        let agent = ureq::AgentBuilder::new().redirects(0).timeout_connect(CONNECT_TIMEOUT).timeout_read(INACTIVITY_TIMEOUT).user_agent(self.user_agent).build();
+        let agent = ureq::AgentBuilder::new().redirects(0).timeout_connect(self.timeout.unwrap_or(CONNECT_TIMEOUT)).timeout_read(self.timeout.unwrap_or(INACTIVITY_TIMEOUT)).user_agent(self.user_agent).build();
         let resp = match agent.post(target.as_str()).set("Content-Type", "application/json").send_string(&body.to_string()) {
             Ok(r) => r,
             Err(ureq::Error::Status(code, _)) => return Err(format!("{} request failed: HTTP {code}", self.what)),

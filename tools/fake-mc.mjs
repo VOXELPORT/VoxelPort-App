@@ -16,7 +16,7 @@ export function startFakeMc(port) {
   const jar = (version) => storedZip([['META-INF/MANIFEST.MF', Buffer.from('Manifest-Version: 1.0\n')], ...(version ? [['version.json', Buffer.from(JSON.stringify({ id: version, name: version }))]] : [])]);
   const claimed = (v) => (state.mode.wrongVersion ? '9.9.9' : v);
   const json = (res, v) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(v)); };
-  const BYTES = { cool: Buffer.from("Cool Plugin bytes"), lib: Buffer.from("Library bytes"), fabmod: Buffer.from("Fabric mod bytes"), geyserSpigot: Buffer.from("Geyser-Spigot bytes"), geyserFabric: Buffer.from("Geyser-Fabric bytes"), floodSpigot: Buffer.from("floodgate-spigot bytes"), floodFabric: Buffer.from("Floodgate-Fabric bytes"), fabricApi: Buffer.from("Fabric API bytes") };
+  const BYTES = { cool: Buffer.from("Cool Plugin bytes"), lib: Buffer.from("Library bytes"), fabmod: Buffer.from("Fabric mod bytes"), geyserSpigot: Buffer.from("Geyser-Spigot bytes"), geyserFabric: Buffer.from("Geyser-Fabric bytes"), floodSpigot: Buffer.from("floodgate-spigot bytes"), floodFabric: Buffer.from("Floodgate-Fabric bytes"), fabricApi: Buffer.from("Fabric API bytes"), voice: Buffer.from("Simple Voice Chat bytes") };
   const fileOf = (name, key) => ({ primary: true, url: `${base}/data/${key}.jar`, filename: name, hashes: { sha512: hex("sha512", BYTES[key]) } });
   const MODRINTH = {
     AAAAAAAA: { for: "paper", file: fileOf("CoolPlugin-1.0.jar", "cool"), deps: ["BBBBBBBB"] },
@@ -25,6 +25,7 @@ export function startFakeMc(port) {
     geyser: { for: "any", file: (loaders) => (loaders.includes("fabric") ? fileOf("geyser-fabric-2.9.jar", "geyserFabric") : fileOf("Geyser-Spigot.jar", "geyserSpigot")), deps: [] },
     floodgate: { for: "fabric", file: fileOf("Floodgate-Fabric-2.2.jar", "floodFabric"), deps: [] },
     "fabric-api": { for: "fabric", file: fileOf("fabric-api-0.100.jar", "fabricApi"), deps: [] },
+    "9eGKb6K1": { for: "paper", file: fileOf("voicechat-bukkit-2.5.jar", "voice"), deps: [] }, // Simple Voice Chat
   };
   const server = http.createServer((req, res) => {
     state.hits++;
@@ -75,7 +76,7 @@ export function startFakeMc(port) {
     }
     if ((m = p.match(/^\/v2\/project\/(BBBBBBBB)$/))) return json(res, { title: "The Library" });
     if (p === "/v2/version_files" && req.method === "POST") { req.resume(); return json(res, {}); }
-    if ((m = p.match(/^\/data\/(cool|lib|fabmod|geyserSpigot|geyserFabric|floodFabric|fabricApi)\.jar$/))) { res.writeHead(200); return res.end(BYTES[m[1]]); }
+    if ((m = p.match(/^\/data\/(cool|lib|fabmod|geyserSpigot|geyserFabric|floodFabric|fabricApi|voice)\.jar$/))) { res.writeHead(200); return res.end(BYTES[m[1]]); }
     // GeyserMC: the latest Floodgate for Paper.
     if (p === "/geyser/floodgate/versions/latest/builds/latest") return json(res, { version: "2.2.4", build: 120, downloads: { spigot: { name: "floodgate-spigot.jar", sha256: hex("sha256", BYTES.floodSpigot) } } });
     if (p === "/geyser/floodgate/versions/2.2.4/builds/120/downloads/spigot") { res.writeHead(200); return res.end(BYTES.floodSpigot); }

@@ -33,6 +33,58 @@ pub fn recommended_ram_mb(total_mb: u64) -> u64 {
     }
 }
 
+/// Puts text on the clipboard. A development build can write it to a file instead (`VOXELPORT_TEST_CLIPBOARD_FILE=<path>`) so the
+/// copy buttons can be tested without touching what the person has copied.
+pub fn set_clipboard(text: &str) -> bool {
+    #[cfg(debug_assertions)]
+    if let Ok(path) = std::env::var("VOXELPORT_TEST_CLIPBOARD_FILE") {
+        return std::fs::write(path, text).is_ok();
+    }
+    set_clipboard_native(text)
+}
+
+#[cfg(windows)]
+fn set_clipboard_native(text: &str) -> bool {
+    use windows_sys::Win32::Foundation::{GlobalFree, HANDLE};
+    use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    const CF_UNICODETEXT: u32 = 13;
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let bytes = wide.len() * 2;
+    // SAFETY: the memory block is sized for the whole NUL-terminated string and filled before it is handed to the clipboard, which
+    // then owns it (it is freed here only if the clipboard did not take it); the clipboard is closed on every path after it is opened.
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return false;
+        }
+        let mut ok = false;
+        if EmptyClipboard() != 0 {
+            let mem: HANDLE = GlobalAlloc(GMEM_MOVEABLE, bytes);
+            if !mem.is_null() {
+                let dst = GlobalLock(mem) as *mut u16;
+                if dst.is_null() {
+                    GlobalFree(mem);
+                } else {
+                    std::ptr::copy_nonoverlapping(wide.as_ptr(), dst, wide.len());
+                    GlobalUnlock(mem);
+                    if SetClipboardData(CF_UNICODETEXT, mem).is_null() {
+                        GlobalFree(mem);
+                    } else {
+                        ok = true;
+                    }
+                }
+            }
+        }
+        CloseClipboard();
+        ok
+    }
+}
+
+#[cfg(not(windows))]
+fn set_clipboard_native(_text: &str) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,6 +101,14 @@ mod tests {
     #[test]
     fn this_computer_reports_some_memory() {
         assert!(total_memory_mb().unwrap_or(0) > 256);
+    }
+
+    /// Writes to the real clipboard, so it is not run with the others: `cargo test -p voxelport-tauri clipboard -- --ignored`, then look
+    /// at what is on the clipboard (it should read `vp clipboard test ✓ héllo`).
+    #[test]
+    #[ignore = "writes to the real clipboard"]
+    fn the_clipboard_gets_the_text() {
+        assert!(set_clipboard("vp clipboard test ✓ héllo"));
     }
 }
 

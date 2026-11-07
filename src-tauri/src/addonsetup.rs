@@ -357,16 +357,20 @@ async fn bedrock_set_inner(state: &AppState, profile: &Value, id: &str, enabled:
     json!({ "ok": true, "profile": updated, "restartNeeded": is_running(state, id) })
 }
 
+/// The Minecraft version a server really is: read from its jar. A Fabric launcher jar has none, so the stored version stands in.
+pub async fn running_version(profile: &Value) -> String {
+    let jar = dir_of(profile).join("server.jar");
+    let from_jar = tokio::task::spawn_blocking(move || server_install::read_jar_minecraft_version(&jar).ok().flatten()).await.ok().flatten();
+    from_jar.or_else(|| profile["version"].as_str().map(str::to_string)).unwrap_or_default()
+}
+
 /// Warns in the server log when a Bedrock-enabled server runs a Minecraft version no Geyser build supports (the start still
 /// goes ahead: Java players are unaffected, and a failed check never blocks a start).
 pub async fn geyser_preflight(state: &AppState, profile: &Value) {
     if profile["bedrock"] != true {
         return;
     }
-    // The real version is in the jar; a Fabric launcher jar has none, so the stored one stands in.
-    let jar = dir_of(profile).join("server.jar");
-    let from_jar = tokio::task::spawn_blocking(move || server_install::read_jar_minecraft_version(&jar).ok().flatten()).await.ok().flatten();
-    let running_version = from_jar.or_else(|| profile["version"].as_str().map(str::to_string)).unwrap_or_default();
+    let running_version = running_version(profile).await;
     let ty = profile["type"].as_str().unwrap_or_default().to_string();
     let ask = running_version.clone();
     let compatible = tokio::task::spawn_blocking(move || {

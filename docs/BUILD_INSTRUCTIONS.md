@@ -125,3 +125,26 @@ node tools/bench.mjs "<label>" <debug-port> <runs> <exe> [args...]
 Starts the app, waits for its page and `window.vp`, lets it sit 30 s, then samples the whole process tree (app plus
 web view or helper processes) for memory, and the CPU time used over the next 20 s. It only ends the process it
 started. See PERFORMANCE_COMPARISON.md for how the numbers were taken and what they do not show.
+
+## Support, presence, voice chat, the error report and updates, end to end
+
+`tools/e2e-app.mjs` covers the one-copy lock, the Support screen, the copy buttons, Discord presence (against a stand-in Discord on a real named pipe), automatic voice chat and the error report (44 checks; same arguments as the install script, test folder `...\e2e-app`). It needs ports 8795 (stand-in website), 8797 and 8799 free on 127.0.0.1. The real clipboard, browser and Discord are not touched: development builds write the clipboard to a file (`VOXELPORT_TEST_CLIPBOARD_FILE`), skip opening a browser (`VOXELPORT_NO_BROWSER`) and refuse the real Discord (`VOXELPORT_DISCORD_PIPE`: unset means none, `system` means the real one, anything else is a pipe name to use).
+
+`tools/e2e-update.mjs` covers updating the app (25 checks) with one more argument, the stand-in installer:
+
+```
+node tools/e2e-update.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" C:\Users\<you>\vp-tauri-test\e2e-update C:\some\test\folder "%CD%\target\debug\vp-fake-installer.exe"
+```
+
+It makes throwaway signing keys with the Tauri CLI, signs the stand-in installer, serves it on port 8793, and deletes the keys afterwards. The stand-in server (`vp-fake-server`) writes the file named by `VP_FAKE_STOP_MARK` when it is told to stop, which is how the script proves the server stopped before the installer started.
+
+### Releasing updates (not done yet: needs you)
+
+Release builds say **"not configured"** and never install an update until the app is given the public half of a signing key. Once:
+
+1. `npx tauri signer generate -w voxelport-update.key` (choose a password). Keep the private key and its password somewhere safe and **out of the repository**: whoever holds it can ship code to every installed copy, and losing it means a one-time reinstall for everyone.
+2. Put the public key (the text of `voxelport-update.key.pub`) in `UPDATE_PUBLIC_KEY` in `src-tauri/src/updatesetup.rs`, and check `UPDATE_ENDPOINT` there points at the repository whose releases will carry `latest.json` (it defaults to the app's existing GitHub repository).
+3. Set `bundle.createUpdaterArtifacts` to `true` in `tauri.conf.json`, and build with `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set; this writes the installer's `.sig`. Sign with the version: `npx tauri signer sign --app-version <version> ...`; the app refuses a signature that is not bound to the version announced.
+4. Publish `latest.json` with the release: `{ "version": "<version>", "notes": "...", "pub_date": "<ISO date>", "platforms": { "windows-x86_64": { "signature": "<contents of the .sig>", "url": "<installer download address>" } } }`.
+
+Installed Electron copies cannot update into this build by themselves (a different mechanism and key): a one-time reinstall, or a bridge release of the Electron app that points at this installer, is needed.

@@ -151,6 +151,25 @@ covers both.
   general "it crashed" reading only when nothing else matched and the exit was not clean. The wording is also in Hinglish. Nothing is explained for a
   stop the person (or a restart) asked for, or for an exit that is about to be fixed by restarting on a newer Java.
 
+## The Support screen, the error report and the copy buttons (`support.rs`, `diagnostics.rs`, `src-tauri/src/appmisc.rs`)
+
+- **Support**: the donation target (UPI ID, Sponsors page) is constants in the code, so a changed website can never redirect a tip. The wording, supporter perks and hosting links come from `voxelport.in/support.json`, are cached for twelve hours (falling back to the last good copy, then to built-in text), and are validated: plain text only, a hosting link must be plain https to a real domain (no credentials, port, IP address or `.local`), at most six, unique, for this app. `support:open` takes a kind or an **id from the validated list**, never a URL from the page.
+- **Copy buttons** go straight from the backend to the clipboard: the token never crosses into the page.
+- **Error report**: the last 160 lines of the server's console, the tunnel's messages and update errors are kept (redacted as they arrive; the event system carries all of it, so nothing else calls in), and the report names the app, the server and the reason (the same crash rules as the "why it stopped" panel, plus a few more signatures). Redaction removes keys, tokens, passwords, web hooks, the query and password of addresses, user names in paths, e-mail, IDs, IP addresses, mentions and control characters; it is best effort and the report says to read it before sharing.
+
+## Relay announcements, Discord presence and voice chat (`notice.rs`, `presence.rs`, `voice.rs`)
+
+- **Announcements** from the relay's operator are shown as a banner and also said in the game chat (only for the public server, and only from VoxelPort's own relays): at once, again at five minutes and one minute if there was that much time, and when time is up; a reconnect that repeats a notice does not repeat it; text is stripped of controls, formatting codes and line breaks so it cannot become a second command.
+- **Presence** is a task that owns the connection to the local Discord app (its pipe, numbers 0 to 9) while it is switched on, says hello, answers pings, shows the type and version of the running server and the player count (never its name or address), and looks again every 30 seconds when Discord is not there. A `close` from Discord is final until switched off and on. It is on unless the person turned it off. Development builds never connect to the real Discord.
+- **Voice chat** (Supporter Plus): a Paper or Fabric server asks the relay for a voice port; when one is assigned and the rank is Supporter Plus, the voice plugin (Simple Voice Chat or Plasmo Voice) is installed by its real Modrinth id if missing and its config is pointed at the relay's public voice address (only the needed lines changed, the original kept once, atomic write). One set-up at a time, and every step checks the tunnel is still the current one. A server changed while it ran says it needs one restart.
+
+## Updating the app (`updater.rs`, `src-tauri/src/updatesetup.rs`)
+
+- `updater.rs` is the behaviour, separate from how an update is found: check shortly after start and then every four hours; presses of the button share one check with the background; it answers "available" as soon as one is found while the download continues; a downloaded update waits until `install` is called, which only happens after an explicit request (and the question when a server runs or the address is public).
+- `updatesetup.rs` is Tauri's updater as the backend. An update is verified against a **minisign public key built into the app**, and the signature must be **bound to the announced version** (`requireSignedVersion`): the manifest is fetched over TLS but is not itself signed, so without that a valid older release could be passed off as a newer one. The updater plugin is registered but granted to nobody in the page's capability, so only Rust drives it.
+- What a build can do is decided once: the Microsoft Store delivers updates itself (`store`), a development build is `dev` unless pointed at a test server, anything but Windows is `platform`, and a build with no signing key is `not-configured`: **an update that cannot be verified is never installed**.
+- Before the installer starts, the server is saved and stopped, the tunnel and presence are let go, and no "stopped" backup is made (the app is going away).
+
 ## Servers (`mc_versions.rs`, `server_install.rs`, `profiles.rs`, `removal.rs`)
 
 - **Versions and jars**: Vanilla (Mojang manifest, SHA-1), Paper (Fill API: newest *stable* build, SHA-256; the version list keeps
@@ -208,7 +227,7 @@ succeeds and says so, and the server keeps normal Minecraft accounts (never a ha
 ## Security posture
 
 - The page may call one backend command, `ipc` (an app manifest in `build.rs` plus a capability for the `main`
-  window), and listen for events. No filesystem, shell, HTTP or dialog plugin is enabled; the Rust side does its own HTTPS (ureq with rustls) to the accounts service only.
+  window), and listen for events. No filesystem, shell, HTTP or dialog plugin is granted to the page. The updater and single-instance plugins are registered but granted to nobody; the Rust side does its own HTTPS (ureq with rustls) to the accounts service, the download hosts and voxelport.in only.
 - Content-Security-Policy stays as strict as the Electron page's, plus `connect-src ipc:` for the backend channel.
 - Server profiles are validated on load with the same rules as Electron; a corrupt or hand-edited entry is dropped.
 - Downloads go through one allow-listed, checksummed, size-capped client, and every zip is read with path checks (done). Not yet done: reading

@@ -10,7 +10,7 @@ use voxelport_core::{StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{addonsetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
+use crate::{addonsetup, appmisc, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -83,7 +83,17 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
             let total = sys::total_memory_mb().unwrap_or(8192);
             Ok(json!({ "totalMemMb": total, "recommendedRamMb": sys::recommended_ram_mb(total) }))
         }
-        "update:state" => Ok(json!({ "readyToInstall": false })),
+        // The Support screen, copy buttons, the community link, and the error report.
+        "support:get" => appmisc::support_get(state, &args).await,
+        "support:open" => Ok(appmisc::support_open(state, &args)),
+        "support:copyUpi" => Ok(appmisc::copy_upi()),
+        "token:copy" => Ok(appmisc::token_copy(state)),
+        "supporterID:copy" => Ok(appmisc::supporter_id_copy(state)),
+        "community:discord" => Ok(appmisc::community_discord()),
+        "diagnostics:export" => Ok(appmisc::diagnostics_export(state).await),
+        "update:state" => Ok(updatesetup::update_state(state)),
+        "update:check" => Ok(updatesetup::update_check(state).await),
+        "update:install" => Ok(updatesetup::update_install(state).await),
 
         // Static lists and start-up defaults the screens read when they open.
         "server:types" => Ok(catalog::types()),
@@ -97,8 +107,9 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "name:get" => Ok(tunnelsetup::name_get(state)),
         "name:claim" => Ok(tunnelsetup::name_claim(state, &args).await),
         "name:release" => Ok(tunnelsetup::name_release(state).await),
-        "voice:state" => Ok(json!({ "rank": Value::Null, "message": "Make your server public to sync your supporter rank." })),
-        "presence:get" => Ok(json!({ "available": false, "enabled": false })),
+        "voice:state" => Ok(tunnelsetup::voice_state(state)),
+        "presence:get" => Ok(appmisc::presence_get(state)),
+        "presence:set" => Ok(appmisc::presence_set(state, &args)),
 
         // Creating, importing, editing and removing servers.
         "server:versions" => serversetup::versions(str_arg(&args, "type").unwrap_or("")).await,
@@ -237,8 +248,21 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
     }
     // A Bedrock server on a Minecraft version no Geyser build supports gets a plain warning in the log (the start still goes ahead).
     addonsetup::geyser_preflight(state, &profile).await;
+    // The error report names this server; its output starts afresh (unless this is the one automatic restart after a Java fix).
+    appmisc::note_server_start(
+        state,
+        appmisc::ServerNote {
+            server_type: profile["type"].as_str().unwrap_or_default().to_string(),
+            version: addonsetup::running_version(&profile).await,
+            build: profile["build"].as_str().map(str::to_string).or_else(|| profile["build"].as_u64().map(|b| b.to_string())),
+            port: profile["port"].as_u64(),
+        },
+        retried,
+    );
     cfg.java_path = java.java_path;
     cfg.bedrock = tunnelsetup::bedrock_for_start(state, &profile);
+    // If this start is the restart that the voice status asked for, say that voice chat is now active.
+    tunnelsetup::voice_started(state, id);
     // From here the server's own output is watched for "needs Java N" (see javasetup::note_log_line / on_exit).
     *state.java_watch.lock().unwrap() = Some(crate::JavaWatch { profile_id: id.to_string(), used_major: java.check.major.unwrap_or(0), needed_major: None, retried });
 
