@@ -14,6 +14,14 @@ const ipc = fs.readFileSync(path.join(root, 'src-tauri', 'src', 'ipc.rs'), 'utf8
 const arms = new Set([...ipc.matchAll(/^\s+"([A-Za-z:]+)"(?:\s*\|\s*"[A-Za-z:]+")*\s*=>/gm)].map((m) => m[1]));
 
 // Answered, but with a fixed value rather than the real behaviour.
+// Ported channels that still have a known gap: shown as Ported, with the gap in the note.
+const CAVEATS = {
+  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Not yet: Bedrock/Geyser launch, backup-busy check, the "switch to another server" question',
+  'server:install': 'Verified jar, files and profile. Template extras that need other modules are skipped with a plain warning: Bedrock (Geyser) and cracked setup (login plugin, skins)',
+  'server:profiles:delete': 'Native confirmation, Recycle Bin, folder safety checks. Does not yet stop a public tunnel (tunnel not ported)',
+  'server:chooseFolder': 'native folder picker, not yet tested by hand',
+};
+
 const STUBS = {
   'app:info': 'token fields are placeholders; the device token is not ported',
   'app:versions': 'Java detection not ported (systemJava is null, managedJava empty)',
@@ -23,10 +31,6 @@ const STUBS = {
   'name:get': 'always "no custom address" (relay naming not ported)',
   'voice:state': 'fixed text (supporter-rank sync not ported)',
   'presence:get': 'always "not available" (Discord presence not ported)',
-  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Not yet: Bedrock/Geyser launch, backup-busy check, the "switch to another server" question',
-  'server:install': 'Verified jar, files and profile. Template extras that need other modules are skipped with a plain warning: Bedrock (Geyser) and cracked setup (login plugin, skins)',
-  'server:profiles:delete': 'Native confirmation, Recycle Bin, folder safety checks. Does not yet stop a public tunnel (tunnel not ported)',
-  'server:chooseFolder': 'native folder picker, not yet tested by hand',
 };
 
 // channel prefix or exact name -> [area, Electron module(s)]
@@ -57,7 +61,7 @@ const rows = channels.map((c) => {
   const [, area, mod] = AREAS.find(([re]) => re.test(c)) || [null, 'Other', 'main.js'];
   const done = arms.has(c);
   const status = !done ? 'Not ported' : STUBS[c] ? 'Stub' : 'Ported';
-  return { c, area, mod, status, note: STUBS[c] || '' };
+  return { c, area, mod, status, note: STUBS[c] || CAVEATS[c] || '' };
 });
 
 const count = (s) => rows.filter((r) => r.status === s).length;
