@@ -209,9 +209,16 @@ async fn identity_inner(state: &AppState, which: &str, passphrase: &str) -> Valu
             if r["ok"] == true { json!({ "ok": true, "message": "Backup deleted." }) } else { fail(&r) }
         }
         _ => {
-            // (No public address can be live in this build yet; when the tunnel is ported, restoring must refuse while it is.)
+            // This PC's address is the device token of the running public address: swapping it under a live tunnel would split the two.
+            let live = "Stop the public address first, then restore.";
+            if state.tunnels.any_live() {
+                return json!({ "ok": false, "error": live });
+            }
             let r = state.account.restore_backup(passphrase).await;
             let Some(token) = r["token"].as_str().filter(|_| r["ok"] == true) else { return fail(&r) };
+            if state.tunnels.any_live() {
+                return json!({ "ok": false, "error": live }); // started while the backup was being opened
+            }
             if replace_token(&state.data_dir, token, state.secrets.as_ref()).is_err() {
                 return backup_failure("failed");
             }

@@ -38,7 +38,7 @@ fn bedrock_supported(server_type: &str) -> bool {
     matches!(server_type, "paper" | "fabric")
 }
 
-fn local_bedrock_port(profile: &Value) -> u16 {
+pub(crate) fn local_bedrock_port(profile: &Value) -> u16 {
     let java = profile["port"].as_u64().map(|p| p as u16);
     let voice = profile["voice"]["port"].as_u64().map(|p| p as u16);
     bedrock_port(&dir_of(profile), java, None, voice)
@@ -110,6 +110,7 @@ pub fn settings_save(state: &AppState, args: &Value) -> Result<Value, String> {
 
     let updated = profiles::update(&state.data_dir, &id, &changes)?;
     server_install::update_server_properties_safely(&dir_of(&updated), &props).map_err(|e| e.to_string())?;
+    crate::tunnelsetup::refresh_listing(state, &updated); // a changed list entry reaches the public list at once
     Ok(json!({ "ok": true, "profile": updated, "restartNeeded": is_running(state, &id) }))
 }
 

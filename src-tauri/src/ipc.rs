@@ -10,7 +10,7 @@ use voxelport_core::{StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{backupservice, catalog, discord, javasetup, secrets, serverconfig, serversetup, sys, AppState};
+use crate::{backupservice, catalog, discord, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -88,8 +88,15 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         // Static lists and start-up defaults the screens read when they open.
         "server:types" => Ok(catalog::types()),
         "server:templates" => Ok(catalog::templates()),
-        "region:get" => Ok(json!({ "preference": "auto", "regions": catalog::regions(), "active": Value::Null, "addressRegion": Value::Null })),
-        "name:get" => Ok(json!({ "name": "", "address": "" })),
+        // The public address: the tunnel, its region, the custom address.
+        "tunnel:start" => Ok(tunnelsetup::tunnel_start(state, &args).await),
+        "tunnel:stop" => Ok(tunnelsetup::tunnel_stop(state).await),
+        "server:makePublic" => Ok(tunnelsetup::make_public(state, &args).await),
+        "region:get" => Ok(tunnelsetup::region_get(state)),
+        "region:set" => Ok(tunnelsetup::region_set(state, &args)),
+        "name:get" => Ok(tunnelsetup::name_get(state)),
+        "name:claim" => Ok(tunnelsetup::name_claim(state, &args).await),
+        "name:release" => Ok(tunnelsetup::name_release(state).await),
         "voice:state" => Ok(json!({ "rank": Value::Null, "message": "Make your server public to sync your supporter rank." })),
         "presence:get" => Ok(json!({ "available": false, "enabled": false })),
 
@@ -217,6 +224,7 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
         }
     }
     cfg.java_path = java.java_path;
+    cfg.bedrock = tunnelsetup::bedrock_for_start(state, &profile);
     // From here the server's own output is watched for "needs Java N" (see javasetup::note_log_line / on_exit).
     *state.java_watch.lock().unwrap() = Some(crate::JavaWatch { profile_id: id.to_string(), used_major: java.check.major.unwrap_or(0), needed_major: None, retried });
 
@@ -240,8 +248,8 @@ fn emit_app_state(state: &AppState) {
 pub fn app_state(state: &AppState) -> Value {
     json!({
         "activeServerProfileId": state.active_profile.lock().unwrap().clone(),
-        "publicServerProfileId": Value::Null,
-        "manualTunnelActive": false,
+        "publicServerProfileId": state.tunnels.public_profile(),
+        "manualTunnelActive": state.tunnels.manual_active(),
         // While Java is being fetched for a start the screens see "starting" (as in Electron).
         "serverStatus": if state.preparing_java.load(std::sync::atomic::Ordering::SeqCst) { "starting" } else { state.server.status().as_str() },
     })

@@ -209,7 +209,7 @@ pub fn update_profile(state: &AppState, args: &Value) -> Result<Value, String> {
 /// shared with another saved server...) is never deleted: the server is then only taken off the list.
 pub async fn delete_profile(state: &AppState, args: &Value) -> Value {
     let id = str_arg(args, "id").unwrap_or_default();
-    if state.active_profile.lock().unwrap().as_deref() == Some(id) {
+    if state.active_profile.lock().unwrap().as_deref() == Some(id) || state.tunnels.public_profile().as_deref() == Some(id) {
         return json!({ "ok": false, "error": "Stop and un-publish this server before removing it." });
     }
     let Some(profile) = profiles::get(&state.data_dir, id) else { return json!({ "ok": false, "error": "Server profile not found." }) };

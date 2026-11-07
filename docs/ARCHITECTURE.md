@@ -46,6 +46,31 @@ The Rust command checks the channel against `channels.in` (also generated) and d
 - **Join/leave tracking** parses the whole message after the log prefix, so chat text cannot pose as the server.
 - **One server at a time**, like Electron. Starting a second returns `AlreadyRunning`.
 
+## The tunnel (`tunnel.rs`, `regions.rs`, `relay_url.rs`, `bedrock_endpoint.rs`, `src-tauri/src/tunnelsetup.rs`)
+
+- **Protocol** (`tunnel.rs`): the host protocol the Fabric mod speaks. Register with the device token (asking for protocol v2), get a public port
+(and a Bedrock port if asked), then bridge each player the relay announces to the local server. After a `port` frame carrying `"bin": 1`,
+payloads travel as binary frames (kind, 16 raw id bytes, payload); otherwise as base64 in JSON, so an older relay works unchanged.
+- **The relay is untrusted input.** Every frame is validated before anything acts on it; a frame over 4 MiB drops the connection; the number of local
+sockets is capped at 256; each player has a budget of 8 MiB waiting to be written locally; Bedrock signalling is only accepted if the relay
+assigned a separate Bedrock port (an old relay can never route it to Java); a binary frame without v2 agreement, a short one or an unknown
+kind is ignored and logged at most every 30 s.
+- **How it runs**: one task owns the connection. Each player and each UDP session is its own task and talks to it over channels, and the
+sending half has its own writer task, so reading relay frames is never blocked. Local servers are read only while the relay keeps up (a 4 MiB
+byte budget) and a connection with no progress for 30 s is dropped and reconnected, which bounds memory.
+- **Candidates and reconnecting**: relay addresses are tried in order (a candidate that cannot be reached is skipped at once); after a drop the
+preferred one is tried first again; backoff 1 s doubling to 15 s; `stop` is idempotent and `stopped` is said exactly once, even if the tunnel was
+still waiting to reconnect. A tunnel is "live" from start until stopped, even while connecting.
+- **Regions** (`regions.rs`): India (direct port, then Cloudflare) and Europe. An explicit choice wins; on Auto a custom address pins the tunnel to the
+region that owns it; otherwise the fastest measured (all measured in parallel), India if none answers. **Relay safety** (`relay_url.rs`): `wss://`
+always, `ws://` only to loopback/private/link-local address literals (a name like `fcevil.example` is never private).
+- **Shell** (`tunnelsetup.rs`): one tunnel at a time. Switching target asks first (in the backend); an old tunnel finishing late cannot clear a newer
+one's state; the tunnel stops when the server it bridges to exits; custom address and region preference are saved in the data folder;
+the public list entry is sent after every registration and refreshed when settings change or players come and go (at most every 5 s).
+- **Bedrock address**: the relay assigns the Bedrock port only at make-public, after Geyser already started. The address is remembered per server
+and device (the token is hashed into the key, never written), and the server is restarted once so Geyser advertises it. Unlike Electron, the
+tunnel **stays up** during that restart (Electron stopped it because its server exited, contradicting its own "players reconnect automatically" message).
+
 ## Backups (`backups.rs`, `src-tauri/src/backupservice.rs`)
 
 - **A backup** is one zip: the world folders (`level-name`, `_nether`, `_the_end`), `server.jar`, and the player lists, plus `voxelport-backup.json`

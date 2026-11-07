@@ -11,6 +11,7 @@ mod secrets;
 mod serverconfig;
 mod serversetup;
 mod sys;
+mod tunnelsetup;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32};
@@ -56,6 +57,7 @@ pub struct AppState {
     pub backup_busy: AtomicBool,
     pub accounts_busy: AtomicBool,
     pub backups: backupservice::Backups,
+    pub tunnels: tunnelsetup::TunnelState,
     /// How many players are on the running server.
     pub players: AtomicU32,
     /// The window is closing: no "server stopped" backup is made then.
@@ -89,6 +91,7 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
                 let state = app.state::<AppState>();
                 state.players.store(n as u32, std::sync::atomic::Ordering::SeqCst);
                 backupservice::on_players(&state, n as u32);
+                tunnelsetup::schedule_listing_update(&app);
                 app.emit("server:players", n)
             }
             Event::Names(names) => app.emit("server:playerNames", names),
@@ -97,6 +100,7 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
                 let state = app.state::<AppState>();
                 // Nothing is active once the server has exited; the screens redraw from the state event.
                 let exited = state.active_profile.lock().unwrap().take();
+                tunnelsetup::on_server_exit(&state, exited.as_deref());
                 state.players.store(0, std::sync::atomic::Ordering::SeqCst);
                 let handle = app.clone();
                 let clean = code == Some(0);
@@ -137,6 +141,7 @@ fn main() {
                 backup_busy: AtomicBool::new(false),
                 accounts_busy: AtomicBool::new(false),
                 backups: backupservice::Backups::default(),
+                tunnels: tunnelsetup::TunnelState::default(),
                 players: AtomicU32::new(0),
                 closing: AtomicBool::new(false),
                 preparing_java: AtomicBool::new(false),
@@ -144,6 +149,7 @@ fn main() {
                 java_lock: tokio::sync::Mutex::new(()),
                 last_refresh: Mutex::new(Some(Instant::now())),
             });
+            tunnelsetup::load(&app.state::<AppState>());
             tauri::async_runtime::spawn(pump(app.handle().clone(), rx));
             // Ask the accounts service now and then every 15 minutes while the app is open.
             let handle = app.handle().clone();
@@ -164,6 +170,7 @@ fn main() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let server = window.state::<AppState>().server.clone();
                 window.state::<AppState>().closing.store(true, std::sync::atomic::Ordering::SeqCst);
+                window.state::<AppState>().tunnels.stop_all();
                 if server.is_running() {
                     api.prevent_close();
                     let app = window.app_handle().clone();

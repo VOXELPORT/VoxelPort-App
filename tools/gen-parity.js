@@ -17,6 +17,8 @@ const arms = new Set([...ipc.matchAll(/^\s+((?:"[A-Za-z:]+"\s*\|?\s*)+)=>/gm)].f
 // Answered, but with a fixed value rather than the real behaviour.
 // Ported channels that still have a known gap: shown as Ported, with the gap in the note.
 const CAVEATS = {
+  'server:makePublic': 'Region choice, relay, players, listing, custom address, Bedrock address and its one restart. Not yet: automatic voice-chat setup (a voice port already on the profile is passed to the relay, but no plugin is installed)',
+  'tunnel:start': 'The manual tunnel. Relay notices reach the screen but are not yet said in the game chat (notice.js is step 10)',
   'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Not yet: Bedrock/Geyser launch, backup-busy check, the "switch to another server" question',
   'server:install': 'Verified jar, files and profile; cracked templates get the login plugin, then offline mode, then skins. The Bedrock (Geyser) extra is skipped with a plain warning',
   'app:info': 'masked token and VoxelPort ID are real; copying the token to the clipboard is not ported',
@@ -28,8 +30,6 @@ const CAVEATS = {
 const STUBS = {
   'app:setLanguage': 'accepted and ignored (messages the backend writes are not translated yet)',
   'update:state': 'always "nothing to install" (updater not ported)',
-  'region:get': 'preference is always "auto", no active region (tunnel not ported)',
-  'name:get': 'always "no custom address" (relay naming not ported)',
   'voice:state': 'fixed text (supporter-rank sync not ported)',
   'presence:get': 'always "not available" (Discord presence not ported)',
 };

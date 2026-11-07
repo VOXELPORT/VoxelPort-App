@@ -24,10 +24,6 @@ pub fn template_properties(id: &str) -> Option<Vec<(String, String)>> {
     Some(props.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string())).collect())
 }
 
-pub fn regions() -> Value {
-    catalog()["regions"].clone()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,9 +36,6 @@ mod tests {
         let templates = templates();
         assert!(templates.as_array().unwrap().len() >= 5);
         assert!(templates.as_array().unwrap().iter().all(|t| t["id"].is_string() && t["label"].is_string() && t["type"].is_string() && t["cracked"].is_boolean()));
-        let regions = regions();
-        let region_ids: Vec<&str> = regions.as_array().unwrap().iter().filter_map(|r| r["id"].as_str()).collect();
-        assert_eq!(region_ids, ["in", "eu"]);
         // Every template has its settings, and they come out as plain strings (the backslash in the flat world type survives).
         for t in templates.as_array().unwrap() {
             assert!(template_properties(t["id"].as_str().unwrap()).is_some_and(|p| !p.is_empty()), "{t}");

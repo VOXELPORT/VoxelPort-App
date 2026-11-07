@@ -4,6 +4,7 @@
 pub mod account;
 pub mod addon_registry;
 pub mod backups;
+pub mod bedrock_endpoint;
 pub mod bedrock;
 pub mod cracked;
 mod fsutil;
@@ -14,10 +15,13 @@ pub mod log_buffer;
 pub mod mc_versions;
 pub mod net;
 pub mod profiles;
+pub mod regions;
+pub mod relay_url;
 pub mod removal;
 pub mod server_files;
 pub mod server_install;
 pub mod settings;
+pub mod tunnel;
 pub mod server_process;
 pub mod whitelist;
 

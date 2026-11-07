@@ -89,6 +89,25 @@ pub async fn confirm_restore(app: &tauri::AppHandle, title: String, detail: Stri
     .unwrap_or(false)
 }
 
+/// "Switch the tunnel to another server?" Asked in the backend, so the page cannot skip it.
+pub async fn confirm_switch(app: &tauri::AppHandle, title: String, detail: String, labels: [String; 2]) -> bool {
+    #[cfg(debug_assertions)]
+    if let Ok(v) = std::env::var("VOXELPORT_TEST_SWITCH") {
+        return v == "yes";
+    }
+    let window = app.get_webview_window("main");
+    let [cancel, switch] = labels;
+    tokio::task::spawn_blocking(move || {
+        let mut dialog = rfd::MessageDialog::new().set_level(rfd::MessageLevel::Info).set_title(title).set_description(detail).set_buttons(rfd::MessageButtons::OkCancelCustom(switch.clone(), cancel));
+        if let Some(w) = &window {
+            dialog = dialog.set_parent(w);
+        }
+        matches!(dialog.show(), rfd::MessageDialogResult::Custom(c) if c == switch)
+    })
+    .await
+    .unwrap_or(false)
+}
+
 /// Moves a folder to the Recycle Bin (so it can be restored until the bin is emptied). True only if it is really gone
 /// from where it was.
 #[cfg(windows)]

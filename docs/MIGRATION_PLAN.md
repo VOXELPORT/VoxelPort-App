@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, 55 of 87 channels ported (63%); steps 1 to 7 done** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **started, 61 of 87 channels ported (70%); steps 1 to 8 done** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -47,7 +47,7 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 5 done | server install, versions, import, profiles (write), delete to the Recycle Bin, change version | serverInstall 303, mcVersions 109, jarVersion 106, serverProfiles, serverRemoval | creating servers (`server:changeVersion` came with step 7, which it needs) |
 | 6 done | settings, templates, whitelist, files, accounts (cracked mode), repair, restart | serverSettings 175, whitelist 173, serverFiles 110, accounts 191 | day-to-day management. The cracked template now really installs (login plugin, offline mode, skins) |
 | 7 done | backups, restore, schedule, live save, change version | backups 536, backupService 227 | needs zip with traversal checks |
-| 8 | relay tunnel, regions, custom address, Bedrock endpoint | tunnel 688, regions 97, bedrockEndpoint 48 | the core of the product; needs `tokio-tungstenite` and UDP |
+| 8 done | relay tunnel, regions, custom address, Bedrock endpoint, public list entry | tunnel 688, regions 97, bedrockEndpoint 48, relayUrlSafety | the core of the product. Automatic voice-chat setup (`voiceSetup.js`) and the in-game relay announcement (`notice.js`) are left for later |
 | 9 | add-ons, modpacks, Bedrock install, crash explain, perf | addons 272, modpackImport 239, bedrock 284, crashExplain 169, perfMonitor 168 | Modrinth and Geyser downloads, checksums |
 | 10 | updater, support, presence, notices, diagnostics | updater 120, support 159, discordPresence 158, notice 99, diagnostics 62 | polish and release plumbing |
 | 11 | installer, signing, Store path | n/a | see risks |

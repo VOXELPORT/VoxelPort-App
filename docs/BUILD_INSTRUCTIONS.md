@@ -53,6 +53,8 @@ Starting a server goes through the real Discord gate: a fresh install is blocked
 | `VOXELPORT_MC_API=http://127.0.0.1:<port>` | use a local copy of the Mojang, Paper and Fabric services (plain HTTP on 127.0.0.1 only) |
 | `VOXELPORT_MODRINTH_API=http://127.0.0.1:<port>/v2` | use a local copy of Modrinth for the login and skins plugins (plain HTTP on 127.0.0.1 only) |
 | `VOXELPORT_TEST_RESTORE=yes\|no` | answer the "restore this backup?" question |
+| `VOXELPORT_RELAY_URL=ws://127.0.0.1:<port>` | send every tunnel to a local test relay (it still behaves as the chosen region) |
+| `VOXELPORT_TEST_SWITCH=yes\|no` | answer the "switch the tunnel to another server?" question |
 | `VOXELPORT_TEST_FOLDER=<path>` | answer the folder picker with this path |
 | `VOXELPORT_TEST_REMOVE=cancel\|list\|delete` | answer the delete question |
 
@@ -86,7 +88,10 @@ the EULA fix and restart (37 checks; same arguments as the install script, test 
 `tools/e2e-backups.mjs` covers backups, restore (asked first, undoable), the live save, the backup at stop, settings, delete and
 changing the Minecraft version (36 checks; test folder `...\e2e-backups`). It removes the backups it made.
 
-The five scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
+`tools/e2e-tunnel.mjs` covers making a server public through `tools/fake-relay.mjs` (49 checks; test folder `...\e2e-tunnel`). It also needs
+port 25590 free on 127.0.0.1 for a stand-in "Minecraft" that echoes.
+
+The six scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
 
 ## Release build
