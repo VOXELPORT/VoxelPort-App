@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod addon_registry;
+pub mod backups;
 pub mod bedrock;
 pub mod cracked;
 mod fsutil;

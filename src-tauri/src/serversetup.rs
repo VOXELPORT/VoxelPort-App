@@ -270,3 +270,97 @@ pub fn open_folder(state: &AppState, args: &Value) -> Value {
     }
     json!({ "ok": true })
 }
+
+/// Changes an existing server's Minecraft version: backs the server up first, downloads and verifies the new jar, swaps it in,
+/// updates the stored version and build, and warns about things that may now be incompatible. The server must be stopped. The
+/// world and configs are left untouched; only `server.jar` is replaced, and only after the new jar is confirmed to be the
+/// requested version.
+pub async fn change_version(state: &AppState, args: &Value) -> Value {
+    let fail = |e: String| json!({ "ok": false, "error": e });
+    let id = str_arg(args, "id").unwrap_or_default().to_string();
+    let Some(profile) = profiles::get(&state.data_dir, &id) else { return fail("Server profile not found.".into()) };
+    let version = match str_arg(args, "version").map(str::trim) {
+        Some(v) if !v.is_empty() => v.to_string(),
+        _ => return fail("Choose a Minecraft version.".into()),
+    };
+    if profile["version"] == version.as_str() {
+        return fail(format!("This server is already on Minecraft {version}."));
+    }
+    if crate::serverconfig::is_running(state, &id) {
+        return fail("Stop the server before changing its Minecraft version.".into());
+    }
+    if crate::backupservice::is_busy(state, &id) {
+        return fail("A backup or restore is running for this server. Try again in a moment.".into());
+    }
+    let dir = PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
+    let ty = profile["type"].as_str().unwrap_or("").to_string();
+
+    // 1. Back up first, so nothing is lost if the switch goes wrong (never skipped).
+    progress(&state.app, json!({ "phase": "backing-up" }));
+    let backup = crate::backupservice::create(state, &id, "manual").await;
+    if backup["ok"] == false {
+        return fail(format!("Couldn't back the server up first, so nothing was changed ({}).", backup["error"].as_str().unwrap_or("backup failed")));
+    }
+
+    // 2. Resolve and download the new version to a side path, then verify it before swapping.
+    progress(&state.app, json!({ "phase": "resolving" }));
+    let (ty2, version2) = (ty.clone(), version.clone());
+    let resolved = tokio::task::spawn_blocking(move || {
+        let (f, ep) = services();
+        mc_versions::resolve_download(&f, &ep, &ty2, &version2)
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    let resolved = match resolved {
+        Ok(r) => r,
+        Err(e) => return fail(format!("Minecraft {version} isn't available for {ty}: {e}. The server is unchanged.")),
+    };
+    let staged = dir.join(".server.jar.new");
+    progress(&state.app, json!({ "phase": "downloading", "received": 0, "total": 0 }));
+    let (url, checksum, app, staged2) = (resolved.url.clone(), resolved.checksum.clone(), state.app.clone(), staged.clone());
+    let downloaded = tokio::task::spawn_blocking(move || {
+        let (f, _) = services();
+        f.download(&url, &staged2, server_install::MAX_SERVER_JAR_BYTES, checksum.as_ref(), 0, &|received, total| progress(&app, json!({ "phase": "downloading", "received": received, "total": total })))
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    if let Err(e) = downloaded {
+        let _ = std::fs::remove_file(&staged);
+        return fail(format!("Download failed: {e}. The server is unchanged."));
+    }
+
+    progress(&state.app, json!({ "phase": "verifying" }));
+    let in_jar = server_install::read_jar_minecraft_version(&staged).ok().flatten();
+    if in_jar.as_deref().is_some_and(|v| v != version) || (in_jar.is_none() && ty != "fabric") {
+        let _ = std::fs::remove_file(&staged);
+        let got = match &in_jar {
+            Some(v) => format!("Minecraft {v}"),
+            None => format!("an unverifiable {ty} jar"),
+        };
+        return fail(format!("Downloaded {got}, not the {version} you selected. The server is unchanged."));
+    }
+
+    // 3. Swap the verified jar in and record the new version and build (a build that no longer applies is removed).
+    if let Err(e) = std::fs::rename(&staged, dir.join("server.jar")) {
+        let _ = std::fs::remove_file(&staged);
+        return fail(format!("Could not put the new server jar in place: {e}. The server is unchanged."));
+    }
+    let mut changes = Map::new();
+    changes.insert("version".into(), json!(version));
+    changes.insert("build".into(), resolved.build.map(Value::from).unwrap_or(Value::Null));
+    let updated = match profiles::update(&state.data_dir, &id, &changes) {
+        Ok(u) => u,
+        Err(e) => return fail(e),
+    };
+
+    // 4. Warn about things that may need attention after a version change.
+    let mut warnings: Vec<String> = Vec::new();
+    if profile["bedrock"] == true {
+        warnings.push("This server has Bedrock support (Geyser): re-enable it in Settings so Geyser matches the new version.".into());
+    }
+    warnings.push(if ty == "fabric" { format!("Check that your mods support Minecraft {version}.") } else { format!("Check that your plugins support Minecraft {version}.") });
+    progress(&state.app, json!({ "phase": "done" }));
+    json!({ "ok": true, "profile": updated, "warning": warnings.join(" ") })
+}

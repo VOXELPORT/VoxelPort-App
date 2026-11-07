@@ -10,7 +10,7 @@ use voxelport_core::{StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{catalog, discord, javasetup, secrets, serverconfig, serversetup, sys, AppState};
+use crate::{backupservice, catalog, discord, javasetup, secrets, serverconfig, serversetup, sys, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -119,6 +119,15 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "server:accounts:installLogin" => Ok(serverconfig::accounts_install_login(state, &args).await),
         "server:fix" => Ok(serverconfig::fix(state, &args)),
         "server:restart" => serverconfig::restart(state).await,
+
+        // Backups, and changing the Minecraft version (which takes a backup first).
+        "backup:info" => backupservice::describe(state, &args),
+        "backup:create" => Ok(backupservice::create(state, str_arg(&args, "id").unwrap_or_default(), "manual").await),
+        "backup:settings:set" => backupservice::set_settings(state, &args),
+        "backup:delete" => backupservice::delete(state, &args),
+        "backup:openFolder" => Ok(backupservice::open_folder(state, &args)),
+        "backup:restore" => Ok(backupservice::restore(state, &args).await),
+        "server:changeVersion" => Ok(serversetup::change_version(state, &args).await),
 
         "server:profiles:list" => Ok(Value::Array(profiles::list(&state.data_dir))),
         "server:profiles:get" => Ok(str_arg(&args, "id").and_then(|id| profiles::get(&state.data_dir, id)).unwrap_or(Value::Null)),

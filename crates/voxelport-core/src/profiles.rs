@@ -231,16 +231,24 @@ pub fn create(dir: &Path, input: &Value) -> Result<Value, String> {
     Ok(profile)
 }
 
-/// Changes fields of one server. The id never changes; port and RAM are read as numbers; the result must be valid.
+/// Changes fields of one server. The id never changes; port and RAM are read as numbers; a null removes a field; the result must be valid.
 pub fn update(dir: &Path, id: &str, changes: &Map<String, Value>) -> Result<Value, String> {
     let mut doc = load_doc(dir);
     let list = servers_mut(&mut doc);
     let idx = list.iter().position(|p| id_of(p) == Some(id) && is_valid(p)).ok_or("Server profile not found.")?;
     let mut merged = list[idx].clone();
     for (k, v) in changes {
-        if k != "id" {
-            merged[k.as_str()] = if matches!(k.as_str(), "port" | "minRamMb" | "maxRamMb") { to_number(v) } else { v.clone() };
+        if k == "id" {
+            continue;
         }
+        if v.is_null() {
+            // A null removes the field (as setting a JavaScript property to undefined did): e.g. a Java minimum that no longer applies.
+            if let Some(o) = merged.as_object_mut() {
+                o.shift_remove(k.as_str());
+            }
+            continue;
+        }
+        merged[k.as_str()] = if matches!(k.as_str(), "port" | "minRamMb" | "maxRamMb") { to_number(v) } else { v.clone() };
     }
     if let Some(n) = merged["name"].as_str() {
         merged["name"] = json!(n.trim());

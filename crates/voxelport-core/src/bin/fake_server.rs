@@ -42,6 +42,10 @@ fn main() {
                 return;
             }
             "crash" => std::process::exit(1),
+            // The commands a backup sends, answered the way a real server answers them.
+            "save-all" => { let _ = writeln!(out, "[12:00:07] [Server thread/INFO]: Saved the game"); }
+            "save-off" => { let _ = writeln!(out, "[12:00:07] [Server thread/INFO]: Automatic saving is now disabled"); }
+            "save-on" => { let _ = writeln!(out, "[12:00:07] [Server thread/INFO]: Automatic saving is now enabled"); }
             "needjava" => {
                 let _ = writeln!(out, "[12:00:05] [ServerMain/ERROR]: Minecraft 26.1 and newer requires running the server with Java {rest} or above. For information on how to update Java, see https://docs.papermc.io/misc/java-install");
                 let _ = out.flush();

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod catalog;
+mod backupservice;
 mod dialogs;
 mod discord;
 mod ipc;
@@ -12,7 +13,7 @@ mod serversetup;
 mod sys;
 
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -20,7 +21,7 @@ use tauri::{Emitter, Manager, WindowEvent};
 use voxelport_core::account::AppAccount;
 use voxelport_core::gate::{record_install, InstallRecord};
 use voxelport_core::identity::{load_or_create_token, SecretBox};
-use voxelport_core::{Event, EventReceiver, ServerProcess, StopPolicy};
+use voxelport_core::{Event, EventReceiver, ServerProcess, Status, StopPolicy};
 
 /// How long a window close waits for the server to save and stop before giving up (Electron's quit gate waits too).
 const QUIT_WAIT: Duration = Duration::from_secs(30);
@@ -54,6 +55,11 @@ pub struct AppState {
     pub link_error: Mutex<Option<String>>,
     pub backup_busy: AtomicBool,
     pub accounts_busy: AtomicBool,
+    pub backups: backupservice::Backups,
+    /// How many players are on the running server.
+    pub players: AtomicU32,
+    /// The window is closing: no "server stopped" backup is made then.
+    pub closing: AtomicBool,
     /// Set while a Java install runs before a start: the screens see the server as "starting".
     pub preparing_java: AtomicBool,
     pub java_watch: Mutex<Option<JavaWatch>>,
@@ -68,19 +74,33 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
             Event::Status(s) => {
                 let _ = app.emit("server:status", s.as_str());
                 // Electron sends the whole app state with every status change; the screens redraw from it.
-                app.emit("app:state", ipc::app_state(&app.state::<AppState>()))
+                let r = app.emit("app:state", ipc::app_state(&app.state::<AppState>()));
+                if s == Status::Online {
+                    backupservice::on_server_online(&app);
+                }
+                r
             }
             Event::Log(line) => {
                 javasetup::note_log_line(&app.state::<AppState>(), &line);
+                backupservice::note_log_line(&app.state::<AppState>(), &line);
                 app.emit("server:log", line)
             }
-            Event::Players(n) => app.emit("server:players", n),
+            Event::Players(n) => {
+                let state = app.state::<AppState>();
+                state.players.store(n as u32, std::sync::atomic::Ordering::SeqCst);
+                backupservice::on_players(&state, n as u32);
+                app.emit("server:players", n)
+            }
             Event::Names(names) => app.emit("server:playerNames", names),
             Event::Exit(code) => {
                 let _ = app.emit("server:exit", code);
                 let state = app.state::<AppState>();
                 // Nothing is active once the server has exited; the screens redraw from the state event.
-                *state.active_profile.lock().unwrap() = None;
+                let exited = state.active_profile.lock().unwrap().take();
+                state.players.store(0, std::sync::atomic::Ordering::SeqCst);
+                let handle = app.clone();
+                let clean = code == Some(0);
+                tauri::async_runtime::spawn(async move { backupservice::on_server_exit(&handle, exited, clean).await });
                 let result = app.emit("app:state", ipc::app_state(&state));
                 javasetup::on_exit(&app, code);
                 result
@@ -95,6 +115,7 @@ fn main() {
             // The identifier is in.voxelport.app.dev, so this folder is separate from the Electron app's data.
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
+            voxelport_core::backups::set_local_time(Box::new(sys::WindowsLocalTime));
             let (server, rx) = ServerProcess::new(StopPolicy::default());
             let secrets = secrets::platform_secrets();
             // Order matters: the install record looks for an existing device token, so it runs before one is created.
@@ -115,6 +136,9 @@ fn main() {
                 link_error: Mutex::new(None),
                 backup_busy: AtomicBool::new(false),
                 accounts_busy: AtomicBool::new(false),
+                backups: backupservice::Backups::default(),
+                players: AtomicU32::new(0),
+                closing: AtomicBool::new(false),
                 preparing_java: AtomicBool::new(false),
                 java_watch: Mutex::new(None),
                 java_lock: tokio::sync::Mutex::new(()),
@@ -139,6 +163,7 @@ fn main() {
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let server = window.state::<AppState>().server.clone();
+                window.state::<AppState>().closing.store(true, std::sync::atomic::Ordering::SeqCst);
                 if server.is_running() {
                     api.prevent_close();
                     let app = window.app_handle().clone();

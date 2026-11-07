@@ -46,6 +46,27 @@ The Rust command checks the channel against `channels.in` (also generated) and d
 - **Join/leave tracking** parses the whole message after the log prefix, so chat text cannot pose as the server.
 - **One server at a time**, like Electron. Starting a second returns `AlreadyRunning`.
 
+## Backups (`backups.rs`, `src-tauri/src/backupservice.rs`)
+
+- **A backup** is one zip: the world folders (`level-name`, `_nether`, `_the_end`), `server.jar`, and the player lists, plus `voxelport-backup.json`
+saying what it is. `session.lock`, plugins and logs are never included, links are never followed. The file is written as
+`<name>.zip.partial`, reopened and checked, and only then renamed, so a half-written backup can never pass for a good one. Names carry the
+computer's **local** time (as the Electron app's do); the shell installs a Windows time-zone clock so `createdAt` is the real moment.
+- **Restore** first saves what is there now as a `before-restore` backup (if that fails, nothing is touched), unpacks into a temporary
+folder, checks it, then swaps folders over. If any step fails, the old folders and player lists are put back. The copy made first holds
+*every* folder the swap will move, including another world's if `level-name` has changed since.
+- **Traps**: a backup may only restore the folders of its own world (never `plugins` or any server folder, whatever its metadata says, even one
+claiming to be a before-restore copy); names with `..`, a drive letter, a stream `:`, a backslash or an absolute path are refused; symbolic
+links are refused; more than a million entries is refused. All of this is checked **before** the live world is touched.
+- **Service** (shell): one job per server at a time; a running server is sent `save-off`, then `save-all flush`, and the copy starts when it says
+"Saved the game" (or after 60 s, with a note), and `save-on` is always sent afterwards. Restore is refused while the server runs and is
+always asked first, in the backend. Schedule: every minute while online, if due and a player was on since the last backup; a clean stop makes
+one last backup (not when the app is closing, not if one was made in the last 2 minutes). Retention: keep the newest N automatic ones, a 5 GB
+budget (never below two), three before-restore copies, manual ones never removed.
+- **Change version** takes a manual backup first (and is refused if that cannot be made, e.g. a server that never created a world), downloads the
+new jar beside the old one, verifies its version, and only then swaps it in. Restoring a backup that carried a jar also puts the profile's type
+and version back and forgets any Java minimum learned for the other jar.
+
 ## Managing a server (`settings.rs`, `whitelist.rs`, `server_files.rs`, `cracked.rs`, `addon_registry.rs`)
 
 - **Settings**: a table of the twelve `server.properties` keys the screen may change, each with a validator. Anything else is refused, and

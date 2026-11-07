@@ -1,6 +1,6 @@
 # Test results
 
-Run on 2026-11-07 with `cargo test --workspace` (Rust 1.99.1, Windows 11). **200 tests, 200 passed, 0 failed**, plus end-to-end runs through the real window of 20, 24, 41 and 37 checks (below). The process-manager integration tests
+Run on 2026-11-07 with `cargo test --workspace` (Rust 1.99.1, Windows 11). **236 tests, 236 passed, 0 failed**, plus end-to-end runs through the real window of 20, 24, 41, 37 and 36 checks (below). The process-manager integration tests
 were also run three times in a row earlier to check for flakiness; all passed each time.
 
 ## Automated (Rust)
@@ -16,7 +16,9 @@ were also run three times in a row earlier to check for flakiness; all passed ea
 | `voxelport-core` integration (`tests/server_install.rs`, scripted Mojang/Paper/Fabric over a local socket) | 12 | **new**: version lists and their order, each type's resolution (newest stable Paper build, stable Fabric loader), verified installs of all three types with phases, wrong-version jar, wrong checksum, jar with no readable version, existing server refused before any network, off-list address inside an API answer, service errors |
 | `voxelport-core` unit: settings, friends-only, files, cracked mode, registry, Bedrock port (`settings.rs`, `whitelist.rs`, `server_files.rs`, `cracked.rs`, `addon_registry.rs`, `bedrock.rs`) | 10 + 12 + 10 + 6 + 4 + 3 | **ported from `serverSettings`, `whitelist`, `serverFiles` and `accounts` tests, plus new**: properties parsing and escaping, typed values with defaults, every refusal (unknown/dangerous keys, bad values, character-counted MOTD limit), template settings obey the protected-key rules; names, duplicates, commands only to a running server, line endings kept; path traversal, drive letters, streams, a junction leaving the folder, size and JSON rules; the two-key cracked flip that round-trips exactly, confirmation rule; registry; Geyser port lookup in every quoting |
 | `voxelport-core` integration (`tests/cracked.rs`, scripted Modrinth over a local socket) | 8 | **new**: loaders/version asked for, release and primary file preferred, no-hash or unsafe-name downloads refused, old plugin copies replaced only, registry entry and icon rule, **login plugin first then offline mode then skins**, a missing login plugin never switches offline mode on, missing skins only warn |
-| `voxelport-tauri` unit | 6 | profile validation (valid, broken, optional fields, corrupt or missing store); RAM recommendation steps equal Electron's; memory read; catalog snapshot shape; only exact discord.gg invites open; backup error wording; DPAPI round trip (rejects a foreign blob) |
+| `voxelport-core` integration (`tests/backups.rs`, real folders and zips) | 35 | **ported from `backups.test.js`**, with its monkey-patched failures replaced by real ones (a file another program holds open, a read-only file): contents (no `session.lock`, no plugins), the jar restored and undoable, a world-only backup leaving the jar alone, a jar that cannot be replaced rolling everything back, names and same-second uniqueness, metadata, level-name rules, no-world, a backup that cannot be read leaving no partial file, progress to 100%, restore exact after wrecking, the before-restore copy and undo, no `.vp-` folders left, another world name, a swap failing half way, bad names, foreign/damaged zips, **zip slip** in six spellings, metadata naming `plugins`, symbolic links, the entry limit, both worlds of two level names saved and restored, player lists put back after a failed restore, retention (count, size, floor of two, before-restore, manual untouched), settings, local-time conversion |
+| `voxelport-tauri` unit | 7 | (adds the Windows local-time round trip) |
+| `voxelport-tauri` unit (previous) | 6 | profile validation (valid, broken, optional fields, corrupt or missing store); RAM recommendation steps equal Electron's; memory read; catalog snapshot shape; only exact discord.gg invites open; backup error wording; DPAPI round trip (rejects a foreign blob) |
 
 | `voxelport-core` unit: gate (`gate.rs`) | 12 | ported from Electron's `discordGate.test.js`: new/existing installs, grace by server time, clock set back, 7-day offline hold, rejected session, signed-out never rescued by fail-open, install record kept once |
 | `voxelport-core` unit: token and backup (`identity.rs`) | 21 | ported from `token.test.js`, `identityBackup.test.js`: first run, plaintext to encrypted without changing the value, locked store never overwrites the file and comes back, no pile-up of copies, masking, the **fixed vector shared with Electron and Android**, NFC passphrases, wrong passphrase/changed blob/wrong address/odd shapes refused, passphrase rules |
@@ -66,6 +68,10 @@ Real debug window, stand-in Mojang/Paper/Fabric services, stand-in Java. Covers:
 
 Settings (the 12 fields and no dangerous key; saving name, port, RAM, listing, voice; only the asked-for lines change; refusals with the Electron wording; a refused save changes nothing); friends-only (add with invalid/duplicate names, remove, off keeps names, **commands reach a running server at once**); the file browser (listing, edit marks, read-only log, traversal/drive/stream paths refused, JSON validity, no new files); cracked mode (refused until confirmed, login plugin from the stand-in Modrinth with progress, only two keys change, warning on friends-only, back off); the EULA fix; running-server flags; **restart**. The install run also checks that the cracked template installs login plugin, offline mode and skins, and that a missing login plugin leaves online-mode on.
 
+## End-to-end: backups (`tools/e2e-backups.mjs`, 36 checks, 36 passed)
+
+No-world refusal; a manual backup whose local-time name converts to the **real moment** (within 5 s) and whose progress runs start to done; settings saved and refused with the Electron wording; the restore question (cancel changes nothing, bad names refused before it); confirmed restore exact, the before-restore copy, and **undo**; restore refused on a running server; a **live backup** (`save-off`, saved, copied, `save-on`, in that order, read from the server's own console); one last backup after a clean stop and none when automatic backups are off; delete; **changing the version** (backs up first, only `server.jar` changes, no side file, progress phases, same/unknown/wrong-version/empty/running refusals, a server with no world refused); restoring a backup with the old jar putting the old version back and dropping the Java minimum.
+
 ## Not tested
 
 - Closing the window while a server runs (the quit handler is written; the stop-and-wait logic is covered by the core
@@ -76,6 +82,9 @@ Settings (the 12 fields and no dangerous key; saving name, port, RAM, listing, v
 - Server installation, backups and restore, add-ons, the relay tunnel: **not ported**, so not testable.
 - The real accounts service and a real Discord sign-in (the stand-in is used; a real run needs the user's own Discord).
 - The native folder picker and the native delete dialog themselves: the end-to-end runs answer them from a debug-only switch, and I did not click through them by hand (the person was away from the screen).
+- The scheduled backup firing on its 30-minute timer (the due/dirty rules are in the code; the end-to-end run covers the live, stop-time and manual paths, not a 30-minute wait).
+- A real Minecraft server answering `save-all flush` (the stand-in answers it the way a real one does).
+- A restore of a multi-gigabyte world, and a full disk (the free-space check is written and returns early; not exercised).
 - A real Modrinth download of AuthMe or SkinsRestorer (the stand-in is used).
 - `server:runtimeInfo` (not ported).
 - `server:changeVersion` (not ported: it must run a backup first).
