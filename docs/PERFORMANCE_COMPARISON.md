@@ -47,7 +47,7 @@ Run 1 of each is a cold start (first launch after the profile was created); runs
 
 ## Limitations (these matter)
 
-1. **The Tauri build has about 33% of the backend.** The ports so far grew the executable from 4.43 MB to
+1. **The Tauri build has about 34% of the backend.** The ports so far grew the executable from 4.43 MB to
    5.94 MB (HTTPS client, TLS, AES/PBKDF2, zip, native dialogs). The WebSocket tunnel and the updater will add more. The memory and start-up
    rows above were measured **before** that port and have not been re-measured.
 2. **Different first screens.** The Tauri run shows the server list. The Electron run, with an empty profile and no
