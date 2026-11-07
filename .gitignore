@@ -2,3 +2,4 @@ target/
 node_modules/
 src-tauri/gen/
 *.log
+reference/*/node_modules
