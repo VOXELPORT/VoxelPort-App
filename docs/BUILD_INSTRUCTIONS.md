@@ -88,6 +88,8 @@ the EULA fix and restart (37 checks; same arguments as the install script, test 
 `tools/e2e-backups.mjs` covers backups, restore (asked first, undoable), the live save, the backup at stop, settings, delete and
 changing the Minecraft version (36 checks; test folder `...\e2e-backups`). It removes the backups it made.
 
+`tools/e2e-addons.mjs` covers plugins and mods, Bedrock players, the Bedrock template and modpack import against the stand-in Modrinth and GeyserMC (49 checks; same arguments as the install script, test folder `...\e2e-addons`). `tools/e2e-insights.mjs` covers the performance panel and the "why it stopped" explanations (22 checks; test folder `...\e2e-insights`). The stand-in `java.exe` must be a build of `vp-fake-server` that answers `tick query`, so copy `target\debug\vp-fake-server.exe` over it again after a rebuild.
+
 `tools/e2e-tunnel.mjs` covers making a server public through `tools/fake-relay.mjs` (49 checks; test folder `...\e2e-tunnel`). It also needs
 port 25590 free on 127.0.0.1 for a stand-in "Minecraft" that echoes.
 

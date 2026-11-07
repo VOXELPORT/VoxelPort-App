@@ -10,7 +10,7 @@ use voxelport_core::{StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{backupservice, catalog, discord, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
+use crate::{addonsetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -136,12 +136,25 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "backup:restore" => Ok(backupservice::restore(state, &args).await),
         "server:changeVersion" => Ok(serversetup::change_version(state, &args).await),
 
+        // Plugins and mods, modpacks, Bedrock players, and what is really installed.
+        "addons:get" => addonsetup::addons_get(state, &args).await,
+        "addons:search" => Ok(addonsetup::addons_search(state, &args).await),
+        "addons:install" => Ok(addonsetup::addons_install(state, &args).await),
+        "addons:icon" => Ok(addonsetup::addons_icon(&args).await),
+        "addons:remove" => Ok(addonsetup::addons_remove(state, &args)),
+        "addons:openFolder" => Ok(addonsetup::addons_open_folder(state, &args)),
+        "modpack:choose" => Ok(addonsetup::modpack_choose(state).await),
+        "modpack:install" => Ok(addonsetup::modpack_install(state, &args).await),
+        "server:bedrock:set" => Ok(addonsetup::bedrock_set(state, &args).await),
+        "server:runtimeInfo" => Ok(addonsetup::runtime_info(state, &args).await),
+
         "server:profiles:list" => Ok(Value::Array(profiles::list(&state.data_dir))),
         "server:profiles:get" => Ok(str_arg(&args, "id").and_then(|id| profiles::get(&state.data_dir, id)).unwrap_or(Value::Null)),
         "server:state" => Ok(app_state(state)),
 
         "server:start" => start_server(state, &args).await,
         "server:stop" => {
+            insights::request_stop(state);
             state.server.stop().await;
             Ok(json!({ "ok": true }))
         }
@@ -162,8 +175,7 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
     }
 }
 
-/// Start a profile's server on a suitable Java (installing one when needed). Not yet ported: Bedrock/Geyser startup,
-/// the backups-busy check, switching from another running server, the one automatic restart on a newer Java. The Discord gate is the real one: joining the VoxelPort Discord is required to use the app.
+/// Start a profile's server on a suitable Java (installing one when needed). Not yet ported: the backups-busy check and switching from another running server. The Discord gate is the real one: joining the VoxelPort Discord is required to use the app.
 async fn start_server(state: &AppState, args: &Value) -> Result<Value, String> {
     match str_arg(args, "id") {
         Some(id) => start_profile(state, id, false).await,
@@ -223,6 +235,8 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
             return Ok(json!({ "ok": false, "error": error }));
         }
     }
+    // A Bedrock server on a Minecraft version no Geyser build supports gets a plain warning in the log (the start still goes ahead).
+    addonsetup::geyser_preflight(state, &profile).await;
     cfg.java_path = java.java_path;
     cfg.bedrock = tunnelsetup::bedrock_for_start(state, &profile);
     // From here the server's own output is watched for "needs Java N" (see javasetup::note_log_line / on_exit).
@@ -232,7 +246,10 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
     // profile is set before the first status event goes out.
     *state.active_profile.lock().unwrap() = Some(id.to_string());
     match state.server.start(&cfg).await {
-        Ok(()) => Ok(json!({ "ok": true })),
+        Ok(()) => {
+            insights::on_start(state);
+            Ok(json!({ "ok": true }))
+        }
         Err(e) => {
             *state.active_profile.lock().unwrap() = None;
             Ok(json!({ "ok": false, "error": e.to_string() }))

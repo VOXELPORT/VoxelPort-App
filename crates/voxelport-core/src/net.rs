@@ -165,6 +165,36 @@ impl Fetcher {
         serde_json::from_slice(&body).map_err(|_| format!("Could not read the {} response.", self.what))
     }
 
+    /// POSTs `body` as JSON and reads a JSON answer. One request, no redirects: the address must already be on the allow-list.
+    pub fn post_json(&self, url: &str, body: &Value, max_bytes: u64) -> Result<Value, String> {
+        let target = self.check_url(url)?;
+        let agent = ureq::AgentBuilder::new().redirects(0).timeout_connect(CONNECT_TIMEOUT).timeout_read(INACTIVITY_TIMEOUT).user_agent(self.user_agent).build();
+        let resp = match agent.post(target.as_str()).set("Content-Type", "application/json").send_string(&body.to_string()) {
+            Ok(r) => r,
+            Err(ureq::Error::Status(code, _)) => return Err(format!("{} request failed: HTTP {code}", self.what)),
+            Err(e) => return Err(format!("{} request failed: {e}", self.what)),
+        };
+        let mut out = Vec::new();
+        resp.into_reader().take(max_bytes + 1).read_to_end(&mut out).map_err(|e| e.to_string())?;
+        if out.len() as u64 > max_bytes {
+            return Err(format!("{} response too large.", self.what));
+        }
+        serde_json::from_slice(&out).map_err(|_| format!("Could not read the {} response.", self.what))
+    }
+
+    /// GET a small body (an icon): its content type (without parameters, lower case) and at most `max_bytes` of it.
+    /// A longer body is an error, not a truncated picture.
+    pub fn fetch_bytes(&self, url: &str, max_bytes: u64) -> Result<(String, Vec<u8>), String> {
+        let resp = self.get(url)?;
+        let kind = resp.header("content-type").unwrap_or("").split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+        let mut out = Vec::new();
+        resp.into_reader().take(max_bytes + 1).read_to_end(&mut out).map_err(|e| e.to_string())?;
+        if out.len() as u64 > max_bytes {
+            return Err(format!("{} response too large.", self.what));
+        }
+        Ok((kind, out))
+    }
+
     /// Streams `url` to `dest`. The bytes go to a temporary file beside `dest`, are checked (size while streaming,
     /// checksum at the end), and only then renamed over `dest`; on any failure the temporary file is removed and `dest`
     /// is left exactly as it was. `size_hint` is used for progress when the server sends no length.

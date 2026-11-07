@@ -26,7 +26,7 @@ await sleep(600);
 
 /** One app run with the given dialog answer. */
 async function session(removeAnswer, fn) {
-  const app = launch(exe, { env: { PATH: `${javaDir};${process.env.PATH}`, VOXELPORT_ACCOUNTS_URL: `http://127.0.0.1:${ACCOUNTS}`, VOXELPORT_NO_BROWSER: '1', VOXELPORT_MC_API: mc.base, VOXELPORT_MODRINTH_API: `${mc.base}/v2`, VOXELPORT_TEST_REMOVE: removeAnswer } });
+  const app = launch(exe, { env: { PATH: `${javaDir};${process.env.PATH}`, VOXELPORT_ACCOUNTS_URL: `http://127.0.0.1:${ACCOUNTS}`, VOXELPORT_NO_BROWSER: '1', VOXELPORT_MC_API: mc.base, VOXELPORT_MODRINTH_API: `${mc.base}/v2`, VOXELPORT_GEYSER_API: `${mc.base}/geyser`, VOXELPORT_TEST_REMOVE: removeAnswer } });
   const page = await connect();
   try { await fn(page); } finally { page.close(); kill(app); await sleep(1200); }
 }
@@ -82,7 +82,7 @@ try {
     mc.state.mode.noAuthMe = false;
     check('if the login plugin cannot be had, offline mode is never switched on and the warning says so', nc.ok && /Cracked mode was NOT turned on/.test(nc.warning) && /online-mode=true/.test(fs.readFileSync(path.join(dir('cracked2'), 'server.properties'), 'utf8')) && !exists(path.join(dir('cracked2'), 'plugins', 'SkinsRestorer.jar')), JSON.stringify(nc));
     const bd = await page.ev(`vp.server.install({ type: 'paper', version: '1.21.4', port: 25573, minRamMb: 1024, maxRamMb: 2048, serverDir: ${JSON.stringify(dir('bedrock'))}, templateId: 'crossplay' })`);
-    check('a Bedrock template installs with a plain note that Bedrock is not here yet', bd.ok && /Bedrock support isn't in the Tauri build yet/.test(bd.warning) && !bd.profile.bedrock, JSON.stringify(bd));
+    check('a Bedrock template installs Geyser and Floodgate and marks the server Bedrock-ready (more in e2e-addons.mjs)', bd.ok && bd.profile.bedrock === true && !bd.warning && fs.existsSync(path.join(dir('bedrock'), 'plugins', 'Geyser-Spigot.jar')), JSON.stringify(bd));
 
     const fab = await page.ev(`vp.server.install({ type: 'fabric', version: '1.21.4', port: 25574, minRamMb: 1024, maxRamMb: 2048, serverDir: ${JSON.stringify(dir('fabric'))} })`);
     check('Fabric installs without a version file in its jar', fab.ok && fab.profile.build === 'loader 0.16.8 / installer 1.0.1' && fab.profile.name === 'Fabric server', JSON.stringify(fab));

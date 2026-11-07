@@ -20,7 +20,7 @@ const KNOWN_TYPES: &[&str] = &["vanilla", "paper", "fabric"];
 
 /// The version services and the download client. A development build can point at a local test server
 /// (`VOXELPORT_MC_API=http://127.0.0.1:<port>`); a release build always uses the real ones.
-fn services() -> (Fetcher, Endpoints) {
+pub(crate) fn services() -> (Fetcher, Endpoints) {
     #[cfg(debug_assertions)]
     if let Ok(base) = std::env::var("VOXELPORT_MC_API") {
         let mut policy = HostPolicy::exact(&["127.0.0.1"]);
@@ -60,6 +60,11 @@ pub async fn versions(ty: &str) -> Result<Value, String> {
 
 fn servers_root(state: &AppState) -> PathBuf {
     state.data_dir.join("servers")
+}
+
+/// A new folder under the servers folder named for the time, for an install that was not given one.
+pub fn fresh_server_dir(state: &AppState) -> PathBuf {
+    servers_root(state).join(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0).to_string())
 }
 
 /// A fresh suggested folder per install, so two servers never collide unless the person chooses the same folder.
@@ -124,7 +129,7 @@ pub async fn install(state: &AppState, args: &Value) -> Result<Value, String> {
         return Err("Invalid RAM allocation.".into());
     }
     let dir: PathBuf = match args.get("serverDir") {
-        None | Some(Value::Null) => state.data_dir.join("servers").join(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0).to_string()),
+        None | Some(Value::Null) => fresh_server_dir(state),
         Some(Value::String(s)) if Path::new(s).is_absolute() => PathBuf::from(s),
         Some(_) => return Err("Invalid server folder.".into()),
     };
@@ -156,11 +161,27 @@ pub async fn install(state: &AppState, args: &Value) -> Result<Value, String> {
         &json!({ "name": name, "type": ty, "version": version, "serverDir": dir.to_string_lossy(), "port": port, "minRamMb": min_ram, "maxRamMb": max_ram, "build": resolved.build, "template": template_id }),
     )?;
 
-    // Parts of a template that need modules not in this build yet (Bedrock/Geyser). The server itself is complete and works;
-    // these are said plainly rather than half done.
-    let mut warnings: Vec<&str> = Vec::new();
-    if bedrock {
-        warnings.push("Bedrock support isn't in the Tauri build yet, so this server is Java-only for now.");
+    // A Bedrock template adds Geyser and Floodgate once the server itself is in place. If that cannot be done (offline, no Geyser
+    // build for this Minecraft version) the server is still complete and works for Java players; it says so, and Bedrock can be turned
+    // on later in Settings.
+    let mut warnings: Vec<String> = Vec::new();
+    let mut profile = profile;
+    if bedrock && crate::addonsetup::bedrock_supported(&ty) {
+        progress(&state.app, json!({ "phase": "bedrock" }));
+        let (bdir, bty, bver) = (dir.clone(), ty.clone(), version.clone());
+        let done = tokio::task::spawn_blocking(move || crate::addonsetup::install_bedrock_files(&bdir, &bty, &bver)).await.map_err(|e| e.to_string())?;
+        match done {
+            Ok(()) => {
+                let mut change = Map::new();
+                change.insert("bedrock".into(), json!(true));
+                if let Some(id) = profile["id"].as_str() {
+                    if let Ok(updated) = profiles::update(&state.data_dir, id, &change) {
+                        profile = updated;
+                    }
+                }
+            }
+            Err(e) => warnings.push(format!("Bedrock support couldn't be added ({e}). You can turn it on later in Settings.")),
+        }
     }
     // A cracked template: login plugin first, then offline mode (only if the plugin is really there), then skins. A download
     // problem is a warning and leaves the server on normal Minecraft accounts.
@@ -177,7 +198,7 @@ pub async fn install(state: &AppState, args: &Value) -> Result<Value, String> {
         cracked_warnings = setup.warnings;
     }
     progress(&state.app, json!({ "phase": "done" }));
-    let all: Vec<String> = warnings.iter().map(|w| w.to_string()).chain(cracked_warnings).collect();
+    let all: Vec<String> = warnings.into_iter().chain(cracked_warnings).collect();
     Ok(json!({ "ok": true, "profile": profile, "warning": if all.is_empty() { Value::Null } else { json!(all.join(" ")) } }))
 }
 

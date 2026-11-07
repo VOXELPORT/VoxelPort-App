@@ -1,6 +1,6 @@
 //! The record of add-ons (plugins and mods) VoxelPort itself put in a server folder, `voxelport-addons.json`, so the Plugins
 //! screen can list them and Remove only ever touches files VoxelPort installed. Ported from the registry part of
-//! `addons.js` (installing add-ons from Modrinth comes in a later step; the cracked-server setup already needs this).
+//! `addons.js`. Installing from Modrinth is in `addons.rs`; the cracked-server setup uses `register_addon` here as well.
 
 use std::fs;
 use std::path::Path;
@@ -17,7 +17,7 @@ pub fn is_safe_jar_name(name: &str) -> bool {
     (1..=120).contains(&stem.len()) && stem.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'+' | b'-')) && name.len() <= 124
 }
 
-fn is_project_id(id: &str) -> bool {
+pub fn is_project_id(id: &str) -> bool {
     id.len() == 8 && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
@@ -52,7 +52,7 @@ pub fn installed_addons(server_dir: &Path) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
-fn save(server_dir: &Path, list: &[Value]) -> Result<(), String> {
+pub fn save(server_dir: &Path, list: &[Value]) -> Result<(), String> {
     atomic_write(&server_dir.join(REGISTRY), serde_json::to_string_pretty(list).unwrap().as_bytes()).map_err(|e| e.to_string())
 }
 

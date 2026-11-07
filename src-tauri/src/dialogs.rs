@@ -1,8 +1,8 @@
-//! Native dialogs (folder picker, delete confirmation) and the Recycle Bin. The page can never skip a confirmation: the
+//! Native dialogs (folder and file pickers, delete confirmation) and the Recycle Bin. The page can never skip a confirmation: the
 //! question is asked here, in the backend.
 //!
 //! Development builds can answer the dialogs from the environment so the whole flow can be tested without a person
-//! clicking (`VOXELPORT_TEST_FOLDER=<path>`, `VOXELPORT_TEST_REMOVE=cancel|list|delete`). Compiled out of release builds.
+//! clicking (`VOXELPORT_TEST_FOLDER=<path>`, `VOXELPORT_TEST_FILE=<path>`, `VOXELPORT_TEST_REMOVE=cancel|list|delete`). Compiled out of release builds.
 
 use std::path::{Path, PathBuf};
 
@@ -28,6 +28,26 @@ pub async fn pick_folder(app: &tauri::AppHandle, title: String) -> Option<PathBu
             dialog = dialog.set_parent(w);
         }
         dialog.pick_folder()
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Asks for one file of a kind (for example a modpack). None when the person cancels.
+pub async fn pick_file(app: &tauri::AppHandle, title: String, filter_name: &str, extensions: &[&str]) -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Ok(p) = std::env::var("VOXELPORT_TEST_FILE") {
+        return (!p.is_empty()).then(|| PathBuf::from(p));
+    }
+    let window = app.get_webview_window("main");
+    let (name, exts): (String, Vec<String>) = (filter_name.to_string(), extensions.iter().map(|e| e.to_string()).collect());
+    tokio::task::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new().set_title(title).add_filter(name, &exts);
+        if let Some(w) = &window {
+            dialog = dialog.set_parent(w);
+        }
+        dialog.pick_file()
     })
     .await
     .ok()

@@ -49,7 +49,7 @@ pub struct TunnelState {
     start_seq: AtomicU64,
     /// What the running server was launched advertising for Bedrock.
     bedrock_launch: Mutex<Option<(String, FullEndpoint)>>,
-    bedrock_restarted_for: Mutex<Option<String>>,
+    pub bedrock_restarted_for: Mutex<Option<String>>,
     /// The server is being restarted on purpose to activate the Bedrock address: its tunnel stays up meanwhile.
     bedrock_restarting: AtomicBool,
     name_waiters: Mutex<Vec<oneshot::Sender<Value>>>,
@@ -592,6 +592,7 @@ async fn auto_restart_for_bedrock(app: &tauri::AppHandle, id: &str, endpoint: &F
 
 async fn restart_for_bedrock(state: &AppState, id: &str) {
     let log = |m: &str| emit(state, "server:log", m.to_string());
+    crate::insights::request_stop(state);
     state.server.stop().await;
     let _ = tokio::time::timeout(SERVER_STOP_WAIT, async {
         while state.server.is_running() {

@@ -19,8 +19,8 @@ const arms = new Set([...ipc.matchAll(/^\s+((?:"[A-Za-z:]+"\s*\|?\s*)+)=>/gm)].f
 const CAVEATS = {
   'server:makePublic': 'Region choice, relay, players, listing, custom address, Bedrock address and its one restart. Not yet: automatic voice-chat setup (a voice port already on the profile is passed to the relay, but no plugin is installed)',
   'tunnel:start': 'The manual tunnel. Relay notices reach the screen but are not yet said in the game chat (notice.js is step 10)',
-  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Not yet: Bedrock/Geyser launch, backup-busy check, the "switch to another server" question',
-  'server:install': 'Verified jar, files and profile; cracked templates get the login plugin, then offline mode, then skins. The Bedrock (Geyser) extra is skipped with a plain warning',
+  'server:start': 'Real Discord gate, Java resolution and install, automatic restart on a newer Java. Bedrock launch arguments and the Geyser version warning. Not yet: backup-busy check, the "switch to another server" question',
+  'server:install': 'Verified jar, files and profile; cracked templates get the login plugin, then offline mode, then skins. Bedrock templates also get Geyser and Floodgate (a failure is a plain warning; the Java server still works)',
   'app:info': 'masked token and VoxelPort ID are real; copying the token to the clipboard is not ported',
   'server:settings:save': 'does not yet update a live public-server-list entry (tunnel not ported)',
   'server:profiles:delete': 'Native confirmation, Recycle Bin, folder safety checks. Does not yet stop a public tunnel (tunnel not ported)',

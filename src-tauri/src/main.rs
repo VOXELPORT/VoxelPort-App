@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod addonsetup;
 mod catalog;
 mod backupservice;
 mod dialogs;
 mod discord;
+mod insights;
 mod ipc;
 mod javasetup;
 
@@ -56,6 +58,12 @@ pub struct AppState {
     pub link_error: Mutex<Option<String>>,
     pub backup_busy: AtomicBool,
     pub accounts_busy: AtomicBool,
+    /// One add-on install, removal or modpack import at a time.
+    pub addons_busy: AtomicBool,
+    /// One Bedrock (Geyser) set-up at a time.
+    pub bedrock_busy: AtomicBool,
+    /// Performance panel and crash explanations.
+    pub insights: insights::Insights,
     pub backups: backupservice::Backups,
     pub tunnels: tunnelsetup::TunnelState,
     /// How many players are on the running server.
@@ -79,13 +87,16 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
                 let r = app.emit("app:state", ipc::app_state(&app.state::<AppState>()));
                 if s == Status::Online {
                     backupservice::on_server_online(&app);
+                    insights::on_online(&app.state::<AppState>());
                 }
                 r
             }
             Event::Log(line) => {
-                javasetup::note_log_line(&app.state::<AppState>(), &line);
-                backupservice::note_log_line(&app.state::<AppState>(), &line);
-                app.emit("server:log", line)
+                let state = app.state::<AppState>();
+                javasetup::note_log_line(&state, &line);
+                backupservice::note_log_line(&state, &line);
+                // Our own `tick query` answers are kept out of the console.
+                if insights::on_log(&state, &line) { Ok(()) } else { app.emit("server:log", line) }
             }
             Event::Players(n) => {
                 let state = app.state::<AppState>();
@@ -103,9 +114,13 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
                 tunnelsetup::on_server_exit(&state, exited.as_deref());
                 state.players.store(0, std::sync::atomic::Ordering::SeqCst);
                 let handle = app.clone();
+                let exited_for_backup = exited.clone();
                 let clean = code == Some(0);
-                tauri::async_runtime::spawn(async move { backupservice::on_server_exit(&handle, exited, clean).await });
+                tauri::async_runtime::spawn(async move { backupservice::on_server_exit(&handle, exited_for_backup, clean).await });
                 let result = app.emit("app:state", ipc::app_state(&state));
+                // A server that died for want of a newer Java is restarted on it, and then needs no explanation.
+                let java_fix = code != Some(0) && state.java_watch.lock().unwrap().as_ref().is_some_and(|w| w.needed_major.is_some() && !w.retried);
+                insights::on_exit(&state, exited.as_deref(), code, java_fix);
                 javasetup::on_exit(&app, code);
                 result
             }
@@ -140,6 +155,9 @@ fn main() {
                 link_error: Mutex::new(None),
                 backup_busy: AtomicBool::new(false),
                 accounts_busy: AtomicBool::new(false),
+                addons_busy: AtomicBool::new(false),
+                bedrock_busy: AtomicBool::new(false),
+                insights: insights::Insights::default(),
                 backups: backupservice::Backups::default(),
                 tunnels: tunnelsetup::TunnelState::default(),
                 players: AtomicU32::new(0),

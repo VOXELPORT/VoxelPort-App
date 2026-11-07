@@ -111,11 +111,45 @@ plugin is really on disk, then adds skins. If the login plugin cannot be had the
 
 ## Downloads (`net.rs`)
 
-Everything that fetches a program or archive (Java, server jars, the login and skins plugins; add-ons later) goes through one `Fetcher`: HTTPS only, every
+Everything that fetches a program or archive (Java, server jars, plugins, mods, Geyser and Floodgate, modpack mods) goes through one `Fetcher`: HTTPS only, every
 request and every redirect hop checked against a host allow-list (a domain rule matches the domain and its subdomains, not
 look-alikes), a size cap, a stall cut-off, a checksum check (SHA-1, SHA-256 or SHA-512) and a write to a temporary file that only
 replaces the destination once the download is complete and verified. Java and the server jars share it, so one set of tests
 covers both.
+
+## Plugins, mods, modpacks and Bedrock (`addons.rs`, `modpack.rs`, `bedrock_install.rs`, `runtime_info.rs`, `src-tauri/src/addonsetup.rs`)
+
+- **Add-ons** come from Modrinth: Paper takes plugins, Fabric mods, Vanilla neither. A search is one page of twenty hits; a hit with a malformed project
+  id is dropped and an icon address is only kept if it is Modrinth's own image host (the page may not load anything from the internet, so the
+  backend fetches icons itself as small `data:` images, only from that host). Installing resolves the newest release for the server's loader and
+  Minecraft version, brings the libraries it requires first (two levels deep; one already in the folder is recognised by its SHA-512 fingerprint
+  and not downloaded twice), and downloads each jar through the shared `Fetcher` against Modrinth's SHA-512. Jar names must be plain `.jar`
+  names. A file VoxelPort did not put there is never overwritten; a running server gets new files but no replacements; Remove only deletes what
+  `voxelport-addons.json` lists, and not the login plugin while cracked mode is on.
+- **Modpacks**: a `.mrpack` is read without extracting anything (the manifest is size-limited and strictly validated). Only files under `mods/` and
+  `config/` are considered, a single path that could leave the folder refuses the whole pack, only Modrinth https addresses are downloaded from,
+  each with its SHA-512, client-only files are skipped and reported, Forge/NeoForge packs are refused with their own code, Quilt packs install on
+  Fabric. The pack's own config (`overrides`, then `server-overrides`) is copied in with size and count caps and the same path checks. A folder the
+  import created is removed again if the import fails, so a retry is not blocked by a half-made server.
+- **Bedrock**: Geyser (the build Modrinth lists for the server's Minecraft version, so a server is never handed a Geyser for another version) and
+  Floodgate (GeyserMC's latest, SHA-256; for Fabric, Floodgate and Fabric API from Modrinth) are resolved **before** anything is written. The jars it
+  put there are recorded in `voxelport-bedrock.json`; replacing or removing only ever touches those (an old install with no list is recognised by the
+  exact Geyser/Floodgate names, not look-alikes), and Fabric API stays when Bedrock is turned off. Turning it on for a public server reconnects the
+  tunnel so it asks for UDP. A start on a Minecraft version no Geyser supports logs a warning and goes ahead (Java players are unaffected).
+- **What is installed** (`server:runtimeInfo`, the add-ons screen's "other" list) is read from the disk: the Minecraft version from the jar, and each
+  plugin's or mod's own name and version from `plugin.yml` / `fabric.mod.json` inside its jar (the file name is only a fallback).
+
+## The performance panel and "why it stopped" (`perf.rs`, `crash_explain.rs`, `src-tauri/src/insights.rs`)
+
+- CPU and memory of the server process are read from the operating system every two seconds (Windows: process times and working set; Linux:
+  `/proc`), not from a helper process as Electron did. TPS comes from the vanilla `tick query` command on Minecraft 1.20.3 and newer, asked every ten
+  seconds; its four lines are kept out of the console, and a server that never answers three times in a row is left alone. Only the **server's own
+  message** counts (after the `[time] [thread/LEVEL]:` front, matched from its start), so a player typing the same words in chat is neither hidden
+  nor taken for an answer, and cannot inflate the lag-warning count either (Electron matched anywhere in the line).
+- When a server exits, the last 200 console lines are read against eleven rules, most specific first (port in use, too much RAM, out of memory, EULA,
+  a mod for another Minecraft version, a missing mod dependency, a Mixin failure, a broken jar, a locked world, no permission, a failed plugin), with a
+  general "it crashed" reading only when nothing else matched and the exit was not clean. The wording is also in Hinglish. Nothing is explained for a
+  stop the person (or a restart) asked for, or for an exit that is about to be fixed by restarting on a newer Java.
 
 ## Servers (`mc_versions.rs`, `server_install.rs`, `profiles.rs`, `removal.rs`)
 
@@ -177,8 +211,8 @@ succeeds and says so, and the server keeps normal Minecraft accounts (never a ha
   window), and listen for events. No filesystem, shell, HTTP or dialog plugin is enabled; the Rust side does its own HTTPS (ureq with rustls) to the accounts service only.
 - Content-Security-Policy stays as strict as the Electron page's, plus `connect-src ipc:` for the backend channel.
 - Server profiles are validated on load with the same rules as Electron; a corrupt or hand-edited entry is dropped.
-- Not yet done: download allow-lists and checksums, zip extraction path checks, reading Electron's `os_crypt` secrets. Each is
-  planned with its module in MIGRATION_PLAN.md.
+- Downloads go through one allow-listed, checksummed, size-capped client, and every zip is read with path checks (done). Not yet done: reading
+  Electron's `os_crypt` secrets (planned with its module in MIGRATION_PLAN.md).
 
 ## Not built, on purpose
 

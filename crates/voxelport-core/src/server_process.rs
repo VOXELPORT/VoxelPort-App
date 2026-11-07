@@ -212,6 +212,8 @@ struct State {
     kill: Option<oneshot::Sender<()>>,
     stop_timer: Option<JoinHandle<()>>,
     logs: LogBuffer,
+    /// The operating-system id of the running server process, for the performance panel.
+    pid: Option<u32>,
 }
 
 struct Inner {
@@ -252,6 +254,7 @@ impl ServerProcess {
                 kill: None,
                 stop_timer: None,
                 logs: LogBuffer::new(limits.buffer_lines, limits.buffer_line_bytes),
+                pid: None,
             }),
             stdin: AsyncMutex::new(None),
         };
@@ -264,6 +267,11 @@ impl ServerProcess {
 
     pub fn is_running(&self) -> bool {
         self.inner.state.lock().unwrap().running
+    }
+
+    /// The operating-system id of the running server process (None when nothing runs).
+    pub fn pid(&self) -> Option<u32> {
+        self.inner.state.lock().unwrap().pid
     }
 
     pub fn online_names(&self) -> Vec<String> {
@@ -326,6 +334,7 @@ impl ServerProcess {
             }
         };
 
+        self.inner.state.lock().unwrap().pid = child.id();
         *self.inner.stdin.lock().await = child.stdin.take();
         let out = child.stdout.take().map(|s| self.spawn_reader(s));
         let err = child.stderr.take().map(|s| self.spawn_reader(s));
@@ -542,6 +551,7 @@ impl ServerProcess {
             let mut st = self.inner.state.lock().unwrap();
             let crashed = st.status != Status::Stopping && code != Some(0);
             st.running = false;
+            st.pid = None;
             st.kill = None;
             if let Some(t) = st.stop_timer.take() {
                 t.abort();

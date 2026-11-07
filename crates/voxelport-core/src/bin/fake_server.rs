@@ -9,6 +9,7 @@
 //!   say TEXT        print TEXT
 //!   anything else   print "Unknown command: <the line>"
 //!   needjava N      print the message Paper prints when it needs Java N, then exit 1
+//!   tick query      print the four lines the vanilla command prints (a tick time of 2.8 ms); with --no-tick it is an unknown command
 //! Run as `java -version` (first argument), it prints a Java banner to stderr and exits 0, like a real Java does.
 //! The major comes from a `java-major.txt` next to the executable (default 21; 8 prints the old "1.8.0_351" form), so
 //! two copies of this program can pose as different Javas.
@@ -25,6 +26,7 @@ fn main() {
         return;
     }
     let hang = std::env::args().any(|a| a == "--hang");
+    let no_tick = std::env::args().any(|a| a == "--no-tick");
     let out = std::io::stdout();
     let mut out = out.lock();
     let _ = writeln!(out, "[12:00:00] [Server thread/INFO]: Done (0.1s)! For help, type \"help\"");
@@ -50,6 +52,12 @@ fn main() {
                 let _ = writeln!(out, "[12:00:05] [ServerMain/ERROR]: Minecraft 26.1 and newer requires running the server with Java {rest} or above. For information on how to update Java, see https://docs.papermc.io/misc/java-install");
                 let _ = out.flush();
                 std::process::exit(1);
+            }
+            "tick" if rest == "query" && !no_tick => {
+                let _ = writeln!(out, "[12:00:08] [Server thread/INFO]: The game is running normally");
+                let _ = writeln!(out, "[12:00:08] [Server thread/INFO]: Target tick rate: 20.0 per second.");
+                let _ = writeln!(out, "[12:00:08] [Server thread/INFO]: Average time per tick: 2.8 ms (Target: 50.0 ms)");
+                let _ = writeln!(out, "[12:00:08] [Server thread/INFO]: Percentiles: P50: 2.1 ms P95: 4.0 ms P99: 5.5 ms, sample: 100");
             }
             "join" => { let _ = writeln!(out, "[12:00:02] [Server thread/INFO]: {rest} joined the game"); }
             "leave" => { let _ = writeln!(out, "[12:00:03] [Server thread/INFO]: {rest} left the game"); }

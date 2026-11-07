@@ -3,9 +3,12 @@
 
 pub mod account;
 pub mod addon_registry;
+pub mod addons;
 pub mod backups;
 pub mod bedrock_endpoint;
+pub mod bedrock_install;
 pub mod bedrock;
+pub mod crash_explain;
 pub mod cracked;
 mod fsutil;
 pub mod gate;
@@ -13,11 +16,14 @@ pub mod identity;
 pub mod java;
 pub mod log_buffer;
 pub mod mc_versions;
+pub mod modpack;
 pub mod net;
+pub mod perf;
 pub mod profiles;
 pub mod regions;
 pub mod relay_url;
 pub mod removal;
+pub mod runtime_info;
 pub mod server_files;
 pub mod server_install;
 pub mod settings;

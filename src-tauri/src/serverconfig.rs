@@ -267,6 +267,7 @@ pub fn fix(state: &AppState, args: &Value) -> Value {
 pub async fn restart(state: &AppState) -> Result<Value, String> {
     let id = state.active_profile.lock().unwrap().clone();
     let Some(id) = id.filter(|_| state.server.is_running()) else { return Ok(json!({ "ok": false, "error": "The server is not running." })) };
+    crate::insights::request_stop(state);
     state.server.stop().await;
     let _ = tokio::time::timeout(STOP_WAIT, async {
         while state.server.is_running() {

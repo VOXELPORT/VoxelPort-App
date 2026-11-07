@@ -1,5 +1,6 @@
 // A stand-in for the Mojang, Paper and Fabric services, for testing server install without the internet.
 //   import { startFakeMc } from './fake-mc.mjs'
+// It also stands in for Modrinth (search, versions, file fingerprints) and GeyserMC's download API, for add-ons and Bedrock.
 // It serves real zips whose version.json says the version asked for (Fabric's has none), with the checksums the real
 // services publish. `mode.wrongVersion = true` serves a jar that claims another Minecraft version.
 import http from 'node:http';
@@ -15,6 +16,16 @@ export function startFakeMc(port) {
   const jar = (version) => storedZip([['META-INF/MANIFEST.MF', Buffer.from('Manifest-Version: 1.0\n')], ...(version ? [['version.json', Buffer.from(JSON.stringify({ id: version, name: version }))]] : [])]);
   const claimed = (v) => (state.mode.wrongVersion ? '9.9.9' : v);
   const json = (res, v) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(v)); };
+  const BYTES = { cool: Buffer.from("Cool Plugin bytes"), lib: Buffer.from("Library bytes"), fabmod: Buffer.from("Fabric mod bytes"), geyserSpigot: Buffer.from("Geyser-Spigot bytes"), geyserFabric: Buffer.from("Geyser-Fabric bytes"), floodSpigot: Buffer.from("floodgate-spigot bytes"), floodFabric: Buffer.from("Floodgate-Fabric bytes"), fabricApi: Buffer.from("Fabric API bytes") };
+  const fileOf = (name, key) => ({ primary: true, url: `${base}/data/${key}.jar`, filename: name, hashes: { sha512: hex("sha512", BYTES[key]) } });
+  const MODRINTH = {
+    AAAAAAAA: { for: "paper", file: fileOf("CoolPlugin-1.0.jar", "cool"), deps: ["BBBBBBBB"] },
+    BBBBBBBB: { for: "paper", file: fileOf("Lib-2.jar", "lib"), deps: [] },
+    EEEEEEEE: { for: "fabric", file: fileOf("cool-mod-3.jar", "fabmod"), deps: [] },
+    geyser: { for: "any", file: (loaders) => (loaders.includes("fabric") ? fileOf("geyser-fabric-2.9.jar", "geyserFabric") : fileOf("Geyser-Spigot.jar", "geyserSpigot")), deps: [] },
+    floodgate: { for: "fabric", file: fileOf("Floodgate-Fabric-2.2.jar", "floodFabric"), deps: [] },
+    "fabric-api": { for: "fabric", file: fileOf("fabric-api-0.100.jar", "fabricApi"), deps: [] },
+  };
   const server = http.createServer((req, res) => {
     state.hits++;
     const p = new URL(req.url, base).pathname;
@@ -46,6 +57,28 @@ export function startFakeMc(port) {
     if ((m = p.match(/^\/v2\/project\/(3IEZ9vol|TsLS8Py5)$/))) return json(res, { icon_url: `https://cdn.modrinth.com/data/${m[1]}/icon.png` });
     if (p === '/data/authme.jar') { res.writeHead(200); return res.end(AUTHME); }
     if (p === '/data/skins.jar') { res.writeHead(200); return res.end(SKINS); }
+    // Modrinth: search, per-project versions (1.21.4 only), titles, and the fingerprint lookup (nothing is recognised).
+    if (p === "/v2/search") {
+      const u = new URL(req.url, base), facets = u.searchParams.get("facets") || "";
+      const hits = facets.includes("categories:fabric")
+        ? [{ project_id: "EEEEEEEE", slug: "cool-mod", title: "Cool Mod", description: "A mod", downloads: 10, author: "x", icon_url: "https://cdn.modrinth.com/data/EEEEEEEE/icon.png" }]
+        : [{ project_id: "AAAAAAAA", slug: "cool-plugin", title: "Cool Plugin", description: "A plugin", downloads: 99, author: "y", icon_url: "https://cdn.modrinth.com/data/AAAAAAAA/icon.png" }, { project_id: "not-an-id", title: "Bad" }];
+      state.lastSearch = u.search;
+      return json(res, { hits });
+    }
+    if ((m = p.match(/^\/v2\/project\/([A-Za-z0-9-]+)\/version$/)) && MODRINTH[m[1]]) {
+      const u = new URL(req.url, base), loaders = u.searchParams.get("loaders") || "", games = u.searchParams.get("game_versions") || "";
+      const spec = MODRINTH[m[1]];
+      if (!games.includes("1.21.4") || (spec.for !== "any" && !loaders.includes(spec.for))) return json(res, []);
+      const file = typeof spec.file === "function" ? spec.file(loaders) : spec.file;
+      return json(res, [{ version_type: "release", dependencies: spec.deps.map((d) => ({ project_id: d, dependency_type: "required" })), files: [file] }]);
+    }
+    if ((m = p.match(/^\/v2\/project\/(BBBBBBBB)$/))) return json(res, { title: "The Library" });
+    if (p === "/v2/version_files" && req.method === "POST") { req.resume(); return json(res, {}); }
+    if ((m = p.match(/^\/data\/(cool|lib|fabmod|geyserSpigot|geyserFabric|floodFabric|fabricApi)\.jar$/))) { res.writeHead(200); return res.end(BYTES[m[1]]); }
+    // GeyserMC: the latest Floodgate for Paper.
+    if (p === "/geyser/floodgate/versions/latest/builds/latest") return json(res, { version: "2.2.4", build: 120, downloads: { spigot: { name: "floodgate-spigot.jar", sha256: hex("sha256", BYTES.floodSpigot) } } });
+    if (p === "/geyser/floodgate/versions/2.2.4/builds/120/downloads/spigot") { res.writeHead(200); return res.end(BYTES.floodSpigot); }
     res.writeHead(404); res.end();
   });
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ state, base, close: () => server.close() })));
