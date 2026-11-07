@@ -46,6 +46,25 @@ The Rust command checks the channel against `channels.in` (also generated) and d
 - **Join/leave tracking** parses the whole message after the log prefix, so chat text cannot pose as the server.
 - **One server at a time**, like Electron. Starting a second returns `AlreadyRunning`.
 
+## Java (`java.rs`, `src-tauri/src/javasetup.rs`)
+
+- **Which Java**: the same table as Electron (26.x needs 25, 1.20.5 needs 21, 1.18 needs 17, 1.17 needs 16, older 8). A
+  profile can raise it (`javaMajor`). The app prefers a Java it installed itself (exact major, then the closest newer),
+  then `java` on the PATH, and runs `java -version` (with a 15 s limit) to see what a candidate really is.
+- **Install**: Eclipse Temurin into `<data>/java/temurin-<major>/`, no administrator rights. The build and its SHA-256 come from
+  the Adoptium API; every request and every redirect hop must be HTTPS to `api.adoptium.net`, `github.com` or GitHub's
+  release-asset hosts; the archive is capped at 400 MB and the download must not stall for 30 s; the checksum must match.
+- **Unpacking** is done in Rust, not by a system tool: every entry must stay inside the target folder (no `..`, absolute
+  path or drive letter), links are refused, and entry count and unpacked size are capped. Work happens in a scratch folder
+  that is removed whether or not the install worked; the finished folder is moved into place in one step.
+- **Start**: `server:start` resolves Java first. If none is new enough the screens see "starting", the console narrates the
+  download, and a failure says why and leaves no server active. One install at a time; a second request waits and then
+  finds the first one's result.
+- **Newer Java at run time**: the server's own output is scanned for "needs Java N" (and for `UnsupportedClassVersionError`). If a
+  server dies because of that, the profile remembers the new minimum (only that field of that entry is rewritten) and the
+  server starts once more; if it still fails, the app says so rather than looping.
+- Windows only so far: the Adoptium archive for Windows is a zip. Linux/macOS `.tar.gz` is not handled.
+
 ## The account and the Discord gate (`account.rs`, `gate.rs`, `identity.rs`)
 
 - **Gate** (`gate.rs`): a pure function from "existing install?, session?, config, last status, last good answer, now" to

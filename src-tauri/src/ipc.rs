@@ -3,10 +3,12 @@
 //! is not ported yet answers with a plain message instead of failing silently.
 
 use serde_json::{json, Value};
-use tauri::State;
+use std::sync::atomic::Ordering;
+
+use tauri::{Emitter, State};
 use voxelport_core::{StartConfig, Status};
 
-use crate::{catalog, discord, profiles, sys, AppState};
+use crate::{catalog, discord, javasetup, profiles, secrets, sys, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -26,15 +28,24 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value, String> {
     match channel {
         "app:info" => Ok(discord::app_info(state)),
-        "app:versions" => Ok(json!({
-            "app": env!("CARGO_PKG_VERSION"),
-            // The About text prints "(Electron <this>)", so say what this build runs on.
-            "electron": "none, this is the Tauri build",
-            "platform": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
-            "systemJava": Value::Null,
-            "managedJava": [],
-            "dataDir": state.data_dir.to_string_lossy(),
-        })),
+        "app:versions" => {
+            let (system_java, managed_java) = javasetup::versions(state).await;
+            Ok(json!({
+                "app": env!("CARGO_PKG_VERSION"),
+                // The About text prints "(Electron <this>)", so say what this build runs on.
+                "electron": "none, this is the Tauri build",
+                "platform": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+                "systemJava": system_java,
+                "managedJava": managed_java,
+                "dataDir": state.data_dir.to_string_lossy(),
+            }))
+        }
+        "java:check" => Ok(javasetup::resolve(state, str_arg(&args, "version"), 0).await.to_json()),
+        "java:install" => Ok(javasetup::install_for_screens(state, str_arg(&args, "version")).await),
+        "java:openDownloadPage" => {
+            secrets::open_url("https://adoptium.net/temurin/releases/");
+            Ok(json!({ "ok": true }))
+        }
         "app:setTheme" => {
             let theme = match str_arg(&args, "theme") {
                 Some(t @ ("light" | "dark" | "system")) => t,
@@ -106,24 +117,70 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
     }
 }
 
-/// Start a profile's server with the Java on the PATH. Not yet ported: managed Java install, Bedrock/Geyser startup,
-/// backups-busy check. The Discord gate is the real one: joining the VoxelPort Discord is required to use the app.
+/// Start a profile's server on a suitable Java (installing one when needed). Not yet ported: Bedrock/Geyser startup,
+/// the backups-busy check, switching from another running server, the one automatic restart on a newer Java. The Discord gate is the real one: joining the VoxelPort Discord is required to use the app.
 async fn start_server(state: &AppState, args: &Value) -> Result<Value, String> {
+    match str_arg(args, "id") {
+        Some(id) => start_profile(state, id, false).await,
+        None => start_profile(state, "", false).await,
+    }
+}
+
+/// `retried` marks the one automatic restart after a server reported needing a newer Java.
+pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<Value, String> {
     if !discord::current_gate(state).allowed {
         discord::emit_state(state);
         return Ok(discord::gate_refusal(state));
     }
     let not_found = json!({ "ok": false, "error": "Server profile not found." });
-    let Some(id) = str_arg(args, "id") else { return Ok(not_found) };
     let Some(profile) = profiles::get(&state.data_dir, id) else { return Ok(not_found) };
     if matches!(state.server.status(), Status::Starting | Status::Online | Status::Stopping) {
         return Ok(json!({ "ok": false, "error": "A server is already running." }));
     }
-    let cfg = StartConfig::new(
+    if state.preparing_java.load(Ordering::SeqCst) {
+        return Ok(json!({ "ok": false, "error": "Already getting Java ready for a server — one moment." }));
+    }
+    let name = profile["name"].as_str().unwrap_or("This server").to_string();
+    let mut cfg = StartConfig::new(
         profile["serverDir"].as_str().unwrap_or_default(),
         profile["minRamMb"].as_u64().unwrap_or(1024) as u32,
         profile["maxRamMb"].as_u64().unwrap_or(2048) as u32,
     );
+
+    // Prefer the Java VoxelPort installed itself; otherwise java on the PATH. If neither is new enough for this
+    // server, fetch the right one first (the screens see "starting" meanwhile).
+    let min_major = profile["javaMajor"].as_u64().unwrap_or(0) as u32;
+    let version = profile["version"].as_str();
+    let mut java = javasetup::resolve(state, version, min_major).await;
+    if !java.satisfied {
+        state.preparing_java.store(true, Ordering::SeqCst);
+        emit_app_state(state);
+        let have = match (java.check.found, java.check.major) {
+            (true, Some(m)) => format!(" (this PC has Java {m})"),
+            _ => String::new(),
+        };
+        let _ = state.app.emit("server:log", format!("[VoxelPort] {name} needs Java {}{have} — installing it automatically…", java.required));
+        let installed = javasetup::install_into_console(state, java.required).await;
+        let required = java.required;
+        let mut failure = installed.err();
+        if failure.is_none() {
+            java = javasetup::resolve(state, version, min_major).await;
+            if !java.satisfied {
+                failure = Some("it did not start".to_string());
+            }
+        }
+        state.preparing_java.store(false, Ordering::SeqCst);
+        if let Some(why) = failure {
+            let error = format!("Couldn't set up Java {required}: {}. Check your internet connection and try again.", why.trim_end_matches('.'));
+            let _ = state.app.emit("server:log", format!("[VoxelPort] {error}"));
+            emit_app_state(state);
+            return Ok(json!({ "ok": false, "error": error }));
+        }
+    }
+    cfg.java_path = java.java_path;
+    // From here the server's own output is watched for "needs Java N" (see javasetup::note_log_line / on_exit).
+    *state.java_watch.lock().unwrap() = Some(crate::JavaWatch { profile_id: id.to_string(), used_major: java.check.major.unwrap_or(0), needed_major: None, retried });
+
     // The screens learn which server is active from the same state event that reports its status, so the active
     // profile is set before the first status event goes out.
     *state.active_profile.lock().unwrap() = Some(id.to_string());
@@ -136,12 +193,17 @@ async fn start_server(state: &AppState, args: &Value) -> Result<Value, String> {
     }
 }
 
+fn emit_app_state(state: &AppState) {
+    let _ = state.app.emit("app:state", app_state(state));
+}
+
 /// What `server:state` answers and what the `app:state` event carries (the screens redraw from it).
 pub fn app_state(state: &AppState) -> Value {
     json!({
         "activeServerProfileId": state.active_profile.lock().unwrap().clone(),
         "publicServerProfileId": Value::Null,
         "manualTunnelActive": false,
-        "serverStatus": state.server.status().as_str(),
+        // While Java is being fetched for a start the screens see "starting" (as in Electron).
+        "serverStatus": if state.preparing_java.load(std::sync::atomic::Ordering::SeqCst) { "starting" } else { state.server.status().as_str() },
     })
 }

@@ -12,7 +12,7 @@ Nothing here is estimated. Read the limitations before quoting any of it.
 | Idle CPU over 20 s, % of one core (median of 3) | 0.00% | 0.07% | both effectively zero |
 | Cold start to page ready, ms (median of 3) | 290 | 392 | **Tauri is not faster** here |
 | Installer on disk | 108.6 MB (`VoxelPort-Setup.exe`) | **not built yet** | n/a |
-| Main executable | `VoxelPort.exe` is part of a 365 MB unpacked app | **4.43 MB** at the first benchmark, **5.66 MB** after the account/gate port added HTTPS, TLS and crypto (`voxelport-tauri.exe`) | **Tauri is far smaller** |
+| Main executable | `VoxelPort.exe` is part of a 365 MB unpacked app | **4.43 MB** at the first benchmark, **5.81 MB** after the account/gate and Java ports added HTTPS, TLS, crypto and zip (`voxelport-tauri.exe`) | **Tauri is far smaller** |
 | App on disk, unpacked | 365 MB (`win-unpacked`) | 4.43 MB, plus the system WebView2 runtime that Windows already has | **Tauri is far smaller** |
 
 **What this says.** The one clear win is size on disk: the executable is about 4.4 MB because Tauri uses the Windows web
@@ -47,8 +47,8 @@ Run 1 of each is a cold start (first launch after the profile was created); runs
 
 ## Limitations (these matter)
 
-1. **The Tauri build has about 20% of the backend.** The account port already grew the executable from 4.43 MB to 5.66 MB
-   (HTTPS client, TLS, AES/PBKDF2). Zip, the WebSocket tunnel and the updater will add more. The memory and start-up
+1. **The Tauri build has about 23% of the backend.** The account and Java ports already grew the executable from 4.43 MB to
+   5.81 MB (HTTPS client, TLS, AES/PBKDF2, zip). The WebSocket tunnel and the updater will add more. The memory and start-up
    rows above were measured **before** that port and have not been re-measured.
 2. **Different first screens.** The Tauri run shows the server list. The Electron run, with an empty profile and no
    Discord sign-in, shows whatever its first screen is (probably the join gate). Different DOMs, so memory is

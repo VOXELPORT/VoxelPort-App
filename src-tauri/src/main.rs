@@ -3,6 +3,7 @@
 mod catalog;
 mod discord;
 mod ipc;
+mod javasetup;
 mod profiles;
 mod secrets;
 mod sys;
@@ -20,6 +21,14 @@ use voxelport_core::{Event, EventReceiver, ServerProcess, StopPolicy};
 
 /// How long a window close waits for the server to save and stop before giving up (Electron's quit gate waits too).
 const QUIT_WAIT: Duration = Duration::from_secs(30);
+
+/// What a running server needs from Java, learned from its own output (see `javasetup`).
+pub struct JavaWatch {
+    pub profile_id: String,
+    pub used_major: u32,
+    pub needed_major: Option<u32>,
+    pub retried: bool,
+}
 
 /// This install's identity. The raw token never goes to the page: only a masked hint and a short id do.
 pub struct Device {
@@ -41,6 +50,10 @@ pub struct AppState {
     pub account: AppAccount,
     pub link_error: Mutex<Option<String>>,
     pub backup_busy: AtomicBool,
+    /// Set while a Java install runs before a start: the screens see the server as "starting".
+    pub preparing_java: AtomicBool,
+    pub java_watch: Mutex<Option<JavaWatch>>,
+    pub java_lock: tokio::sync::Mutex<()>,
     pub last_refresh: Mutex<Option<Instant>>,
 }
 
@@ -53,10 +66,21 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
                 // Electron sends the whole app state with every status change; the screens redraw from it.
                 app.emit("app:state", ipc::app_state(&app.state::<AppState>()))
             }
-            Event::Log(line) => app.emit("server:log", line),
+            Event::Log(line) => {
+                javasetup::note_log_line(&app.state::<AppState>(), &line);
+                app.emit("server:log", line)
+            }
             Event::Players(n) => app.emit("server:players", n),
             Event::Names(names) => app.emit("server:playerNames", names),
-            Event::Exit(code) => app.emit("server:exit", code),
+            Event::Exit(code) => {
+                let _ = app.emit("server:exit", code);
+                let state = app.state::<AppState>();
+                // Nothing is active once the server has exited; the screens redraw from the state event.
+                *state.active_profile.lock().unwrap() = None;
+                let result = app.emit("app:state", ipc::app_state(&state));
+                javasetup::on_exit(&app, code);
+                result
+            }
         };
     }
 }
@@ -86,6 +110,9 @@ fn main() {
                 account,
                 link_error: Mutex::new(None),
                 backup_busy: AtomicBool::new(false),
+                preparing_java: AtomicBool::new(false),
+                java_watch: Mutex::new(None),
+                java_lock: tokio::sync::Mutex::new(()),
                 last_refresh: Mutex::new(Some(Instant::now())),
             });
             tauri::async_runtime::spawn(pump(app.handle().clone(), rx));

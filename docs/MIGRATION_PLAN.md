@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, about 20% of the screens' backend is ported (17 of 87 channels; step 3 done)** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **started, about 23% of the screens' backend is ported (20 of 87 channels; steps 1 to 4 done)** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -43,7 +43,7 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 1 done | process manager, Bedrock args, log bounds | serverProcess 180, bedrock args, quitGate 35 | everything else needs it |
 | 2 done | bridge, shell, profiles (read), catalog, state events | preload 186, serverProfiles 233 | lets the screens run |
 | 3 done | account + Discord gate, token storage (DPAPI), session, address backup | appAccount 198, discordGate 64, token 158, identityBackup | the gate guards `server:start` |
-| 4 | Java detection and install | javaCheck 87, javaInstall 268 | needed to start a real server |
+| 4 done | Java detection and install, automatic restart on a newer Java | javaCheck 87, javaInstall 268 | needed to start a real server |
 | 5 | server install, versions, import, profiles (write) | serverInstall 303, mcVersions 109, jarVersion 106, serverProfiles | creating servers |
 | 6 | settings, templates, whitelist, files, accounts (cracked mode) | serverSettings 175, whitelist 173, serverFiles 110, accounts 191 | day-to-day management |
 | 7 | backups | backups 536, backupService 227 | needs zip with traversal checks |

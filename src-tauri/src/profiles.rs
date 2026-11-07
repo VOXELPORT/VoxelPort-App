@@ -25,6 +25,22 @@ fn load(data_dir: &Path) -> Vec<Value> {
     }
 }
 
+/// Remembers that a server needs at least this Java (after the server itself said so). Only that one field of that one
+/// entry changes; every other entry and field is written back exactly as it was read. Returns false if there is no such
+/// entry, the number is out of range, or the file cannot be rewritten.
+pub fn set_java_major(data_dir: &Path, id: &str, major: u32) -> bool {
+    if !(8..=99).contains(&major) {
+        return false;
+    }
+    let file = data_dir.join(FILE);
+    let Ok(text) = std::fs::read_to_string(&file) else { return false };
+    let Ok(mut doc) = serde_json::from_str::<Value>(&text) else { return false };
+    let Some(entry) = doc.get_mut("servers").and_then(Value::as_array_mut).and_then(|a| a.iter_mut().find(|p| p.get("id").and_then(Value::as_str) == Some(id))) else { return false };
+    entry["javaMajor"] = Value::from(major);
+    let Ok(out) = serde_json::to_string_pretty(&doc) else { return false };
+    voxelport_core::atomic_write(&file, out.as_bytes()).is_ok()
+}
+
 /// A JSON integer within [lo, hi].
 fn int_in(v: &Value, lo: i64, hi: i64) -> bool {
     match v {
@@ -166,5 +182,31 @@ mod tests {
         assert!(get(&dir, "zzz").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
-}
 
+    #[test]
+    fn remembering_a_java_major_changes_only_that_one_field() {
+        let dir = std::env::temp_dir().join(format!("vp-profiles-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut a = good();
+        let mut b = good();
+        a["id"] = json!("a");
+        b["id"] = json!("b");
+        b["somethingNew"] = json!({ "kept": true }); // a field this build does not know must survive
+        std::fs::write(dir.join(FILE), serde_json::to_string(&json!({ "version": 2, "servers": [a.clone(), b.clone()], "extra": 7 })).unwrap()).unwrap();
+
+        assert!(set_java_major(&dir, "b", 25));
+        let after: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(FILE)).unwrap()).unwrap();
+        assert_eq!(after["servers"][0], a, "the other entry is untouched");
+        assert_eq!(after["servers"][1]["javaMajor"], json!(25));
+        assert_eq!(after["servers"][1]["somethingNew"], json!({ "kept": true }));
+        assert_eq!((after["version"].clone(), after["extra"].clone()), (json!(2), json!(7)));
+        assert!(is_valid(&after["servers"][1]));
+
+        assert!(!set_java_major(&dir, "nope", 25), "no such server");
+        assert!(!set_java_major(&dir, "a", 7) && !set_java_major(&dir, "a", 100), "out of range");
+        std::fs::write(dir.join(FILE), "{ broken").unwrap();
+        assert!(!set_java_major(&dir, "a", 21), "a corrupt store is never rewritten");
+        assert_eq!(std::fs::read_to_string(dir.join(FILE)).unwrap(), "{ broken");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

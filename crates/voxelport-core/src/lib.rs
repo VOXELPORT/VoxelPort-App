@@ -6,7 +6,9 @@ pub mod bedrock;
 mod fsutil;
 pub mod gate;
 pub mod identity;
+pub mod java;
 pub mod log_buffer;
 pub mod server_process;
 
+pub use fsutil::atomic_write;
 pub use server_process::{Event, EventReceiver, ServerProcess, StartConfig, Status, StopPolicy};

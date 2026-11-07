@@ -49,6 +49,7 @@ Starting a server goes through the real Discord gate: a fresh install is blocked
 |---|---|
 | `VOXELPORT_ACCOUNTS_URL` | use this accounts service instead of `https://accounts.voxelport.in` |
 | `VOXELPORT_NO_BROWSER=1` | the app follows the sign-in URL itself instead of opening a browser tab |
+| `VOXELPORT_JAVA_API` | use this Adoptium-style API (plain HTTP on 127.0.0.1 only) instead of the real one |
 
 `tools/fake-accounts.mjs` is a stand-in accounts service that checks PKCE like the real one. `tools/e2e-gate.mjs` starts
 it, launches the debug build, and drives the whole gate through the real window (20 checks). To exercise server start
@@ -59,7 +60,15 @@ copy target\debug\vp-fake-server.exe C:\some\test\folder\java.exe
 node tools/e2e-gate.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" C:\some\test\folder
 ```
 
-It deletes only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
+`tools/e2e-java.mjs` does the same for Java: a stand-in Adoptium (`tools/fake-adoptium.mjs`) serves a real zip whose
+`java.exe` is the test stand-in, the stand-in on the PATH claims to be Java 8, and the script checks detection, the
+automatic install, narration, the failure paths and the automatic restart on a newer Java (24 checks):
+
+```
+node tools/e2e-java.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" "%CD%\target\debug\vp-fake-server.exe"
+```
+
+Both scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
 
 ## Release build

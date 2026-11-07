@@ -1,7 +1,7 @@
 # Test results
 
-Run on 2026-11-07 with `cargo test --workspace` (Rust 1.99.1, Windows 11). **85 tests, 85 passed, 0 failed**, plus a
-20-check end-to-end run of the Discord gate through the real window (below). The process-manager integration tests
+Run on 2026-11-07 with `cargo test --workspace` (Rust 1.99.1, Windows 11). **111 tests, 111 passed, 0 failed**, plus a
+20-check and a 24-check end-to-end run through the real window (below). The process-manager integration tests
 were also run three times in a row earlier to check for flakiness; all passed each time.
 
 ## Automated (Rust)
@@ -10,7 +10,9 @@ were also run three times in a row earlier to check for flakiness; all passed ea
 |---|---|---|
 | `voxelport-core` unit (process, Bedrock, log buffer) | 11 | Bedrock/NetherNet arguments (local, public, IPv6, bad ports and hosts); bounded log buffer (newest lines kept, cut on a character boundary); chat cannot fake a join; fixed argument list with only JVM options before `-jar`; refusal of relative folders, wrong Java names, odd jar names, bad RAM |
 | `voxelport-core` integration (`tests/process.rs`, a stand-in server, no Java) | 12 | start then online on the "Done" line; graceful stop ending "stopped" with exit 0; a server that ignores `stop` is killed after the grace period and still counts as a stop; unexpected exit is a crash with its code; joins and leaves tracked in order and reset on exit; chat cannot fake a join; newline cannot smuggle a second command and the player buttons are validated; 200,000 lines of output stay bounded and the stop still completes; one 3 MB line is cut, not buffered; only one server at a time and restart after exit; a missing program is reported as a crash with a message; a refused start says why |
-| `voxelport-tauri` unit | 10 | profile validation (valid, broken, optional fields, corrupt or missing store); RAM recommendation steps equal Electron's; memory read; catalog snapshot shape; only exact discord.gg invites open; backup error wording; DPAPI round trip (rejects a foreign blob) |
+| `voxelport-core` unit: Java (`java.rs`) | 12 | ported from `javaCheck.test.js`, `javaInstall.test.js`: each Minecraft era's Java, Paper/Fabric/JVM messages, ordinary output ignored, banners in both numbering schemes, exact-then-closest-newer lookup, half-installed folders ignored, host allow-list |
+| `voxelport-core` integration (`tests/java_install.rs`, scripted Adoptium over a local socket) | 13 | **new** (Electron had none): verified install with progress, no second download, wrong or malformed checksum, zip-slip entries (`../`, absolute, drive letter, backslash), archive without java, oversized archive, off-list link and redirect hop, relative redirect, HTTP error, endless redirect, JDK fallback, nothing published |
+| `voxelport-tauri` unit | 11 | profile validation (valid, broken, optional fields, corrupt or missing store); RAM recommendation steps equal Electron's; memory read; catalog snapshot shape; only exact discord.gg invites open; backup error wording; DPAPI round trip (rejects a foreign blob) |
 
 | `voxelport-core` unit: gate (`gate.rs`) | 12 | ported from Electron's `discordGate.test.js`: new/existing installs, grace by server time, clock set back, 7-day offline hold, rejected session, signed-out never rescued by fail-open, install record kept once |
 | `voxelport-core` unit: token and backup (`identity.rs`) | 21 | ported from `token.test.js`, `identityBackup.test.js`: first run, plaintext to encrypted without changing the value, locked store never overwrites the file and comes back, no pile-up of copies, masking, the **fixed vector shared with Electron and Android**, NFC passphrases, wrong passphrase/changed blob/wrong address/odd shapes refused, passphrase rules |
@@ -42,11 +44,23 @@ only), wrong passphrase refused, right passphrase restores, delete; the session 
 re-blocking when the Discord server no longer has the member; sign-out clearing the account; refusal text following the
 Hinglish setting.
 
+## End-to-end: Java (`tools/e2e-java.mjs`, 24 checks, 24 passed)
+
+Real debug window, stand-in accounts service, a stand-in Adoptium serving a real zip whose `java.exe` is the test stand-in, and a
+stand-in on the PATH that claims to be Java 8. Covers: `app:versions` and `java:check` (needs 21, has 8, managed or not, the path
+never reaches the page); a start that needs Java 21 shows "starting", narrates the download, installs once, comes online and
+stops cleanly with no server left active; a second start downloads nothing; a wrong checksum is refused and leaves nothing behind;
+a start that cannot get Java says why (no doubled full stop) and leaves nothing active; `java:install` with progress events;
+and a server that prints "requires Java 27" and exits is fixed once on its own (installs 27, remembers it in the profile, same
+server active again).
+
 ## Not tested
 
 - Closing the window while a server runs (the quit handler is written; the stop-and-wait logic is covered by the core
   tests, but a real window close was not exercised).
 - A real Minecraft server, real Java, Bedrock/Geyser startup.
+- A real Temurin download from the real Adoptium (the stand-in is used; a real run needs the internet and ~50 MB).
+- Linux/macOS Java install (not built).
 - Server installation, backups and restore, add-ons, the relay tunnel: **not ported**, so not testable.
 - The real accounts service and a real Discord sign-in (the stand-in is used; a real run needs the user's own Discord).
 - Reading Electron's `safeStorage` files (different format, see MIGRATION_PLAN.md risks).
