@@ -194,4 +194,10 @@
     install: () => call('update:install'),
   },
 };
+  // Added by this build (not in the Electron preload): bringing the previous app's data over, once, on the person's say-so.
+  window.vp.legacyImport = {
+    detect: () => call('legacy:detect'),
+    run: () => call('legacy:run'),
+    dismiss: () => call('legacy:dismiss'),
+  };
 })();

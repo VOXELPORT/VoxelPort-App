@@ -7,6 +7,7 @@
   <title>VoxelPort</title>
   <script src="theme-init.js"></script>
   <script src="tauri-bridge.js"></script>
+  <script src="legacy-import.js"></script>
   <script src="bedrock-server.js"></script>
   <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -21,6 +22,15 @@
   </header>
 
   <div id="discordBanner" class="discord-banner hidden" role="status"></div>
+  <div id="legacyBanner" class="update-banner hidden" role="status" style="flex-wrap:wrap">
+    <span id="legacyBannerText"></span>
+    <span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="legacyBringBtn" class="ghost small" type="button">Bring it over</button>
+      <button id="legacyLaterBtn" class="link-btn" type="button">Not now</button>
+      <button id="legacyNeverBtn" class="link-btn" type="button">Don't ask again</button>
+      <button id="legacyCloseBtn" class="ghost small hidden" type="button">OK</button>
+    </span>
+  </div>
   <section id="discordGate" class="discord-gate hidden" role="dialog" aria-modal="true" aria-labelledby="discordGateTitle"></section>
 
   <main id="app">

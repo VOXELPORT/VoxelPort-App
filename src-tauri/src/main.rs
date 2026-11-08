@@ -9,6 +9,7 @@ mod discord;
 mod insights;
 mod ipc;
 mod javasetup;
+mod legacyimport;
 
 mod secrets;
 mod serverconfig;
@@ -147,7 +148,11 @@ fn main() {
     tauri::Builder::default()
         // One copy of the app at a time (two would share this device's token and fight over the same ports). Starting it again brings the
         // running window to the front instead. This plugin must be registered first.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // The previous app's "update" button starts this app again while it is already open (the installer starts a copy of its own first).
+            if legacyimport::requested(&args) {
+                legacyimport::start_handoff(app);
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();
@@ -213,6 +218,10 @@ fn main() {
                 last_refresh: Mutex::new(Some(Instant::now())),
             });
             tunnelsetup::load(&app.state::<AppState>());
+            // Started by the previous app's "update" button: bring its data over at once (see legacyimport.rs).
+            if legacyimport::requested(&std::env::args().collect::<Vec<_>>()) {
+                legacyimport::start_handoff(app.handle());
+            }
             appmisc::watch_output(app.handle());
             // Updates: a check shortly after start, then every few hours.
             let handle = app.handle().clone();

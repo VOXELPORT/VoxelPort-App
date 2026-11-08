@@ -10,7 +10,7 @@ use voxelport_core::{bds, StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{addonsetup, appmisc, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
+use crate::{addonsetup, appmisc, legacyimport, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -91,6 +91,10 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "supporterID:copy" => Ok(appmisc::supporter_id_copy(state)),
         "community:discord" => Ok(appmisc::community_discord()),
         "diagnostics:export" => Ok(appmisc::diagnostics_export(state).await),
+        // Bringing the previous app's data over (see legacyimport.rs).
+        "legacy:detect" => Ok(legacyimport::detect(state).await),
+        "legacy:run" => Ok(legacyimport::run(state).await),
+        "legacy:dismiss" => Ok(legacyimport::dismiss(state)),
         "update:state" => Ok(updatesetup::update_state(state)),
         "update:check" => Ok(updatesetup::update_check(state).await),
         "update:install" => Ok(updatesetup::update_install(state).await),

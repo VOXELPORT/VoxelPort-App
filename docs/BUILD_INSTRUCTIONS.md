@@ -101,7 +101,17 @@ node tools/e2e-bedrock-server.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPD
 
 It needs ports 8797 and 8799 free, and removes the backups and the wizard's server folder it made. One more test asks Mojang's real link service which Bedrock server is current (one small request, nothing is downloaded); it is skipped by default: `cargo test -p voxelport-core --test bds -- --ignored`.
 
-`ui/` is built, not edited: `node tools/build-ui.js` copies the pinned Electron renderer and then applies `ui-extra/` (new files) and `tools/ui-patches-bedrock.js` (the few anchored changes the Bedrock type makes). A patch whose anchor is missing stops the build, so a change in the pinned renderer can never turn one into a silent no-op. Rebuild the app (`cargo build`) afterwards: the screens are embedded in it.
+`ui/` is built, not edited: `node tools/build-ui.js` copies the pinned Electron renderer and then applies `ui-extra/` (new files) and every `tools/ui-patches-*.js` (the few anchored changes the Bedrock type and the data-import banner make). It also adds this build's three extra channels (`legacy:*`) to the allow-list and the page bridge. A patch whose anchor is missing stops the build, so a change in the pinned renderer can never turn one into a silent no-op. Rebuild the app (`cargo build`) afterwards: the screens are embedded in it.
+
+`tools/e2e-legacy-import.mjs` covers bringing the previous (Electron) app's data over (45 checks; test folder `...\e2e-legacy`; no stand-in server needed):
+
+```
+node tools/e2e-legacy-import.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" C:\Users\<you>\vp-tauri-test\e2e-legacy
+```
+
+It builds a synthetic old-app folder with `tools/legacy-fixture.mjs` (a real Windows-DPAPI-protected key made by PowerShell, a made-up token sealed as `v10` + AES-GCM, servers, backups, settings) and checks the banner, the refusal while a public address runs, the import, that the old folder is byte-for-byte unchanged, "not again", "don't ask again", and an old ID that cannot be opened. It needs ports 8799 free. `tools/smoke-release.mjs` runs the same import in the **release** build, with the app told a different `APPDATA` so it looks at a synthetic old app and never at yours.
+
+A development build only looks for the old app where `VOXELPORT_LEGACY_DIR` points. To try it on your own real old app with a development build, set it on purpose (`set VOXELPORT_LEGACY_DIR=%APPDATA%\voxelport-app`); the release build looks in `%APPDATA%\voxelport-app` by itself.
 
 The six scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
@@ -141,7 +151,7 @@ node tools/smoke-release.mjs release-out\VoxelPort_<version>_x64-setup.exe C:\Us
 
 Installs silently with `/NS` (no shortcuts, so another VoxelPort's desktop and Start menu shortcuts, which share the name, are never touched), checks what it wrote, starts the
 installed app with no test switches, checks its window, the version, its separate data folder, that the page cannot call the updater or an unknown channel, the one-copy
-lock and the update check, then uninstalls and checks everything it made is gone and that other VoxelPort installs are unchanged (18 checks). It refuses to run if this kind
+lock and the update check, then uninstalls and checks everything it made is gone and that other VoxelPort installs are unchanged (22 checks, including the data import against a synthetic old app). It refuses to run if this kind
 of VoxelPort is already installed or its data folder exists, and removes only what it made. The app does reach the real accounts service (public status) and GitHub (the
 update manifest), as a person's copy would; it never signs in.
 

@@ -17,6 +17,7 @@ mod fsutil;
 pub mod gate;
 pub mod identity;
 pub mod java;
+pub mod legacy_import;
 pub mod log_buffer;
 pub mod mc_versions;
 pub mod modpack;

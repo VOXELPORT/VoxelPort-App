@@ -52,6 +52,12 @@ ${allowed.map((c) => `    '${c}',`).join('\n')}
   ]);
 
   window.vp = {${converted}};
+  // Added by this build (not in the Electron preload): bringing the previous app's data over, once, on the person's say-so.
+  window.vp.legacyImport = {
+    detect: () => call('legacy:detect'),
+    run: () => call('legacy:run'),
+    dismiss: () => call('legacy:dismiss'),
+  };
 })();
 `;
 fs.writeFileSync(path.join(ui, 'tauri-bridge.js'), bridge);
@@ -71,7 +77,8 @@ fs.writeFileSync(indexPath, html);
 // can never turn one into a silent no-op.
 for (const f of fs.readdirSync(path.join(root, 'ui-extra'))) fs.copyFileSync(path.join(root, 'ui-extra', f), path.join(ui, f));
 const touched = new Map();
-for (const p of require('./ui-patches-bedrock.js')) {
+const patches = fs.readdirSync(__dirname).filter((f) => /^ui-patches-.+\.js$/.test(f)).sort().flatMap((f) => require(`./${f}`));
+for (const p of patches) {
   const file = path.join(ui, p.file);
   const text = touched.get(file) ?? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   if (!text.includes(p.find)) throw new Error(`ui patch: anchor not found in ${p.file}: ${p.find.slice(0, 80)}`);
@@ -80,7 +87,9 @@ for (const p of require('./ui-patches-bedrock.js')) {
 for (const [file, text] of touched) fs.writeFileSync(file, text);
 
 // --- channel allow-list for the Rust side ------------------------------------------------------------------
-const channels = [...new Set([...preload.matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]))].sort();
+// The channels the Electron preload knows, plus the ones this build adds (bringing the previous app's data over).
+const EXTRA_CHANNELS = ['legacy:detect', 'legacy:dismiss', 'legacy:run'];
+const channels = [...new Set([...[...preload.matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]), ...EXTRA_CHANNELS])].sort();
 fs.writeFileSync(path.join(root, 'src-tauri', 'src', 'channels.in'), '&[\n' + channels.map((c) => `    "${c}",`).join('\n') + '\n]\n');
 
 console.log(`ui/ built: ${channels.length} call channels, ${allowed.length} event channels`);

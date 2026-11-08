@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { sleep, reporter, kill, launch, connect } from './e2e-lib.mjs';
+import { ID_A, newToken, vpIdOf, makeOldApp, snapshot as treeSnapshot } from './legacy-fixture.mjs';
 
 const [installerArg, installDirArg] = process.argv.slice(2);
 const installer = installerArg && path.resolve(installerArg);
@@ -28,6 +29,11 @@ const desktop = path.join(os.homedir(), 'Desktop');
 const startMenu = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs');
 const snapshot = (dir) => { try { return fs.readdirSync(dir).sort().map((n) => `${n}:${fs.statSync(path.join(dir, n)).mtimeMs}`); } catch { return []; } };
 
+const roaming = path.join(path.dirname(installDir), 'smoke-roaming');
+const oldToken = newToken();
+fs.rmSync(roaming, { recursive: true, force: true });
+const oldApp = makeOldApp(roaming, 'voxelport-app', oldToken);
+const oldSnapshot = treeSnapshot(oldApp);
 const defaultDir = path.join(process.env.LOCALAPPDATA, product);
 if (fs.existsSync(defaultDir)) throw new Error(`${defaultDir} exists: refusing to run (an installer that ignored the folder would use it).`);
 if (fs.existsSync(appData) || fs.existsSync(localData)) throw new Error(`${identifier} already has data on this PC: refusing to run (it would be a real person's).`);
@@ -41,7 +47,9 @@ const before = { desktop: snapshot(desktop), startMenu: snapshot(startMenu) };
 let app = null, page = null;
 try {
   // ── Install ──────────────────────────────────────────────────────────────
-  execFileSync(installer, ['/S', '/NS', `/D=${installDir}`], { stdio: 'ignore', timeout: 120000 });
+  // Every process this test starts is told the synthetic APPDATA, the installer too (it starts a copy of the app itself): the release build looks
+  // for the previous app there, so none of them can see a real person's old data.
+  execFileSync(installer, ['/S', '/NS', `/D=${installDir}`], { stdio: 'ignore', timeout: 120000, env: { ...process.env, APPDATA: roaming } });
   where = installedAt() || installDir;
   const exe = path.join(where, 'voxelport-tauri.exe');
   check('the installer installs silently and puts the program and an uninstaller in one folder', fs.existsSync(exe) && fs.existsSync(path.join(where, 'uninstall.exe')), where);
@@ -56,7 +64,9 @@ try {
   check('the installed program is small', fs.statSync(exe).size < 20 * 1024 * 1024, `${(fs.statSync(exe).size / 1048576).toFixed(1)} MB`);
 
   // ── Run the installed app ────────────────────────────────────────────────
-  app = launch(exe, { env: {}, cdpPort: 9555 });
+  // The release build looks for the previous app in %APPDATA%oxelport-app. This run points it at a synthetic one (the app is told a different
+  // APPDATA, only for the lookup), so no real person's old data is ever read by a test.
+  app = launch(exe, { env: { APPDATA: roaming }, cdpPort: 9555 });
   page = await connect(9555);
   const info = await page.ev('vp.info()');
   check('the installed app opens its window and the page can talk to it', info && info.version === version && typeof info.supporterID === 'string' && info.supporterID.length === 12, JSON.stringify(info));
@@ -74,7 +84,14 @@ try {
   const update = await page.ev('vp.update.check()');
   check('the update check works (against the real GitHub address; with nothing published it reports an error or "up to date", never "unsupported")', update.status !== 'unsupported' && update.reason === undefined, JSON.stringify(update));
   check('and nothing is waiting to be installed', JSON.stringify(await page.ev('vp.update.state()')) === '{"readyToInstall":false}');
-  check('a second copy ends at once (one at a time)', await new Promise((resolve) => { const second = spawn(exe, [], { stdio: 'ignore' }); const t = setTimeout(() => { kill(second); resolve(false); }, 10000); second.on('exit', () => { clearTimeout(t); resolve(true); }); }));
+  // Bringing the previous app's data over, in the release build, against the synthetic old app.
+  const found = await page.ev('vp.legacyImport.detect()');
+  check('the release build finds the previous app by itself and counts what is there (no secret on the screen)', found.available === true && found.identity === 'new' && found.vpId === vpIdOf(oldToken) && found.newServers === 1 && found.backupFiles === 2 && !JSON.stringify(found).includes(oldToken), JSON.stringify(found));
+  const brought = await page.ev('vp.legacyImport.run()');
+  check('the import brings it over', brought.ok === true && brought.identity === 'imported' && brought.files.serversAdded === 1 && brought.files.backupsLinked + brought.files.backupsCopied === 2 && brought.vpId === vpIdOf(oldToken), JSON.stringify(brought));
+  check('this PC now has the old VoxelPort ID and the server', (await page.ev('vp.info()')).supporterID === vpIdOf(oldToken) && (await page.ev('vp.server.list()')).some((p) => p.id === ID_A));
+  check('and the old app\'s folder is untouched', treeSnapshot(oldApp) === oldSnapshot);
+  check('a second copy ends at once (one at a time)', await new Promise((resolve) => { const second = spawn(exe, [], { stdio: 'ignore', env: { ...process.env, APPDATA: roaming } }); const t = setTimeout(() => { kill(second); resolve(false); }, 10000); second.on('exit', () => { clearTimeout(t); resolve(true); }); }));
   page.close(); page = null;
   kill(app); app = null;
   await sleep(1500);
@@ -95,6 +112,7 @@ check('the person\'s own data is kept by a plain uninstall', fs.existsSync(appDa
 // What this test made, and only that (checked absent before it began).
 fs.rmSync(appData, { recursive: true, force: true });
 fs.rmSync(localData, { recursive: true, force: true });
+fs.rmSync(roaming, { recursive: true, force: true });
 fs.rmSync(installDir, { recursive: true, force: true });
 if (where !== installDir && path.resolve(where).toLowerCase() === defaultDir.toLowerCase()) fs.rmSync(where, { recursive: true, force: true }); // the default folder, which this test checked did not exist
 process.exit(done());

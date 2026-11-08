@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **all 87 of 87 channels ported; steps 1 to 11 done (installer, signing, release scripts). First release candidate: 2.0.0-beta.1** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **all 87 of 87 channels ported; steps 1 to 12 done (installer, signing, release scripts, bringing the previous app's data over); step 13 adds the Bedrock Dedicated Server, which Electron never had. First release candidate: 2.0.0-beta.1 plus those two** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -51,6 +51,8 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 9 done | add-ons, modpacks, Bedrock install, runtime info, crash explain, perf | addons 272, modpackImport 239, bedrock 284, runtimeInfo 98, crashExplain 169, perfMonitor 168 | Modrinth and Geyser downloads, checksums. CPU and memory are read from the operating system directly (no PowerShell process); a chat line can no longer pass for the server's `tick query` answer or its lag warning |
 | 10 done | updater, support, presence, notices, diagnostics, voice chat, one-copy lock | updater 120, support 159, discordPresence 158, notice 99, diagnostics 62, voiceSetup 78 | polish and release plumbing. The updater is Tauri's (minisign signature, bound to the version, so a validly signed older release cannot be passed off as a newer one); it says `not-configured` in release builds until a signing key is set. Voice chat now installs its plugin by the real Modrinth id (Electron's install of a missing voice plugin always failed). A player's chat can no longer pass for the relay's or the server's own lines |
 | 11 done | installer, signing, release scripts | n/a | the NSIS installer (3.04 MiB, per-user, direct download only, no Microsoft Store build), the update signing key (generated, kept outside the repository), `tools/build-release.mjs`, and `tools/smoke-release.mjs` (18 checks of the real installer). Not done: code signing (needs a certificate) and moving existing Electron data across (below) |
+| 12 done | **bringing the previous app's data over** (the Electron-to-Tauri data import) | token 158, appAccount 198 (the file formats), serverProfiles, backups, main.js (preferences, custom address), bedrockEndpoint 48 | a one-time, opt-in banner. Reads Chromium's `os_crypt` format one way (see below) and brings the VoxelPort ID, the server list, its backups and the settings. New: 3 channels the Electron app does not have (`legacy:detect`, `legacy:run`, `legacy:dismiss`), listed apart in FEATURE_PARITY.md |
+| 13 done | the Bedrock Dedicated Server as a server type (beyond Electron) | none (new) | see BEDROCK_SERVER.md. Merged into `main` as `b0faebb`; confirmed with a real Bedrock client through the real relay |
 
 The 57 Electron test files are the specification for steps 3 to 10: each module's tests should be ported with it.
 
@@ -60,14 +62,39 @@ The 57 Electron test files are the specification for steps 3 to 10: each module'
   The existing Store listing is the Electron app and stays what it is; the Store, not this build, updates it. (Tauri has no MSIX target anyway.)
 - **Auto-update.** `electron-updater` and `tauri-plugin-updater` use different manifests and signing keys. Installed
   Electron apps cannot update into Tauri by themselves; a one-time reinstall or a bridge release is needed.
-- **Stored secrets.** The Electron app encrypts the device token and Discord session with `safeStorage`, which on Windows
-  is Chromium's `os_crypt` (an AES-GCM key in `Local State`, itself DPAPI-protected), **not** plain DPAPI. The Tauri build
-  stores its own with plain DPAPI (`CryptProtectData`, per Windows user, plus a fixed entropy string), so it cannot read
-  Electron's files today and vice versa. A one-way reader for the `os_crypt` format (read `Local State`, unprotect the key,
-  AES-GCM decrypt the `v10` blob) is needed before the Tauri build may share the Electron app's data folder. Not started. **This now matters**: the release build
-  has its own identity (`in.voxelport.app`), so it starts with a **new** device token. Someone moving from the Electron app keeps their address, custom name and
-  supporter perks (all tied to the token) only by restoring the encrypted address backup (their Discord account plus the passphrase; ported) or by this reader
-  being built. The reader would run once, on the person's own PC and with their consent, and is the main thing between this build and replacing the Electron app.
+- **Moving from the Electron app: built (step 12).** The release build has its own identity (`in.voxelport.app`), so on its own it starts with a
+  **new** device token, and a person's address, custom name and supporter perks are all tied to the *old* one. A banner now offers to bring them over, once, on
+  the person's say-so (details below). What it replaces is the old "restore from the Discord address backup" workaround, which still works as the fallback.
+- **How the old data is read.** The Electron app stores its device token with `safeStorage`, which on Windows is Chromium's `os_crypt`: an AES-256 key in
+  `Local State` (`os_crypt.encrypted_key`, base64 of `"DPAPI"` plus the key protected by Windows DPAPI for the signed-in user, no extra entropy), and the token
+  as `"v10"` + a 12-byte nonce + AES-GCM ciphertext and tag. This build stores its own secrets differently (plain DPAPI with a fixed entropy string), so it cannot
+  read the old files without a reader for that format: `voxelport_core::legacy_import` (the format and the copying, tested on synthetic data) with
+  `ChromiumKeyUnprotect` (the DPAPI half, in `src-tauri/src/secrets.rs`). It only opens; nothing in this build writes that format, and **nothing in the old app's
+  folder is ever written, moved or deleted**. Only the same Windows user can open it, which is DPAPI's own rule.
+- **What comes over, and what does not.** *Comes:* the device token (so the address, custom name and perks carry over); the server list (the profiles, by
+  reference: the server folders themselves stay where they are); each server's backups (hard-linked when the disk allows, so they take no extra space, otherwise
+  copied; only files this app made); the region and Discord-presence preferences; the custom-address cache; the Bedrock-address cache. It is additive: whatever the
+  new app already has wins, a second run adds only what is missing, and a server whose folder is gone, or whose id is not one this app makes, is left out.
+  *Does not come:* the Discord sign-in session (signing in again is one click), the managed Java (fetched again when a server needs it), the old Discord-gate record,
+  the theme (this build does not keep one yet).
+- **Rules the import keeps.** It runs only when the person presses the button (the banner only counts what is there). It refuses while a public address is running (the
+  device token would change under it). The token that is replaced is kept beside the new one (`device-token.unreadable-<time>.json`), so the old state can be recovered by
+  hand. The token is opened in memory to show its 12-character VoxelPort ID and to tell whether it differs; it is never shown in full, written elsewhere or sent. If the
+  token cannot be opened on this PC (another Windows account made it), the servers and settings still come and the person is told to restore from their Discord backup. A
+  **development build finds no old app unless `VOXELPORT_LEGACY_DIR` names a folder**, so tests and development never read a real person's data.
+- **The old app's "update" button (the other half).** The Electron app gets a final version with a "VoxelPort has moved" banner and screen and one button (in `VoxelPort-App`:
+  `src/main/migrateToTauri.js`, `src/renderer/migrate-ui.js`). The button downloads this app's installer from the update manifest above, checks it (https from this
+  project's GitHub release path only, a size cap, and a signature made with the update key, for that file name and that version), installs it silently, starts it with
+  **`--migrate-from-electron`**, waits for the answer file **`legacy-handoff.json`** in this app's data folder (`ok`, `identity`, `error`), and only if `ok` is true removes
+  the old app (its own uninstaller, after it has quit; shortcuts the old uninstaller removes are put back pointing here). This app, started with the switch, brings the
+  data over at once (the same code and the same rules as the banner's button, including "not while a public address runs") and shows what came, once. The Microsoft Store
+  copy cannot install another app, so it only points to the download page; a portable copy installs and imports but cannot remove itself. Nothing is offered until the
+  manifest is reachable, i.e. until this app is published. Tested for real: `VoxelPort-App/tools/e2e-migrate.mjs`.
+- **Not yet verified.** Everything above runs against synthetic old-app folders made the way Electron makes them (a real DPAPI-protected key, a v10 token), in the Rust tests,
+  in a real-window test, and in the real installer's smoke test. Not yet run against a **real** Electron install's files, nor against the **Microsoft Store** copy of the
+  Electron app (the lookup also tries `%LOCALAPPDATA%\Packages\<package>\LocalCache\Roaming\voxelport-app`, which is assumed from how Store apps virtualise Roaming).
+  Anything the Electron app writes under a newer `os_crypt` scheme than `v10` would be reported as "cannot be opened", never guessed at. Two apps listing the same server folder
+  must not run it at once; the confirmation says so.
 - **Web view differences.** Electron ships its own Chromium; Tauri uses the system WebView2. The renderer's CSS and
   fonts matched in the screens captured so far, but every screen needs a visual pass.
 - **Size.** Measured on the finished backend: the program is 7.63 MiB and the installer 3.04 MiB (PERFORMANCE_COMPARISON.md). Idle memory and start-up are

@@ -14,9 +14,9 @@ export function reporter() {
 
 export const kill = (child) => { try { execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); } catch {} };
 
-export function launch(exe, { env = {}, cdpPort = 9333 } = {}) {
+export function launch(exe, { env = {}, cdpPort = 9333, args = [] } = {}) {
   const full = { ...process.env, ...env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}` };
-  return spawn(exe, [], { stdio: 'ignore', env: full });
+  return spawn(exe, args, { stdio: 'ignore', env: full });
 }
 
 /** Connects to the app's page and waits for window.vp. `ev(expr)` evaluates an async expression in the page. */

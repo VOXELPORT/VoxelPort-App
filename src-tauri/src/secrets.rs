@@ -2,8 +2,8 @@
 //!
 //! Secrets (the device token and the Discord session) are encrypted with Windows DPAPI, bound to the signed-in
 //! Windows user. NOTE: this is **not** the format Electron's `safeStorage` writes (that is Chromium's `os_crypt`: an
-//! AES key kept in `Local State`, itself DPAPI-protected). A Tauri build that replaces the Electron app on the same
-//! data folder would need a one-way reader for that format; until then this build keeps its own separate files.
+//! AES key kept in `Local State`, itself DPAPI-protected). This build keeps its own separate files; the one-way reader that brings the old
+//! app's data across once, on the person's say-so, is `voxelport_core::legacy_import`, with [`ChromiumKeyUnprotect`] below as its DPAPI half.
 
 use voxelport_core::identity::SecretBox;
 
@@ -21,6 +21,12 @@ mod imp {
 
     fn blob(bytes: &[u8]) -> CRYPT_INTEGER_BLOB {
         CRYPT_INTEGER_BLOB { cbData: bytes.len() as u32, pbData: bytes.as_ptr() as *mut u8 }
+    }
+
+    /// For the test that makes a blob the way Chromium does.
+    #[cfg(test)]
+    pub fn take_for_test(out: CRYPT_INTEGER_BLOB) -> Vec<u8> {
+        take(out)
     }
 
     /// Copies the system-allocated output out and frees it.
@@ -51,6 +57,20 @@ mod imp {
         }
     }
 
+    /// Opens a DPAPI blob that Chromium (and so Electron's `safeStorage`) made for the signed-in Windows user: no extra entropy, which is how it
+    /// protects its `os_crypt` key. It only ever opens: this build writes nothing in that format.
+    pub struct ChromiumKeyUnprotect;
+
+    impl voxelport_core::legacy_import::KeyUnprotect for ChromiumKeyUnprotect {
+        fn unprotect(&self, bytes: &[u8]) -> Option<Vec<u8>> {
+            let input = blob(bytes);
+            let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: null_mut() };
+            // SAFETY: `input` points at a live byte slice for the call; no entropy or prompt is given (null, and the UI-forbidden flag); `out` is filled by the API.
+            let ok = unsafe { CryptUnprotectData(&input, null_mut(), null(), null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) };
+            (ok != 0).then(|| take(out))
+        }
+    }
+
     /// Opens `url` in the default browser. The URL is passed to the shell as one argument, never through `cmd`.
     pub fn open_url(url: &str) -> bool {
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -64,7 +84,17 @@ mod imp {
 }
 
 #[cfg(windows)]
-pub use imp::{open_url, Dpapi};
+pub use imp::{open_url, ChromiumKeyUnprotect, Dpapi};
+
+/// Nothing can be opened where there is no DPAPI, so an import finds the old token unreadable there.
+#[cfg(not(windows))]
+pub struct ChromiumKeyUnprotect;
+#[cfg(not(windows))]
+impl voxelport_core::legacy_import::KeyUnprotect for ChromiumKeyUnprotect {
+    fn unprotect(&self, _: &[u8]) -> Option<Vec<u8>> {
+        None
+    }
+}
 
 #[cfg(not(windows))]
 pub fn open_url(_url: &str) -> bool {
@@ -94,5 +124,24 @@ mod tests {
         assert!(!String::from_utf8_lossy(&enc).contains("secret_value"));
         assert_eq!(d.decrypt(&enc).as_deref(), Some("vp_secret_value_12345"));
         assert_eq!(d.decrypt(b"not a dpapi blob"), None);
+    }
+
+    /// Protects bytes the way Chromium does (no extra entropy), then opens them with the reader the import uses.
+    #[test]
+    fn the_chromium_key_reader_opens_what_chromium_style_protection_makes_and_refuses_the_rest() {
+        use voxelport_core::legacy_import::KeyUnprotect;
+        use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
+        let key = [42u8; 32];
+        let input = CRYPT_INTEGER_BLOB { cbData: key.len() as u32, pbData: key.as_ptr() as *mut u8 };
+        let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+        // SAFETY: `input` is a live slice for the call, `out` is filled by the API and freed by `take`.
+        let ok = unsafe { CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) };
+        assert_ne!(ok, 0);
+        let protected = imp::take_for_test(out);
+        assert_eq!(ChromiumKeyUnprotect.unprotect(&protected).as_deref(), Some(&key[..]));
+        assert_eq!(ChromiumKeyUnprotect.unprotect(b"not a dpapi blob"), None);
+        // This build's own secrets (made with its entropy) are not Chromium's: the reader does not open them.
+        let ours = Dpapi.encrypt("vp_secret_value_12345").unwrap();
+        assert_eq!(ChromiumKeyUnprotect.unprotect(&ours), None);
     }
 }

@@ -224,6 +224,18 @@ succeeds and says so, and the server keeps normal Minecraft accounts (never a ha
 - **Page-facing glue** (`src-tauri/src/discord.rs`): builds `discord:state`, re-checks every 15 minutes and when the window
   regains focus (at most once a minute), opens only exact `https://discord.gg/<code>` invites.
 
+## Bringing the previous app's data over (`legacy_import.rs`, `src-tauri/src/legacyimport.rs`, `ui-extra/legacy-import.js`)
+
+A one-time, opt-in import from the Electron app's folder (`%APPDATA%\voxelport-app`); the plan and the rules are in MIGRATION_PLAN.md (step 12).
+
+- `legacy_import.rs` (core, no window, tested on synthetic folders) reads Chromium's `os_crypt` format one way: the AES key from `Local State` (its DPAPI unprotect is supplied
+  by the shell through the `KeyUnprotect` trait, so everything else is plain and cross-platform), then `v10` + nonce + AES-GCM. It summarises what is there for the screen (counts, names, the
+  12-character ID; never the token) and copies the server list (`profiles::add_existing`, which keeps ids and timestamps), the backups (hard link, else copy), and the preferences and address caches.
+- `legacyimport.rs` (shell) finds the folder (a development build only where `VOXELPORT_LEGACY_DIR` says), keeps a one-line note (`legacy-import.json`) so it is offered once, refuses while a
+  public address runs, and swaps the live device token the way the Discord address restore does (the file it replaces is kept beside it).
+- Three channels, `legacy:detect`, `legacy:run` and `legacy:dismiss`, are added to the Electron preload's list by `tools/build-ui.js` (and the page gets `vp.legacyImport`); the banner is an anchored patch
+  plus one new file. FEATURE_PARITY.md lists them apart from the 87 the Electron app has.
+
 ## The Bedrock Dedicated Server (`bds.rs`, `bds_allowlist.rs`, and the Bedrock parts of `server_process.rs`, `backups.rs`, `settings.rs`)
 
 A server type of its own (`bedrock-server`), added after 2.0.0-beta.1; the whole story is in [BEDROCK_SERVER.md](BEDROCK_SERVER.md). The shape of it:
@@ -250,7 +262,7 @@ A server type of its own (`bedrock-server`), added after 2.0.0-beta.1; the whole
 - Downloads go through one allow-listed, size-capped client (checksummed wherever the publisher gives a checksum; Mojang gives none for the Bedrock
   server, so that one rests on the two allowed hosts and the archive checks), and every zip is read with path checks (done). Importing a folder, like
   importing a Java one, means Start runs what is in it (`bedrock_server.exe` instead of `server.jar`); the person chooses the folder and presses Start.
-  Not yet done: reading Electron's `os_crypt` secrets (planned with its module in MIGRATION_PLAN.md).
+  Electron's `os_crypt` secrets are read one way, only for the opt-in import, by `legacy_import.rs`.
 
 ## Not built, on purpose
 

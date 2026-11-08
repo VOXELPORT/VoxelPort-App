@@ -232,6 +232,23 @@ pub fn create(dir: &Path, input: &Value) -> Result<Value, String> {
     Ok(profile)
 }
 
+/// Adds a server that already has an id and timestamps (one brought over from the previous app), exactly as it was. Returns false, and changes
+/// nothing, when a server with that id or in that folder is already listed.
+pub fn add_existing(dir: &Path, profile: &Value) -> Result<bool, String> {
+    if !is_valid(profile) {
+        return Err("Invalid server profile.".into());
+    }
+    let mut doc = load_doc(dir);
+    let list = servers_mut(&mut doc);
+    let folder = profile["serverDir"].as_str().unwrap_or_default();
+    if list.iter().any(|p| id_of(p) == id_of(profile) || p["serverDir"].as_str().is_some_and(|d| d.eq_ignore_ascii_case(folder))) {
+        return Ok(false);
+    }
+    list.push(profile.clone());
+    write_doc(dir, &doc)?;
+    Ok(true)
+}
+
 /// Changes fields of one server. The id never changes; port and RAM are read as numbers; a null removes a field; the result must be valid.
 pub fn update(dir: &Path, id: &str, changes: &Map<String, Value>) -> Result<Value, String> {
     let mut doc = load_doc(dir);
