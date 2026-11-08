@@ -100,5 +100,7 @@ jobs:
         run: |
           gh release list --limit 200 --json tagName --jq '.[].tagName' | while read -r tag; do
             [ "$tag" = "$RELEASE_TAG" ] && continue
+            # The new (Tauri) app's releases (v2.*) live in this repo too and are never this build's to delete: its installer is what "update" downloads.
+            case "$tag" in v2.*) continue ;; esac
             gh release delete "$tag" --yes
           done
