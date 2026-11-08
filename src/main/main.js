@@ -19,6 +19,7 @@ const { readRuntimeInfo, readAllPlugins } = require('./runtimeInfo');
 const { ServerProcess } = require('./serverProcess');
 const { createQuitGate } = require('./quitGate');
 const { Updater } = require('./updater');
+const migrateToTauri = require('./migrateToTauri');
 const serverProfiles = require('./serverProfiles');
 const { isSafeRelayUrl } = require('./relayUrlSafety');
 const { isApprovedExternalUrl } = require('./externalLinkSafety');
@@ -770,6 +771,80 @@ ipcMain.handle('update:check', guarded(g, async () => {
   if (result.status === 'downloaded') send('update:downloaded', result.version);
   return result;
 }));
+
+// ─── Moving to the new VoxelPort (see migrateToTauri.js) ───────────────────────────────────────────────
+// A development run can be pointed at stand-ins (a local update server and key, a throwaway install folder and uninstaller) through
+// VOXELPORT_MIGRATE_TEST, a JSON object. A packaged app ignores it completely: it only ever uses the real address, key and folders.
+const migrationTesting = (() => {
+  if (app.isPackaged || !process.env.VOXELPORT_MIGRATE_TEST) return null;
+  try { return JSON.parse(process.env.VOXELPORT_MIGRATE_TEST); } catch { return null; }
+})();
+
+/** The server and the public address are stopped before the new app is installed (the old app is about to go). */
+async function stopForMigration() {
+  if (tunnel && tunnel.isLive()) {
+    const old = tunnel;
+    tunnelStartSeq++;
+    retireTunnel();
+    publicServerProfileId = null;
+    manualTunnelActive = false;
+    await waitForTunnelStopped(10000, old);
+  }
+  if (serverProc.child) {
+    stopRequested = true;
+    serverProc.stop();
+    await waitForServerStopped(STOP_WAIT_TIMEOUT_MS);
+    if (serverProc.child) throw new Error('The server is still shutting down.');
+  }
+  broadcastState();
+}
+
+const migration = migrateToTauri.createMigration({
+  fetch: (...args) => fetch(...args),
+  spawn: require('child_process').spawn,
+  platform: process.platform,
+  isPackaged: app.isPackaged || Boolean(migrationTesting),
+  windowsStore: Boolean(process.windowsStore),
+  env: process.env,
+  execPath: (migrationTesting && migrationTesting.oldExe) || process.execPath,
+  pid: process.pid,
+  uninstaller: migrationTesting ? migrationTesting.uninstaller : undefined,
+  manifestUrl: migrationTesting ? migrationTesting.manifestUrl : undefined,
+  publicKey: migrationTesting ? migrationTesting.publicKey : undefined,
+  installDir: migrationTesting ? migrationTesting.installDir : undefined,
+  installerArgs: migrationTesting ? migrationTesting.installerArgs : undefined,
+  newAppDataDir: migrationTesting ? migrationTesting.newAppDataDir : undefined,
+  allowAnyUrl: Boolean(migrationTesting),
+  shortcuts: {
+    desktop: migrationTesting ? migrationTesting.desktopShortcut : path.join(app.getPath('desktop'), 'VoxelPort.lnk'),
+    startMenu: migrationTesting ? migrationTesting.startMenuShortcut : path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'VoxelPort.lnk'),
+  },
+  tmpDir: (migrationTesting && migrationTesting.tmpDir) || path.join(os.tmpdir(), 'voxelport-migrate'),
+  beforeInstall: stopForMigration,
+  quit: () => app.quit(),
+});
+migration.on('progress', (event) => send('migrate:progress', event));
+
+ipcMain.handle('migrate:info', guarded(g, () => migration.info()));
+
+ipcMain.handle('migrate:start', guarded(g, async () => {
+  if (serverProc.child || (tunnel && tunnel.isLive())) {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: [say('Cancel', 'Cancel'), say('Stop it and update', 'Band karo aur update karo')],
+      defaultId: 1,
+      cancelId: 0,
+      message: serverProc.child
+        ? say('A managed server is currently running.', 'Ek managed server abhi chal raha hai.')
+        : say('The VoxelPort tunnel is currently public.', 'VoxelPort tunnel abhi public hai.'),
+      detail: say('Moving to the new VoxelPort stops it first. Continue?', 'Naye VoxelPort par jaane se pehle yeh band hoga. Aage badhein?'),
+    });
+    if (response !== 1) return { ok: false, cancelled: true };
+  }
+  return migration.start();
+}));
+
+ipcMain.handle('migrate:openPage', guarded(g, () => { shell.openExternal(migrateToTauri.DOWNLOAD_PAGE); return { ok: true }; }));
 
 // Applying a downloaded update quits and relaunches the app — never do that
 // silently while a managed server is running or the tunnel is public

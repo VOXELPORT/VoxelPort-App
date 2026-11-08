@@ -19,6 +19,10 @@
   </header>
 
   <div id="discordBanner" class="discord-banner hidden" role="status"></div>
+  <div id="moveBanner" class="move-banner hidden" role="status">
+    <span>VoxelPort has moved to a new app.</span>
+    <button id="moveBannerBtn" class="ghost small" type="button">See what's new</button>
+  </div>
   <section id="discordGate" class="discord-gate hidden" role="dialog" aria-modal="true" aria-labelledby="discordGateTitle"></section>
 
   <main id="app">
@@ -575,6 +579,40 @@
       </div>
     </section>
 
+    <!-- VOXELPORT HAS MOVED: the new app, and the button that moves everything over (migrate-ui.js) -->
+    <section class="screen panel" id="screen-moved">
+      <button class="back-link" id="movedBackBtn" type="button">‹ Back</button>
+      <div class="screen-title"><div><div class="label">A big change</div><h1>NEW VOXELPORT</h1></div></div>
+
+      <p class="support-text">We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.</p>
+
+      <div class="set-group" id="movedHow">
+        <div class="set-group-title">What the update button does</div>
+        <ol class="moved-list">
+          <li>Downloads the new VoxelPort and checks that it is genuinely ours.</li>
+          <li>Installs it and brings your servers, backups, VoxelPort ID, address and settings across.</li>
+          <li>Removes this old app. Your server folders and worlds are never touched.</li>
+        </ol>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Good to know</div>
+        <ul class="moved-list">
+          <li>A server or public address that is running is stopped first.</li>
+          <li>You will need to sign in with Discord once in the new app.</li>
+          <li>If anything goes wrong, this app and your data stay exactly as they are.</li>
+        </ul>
+      </div>
+
+      <p class="hint hidden" id="movedStoreNote">This copy came from the Microsoft Store, which does not let an app install another one. Download the new VoxelPort from our website, then remove this one in Windows Settings › Apps.</p>
+      <div class="progress-track hidden" id="movedProgress"><div class="progress-fill" id="movedFill"></div></div>
+      <p class="support-text" id="movedStatus" role="status" aria-live="polite"></p>
+      <div class="library-actions">
+        <button class="primary" id="movedUpdateBtn" type="button">Update to the new VoxelPort</button>
+        <button class="ghost hidden" id="movedPageBtn" type="button">Open the download page</button>
+      </div>
+    </section>
+
     <!-- SUPPORT VOXELPORT: tips, supporter perks, paid-hosting suggestions -->
     <section class="screen panel" id="screen-support">
       <button class="back-link" id="supportBackBtn" type="button">‹ Back</button>
@@ -746,5 +784,6 @@
   <script src="support.js"></script>
   <script src="app-settings.js"></script>
   <script src="discord-ui.js"></script>
+  <script src="migrate-ui.js"></script>
 </body>
 </html>
