@@ -96,25 +96,47 @@ port 25590 free on 127.0.0.1 for a stand-in "Minecraft" that echoes.
 The six scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
 
-## Release build
+## Release build and installer
 
 ```
-cargo build --release -p voxelport-tauri     # about 90 s here; target\release\voxelport-tauri.exe
+node tools/build-release.mjs
 ```
 
-The release profile is tuned for size (`opt-level = "s"`, LTO, one codegen unit, `panic = "abort"`, stripped).
+One command builds the release program (`opt-level = "s"`, LTO, one codegen unit, `panic = "abort"`, stripped; about 2 minutes), makes the NSIS installer
+with the real identity from `src-tauri/tauri.release.conf.json` (product name **VoxelPort**, identifier `in.voxelport.app`, publisher VoxelPort, a per-user
+install with no administrator rights), signs it for updates, and writes into `release-out/` (git-ignored):
 
-## Windows installer (untested)
+| File | What it is |
+|---|---|
+| `VoxelPort-Setup.exe` | the installer under a stable name, for the website's download link |
+| `VoxelPort_<version>_x64-setup.exe` | the same bytes under the versioned name `latest.json` points at |
+| `latest.json` | the update manifest the app reads: version, signature, download address |
+| `SHA256SUMS.txt` | checksums of the two installers |
+
+It refuses to build if the version in `Cargo.toml` and `tauri.conf.json` differ, if `UPDATE_PUBLIC_KEY` is empty, or if `UPDATE_PUBLIC_KEY` is not the public half of the
+key it is about to sign with (an update signed with the wrong key would be refused by every installed copy). Nothing is uploaded.
+
+The development build keeps its own identity (`in.voxelport.app.dev`, product name "VoxelPort Tauri Dev") so it never touches a person's real data; the release
+config only overrides the name, identifier and installer settings. The current version is **2.0.0-beta.1**, chosen to continue above the Electron app's 1.17.1; change it in
+`src-tauri/Cargo.toml`, `crates/voxelport-core/Cargo.toml`, `src-tauri/tauri.conf.json` and `package.json` together (the script checks the first and third).
+
+The installer is **not code-signed**: Windows shows an "unknown publisher" warning (SmartScreen) until a code-signing certificate is added. That is separate from the update
+signature, which is what keeps updates safe. There is no Microsoft Store build, by decision.
+
+### Testing the installer
 
 ```
-npx tauri build --bundles nsis
+node tools/smoke-release.mjs release-out\VoxelPort_<version>_x64-setup.exe C:\Users\<you>\vp-tauri-test\smoke-install
 ```
 
-This is configured for a per-user install (`installMode: currentUser`) with no administrator rights. It has not been run
-yet: the build downloads the NSIS tooling, and the result is **unsigned**, so Windows will show an unknown-publisher
-warning. A code-signing certificate has to be configured before any build is shared. The installer would use the
-development identifier `in.voxelport.app.dev`; changing it to the real one is a release decision, because it decides
-whether the Tauri build can see the Electron app's data.
+Installs silently with `/NS` (no shortcuts, so another VoxelPort's desktop and Start menu shortcuts, which share the name, are never touched), checks what it wrote, starts the
+installed app with no test switches, checks its window, the version, its separate data folder, that the page cannot call the updater or an unknown channel, the one-copy
+lock and the update check, then uninstalls and checks everything it made is gone and that other VoxelPort installs are unchanged (18 checks). It refuses to run if this kind
+of VoxelPort is already installed or its data folder exists, and removes only what it made. The app does reach the real accounts service (public status) and GitHub (the
+update manifest), as a person's copy would; it never signs in.
+
+**Do not run a VoxelPort installer by hand on a PC that has the Electron app without `/NS`:** it would replace that app's desktop shortcut (same name). It installs to
+`%LOCALAPPDATA%\VoxelPort` (the Electron app uses `%LOCALAPPDATA%\Programs\VoxelPort`) with its own uninstall entry, so the two can sit side by side, with separate data.
 
 ## Benchmarks
 
@@ -138,13 +160,20 @@ node tools/e2e-update.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.
 
 It makes throwaway signing keys with the Tauri CLI, signs the stand-in installer, serves it on port 8793, and deletes the keys afterwards. The stand-in server (`vp-fake-server`) writes the file named by `VP_FAKE_STOP_MARK` when it is told to stop, which is how the script proves the server stopped before the installer started.
 
-### Releasing updates (not done yet: needs you)
+### Releasing an update
 
-Release builds say **"not configured"** and never install an update until the app is given the public half of a signing key. Once:
+The signing key exists: it was generated on 2026-11-08 into `%USERPROFILE%\.voxelport-update-signing\` (`update.key`, `update.key.password`, `update.key.pub`), readable only by this
+Windows account, and its public half is `UPDATE_PUBLIC_KEY` in `src-tauri/src/updatesetup.rs`. **Back that folder up somewhere safe** (not the repository): whoever holds the private key
+can ship code to every installed copy, and **losing it means every installed copy has to be reinstalled by hand** (the app only accepts updates signed with it). If it is ever
+replaced, `UPDATE_PUBLIC_KEY` must change in the same release that people still on the old key can receive.
 
-1. `npx tauri signer generate -w voxelport-update.key` (choose a password). Keep the private key and its password somewhere safe and **out of the repository**: whoever holds it can ship code to every installed copy, and losing it means a one-time reinstall for everyone.
-2. Put the public key (the text of `voxelport-update.key.pub`) in `UPDATE_PUBLIC_KEY` in `src-tauri/src/updatesetup.rs`, and check `UPDATE_ENDPOINT` there points at the repository whose releases will carry `latest.json` (it defaults to the app's existing GitHub repository).
-3. Set `bundle.createUpdaterArtifacts` to `true` in `tauri.conf.json`, and build with `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set; this writes the installer's `.sig`. Sign with the version: `npx tauri signer sign --app-version <version> ...`; the app refuses a signature that is not bound to the version announced.
-4. Publish `latest.json` with the release: `{ "version": "<version>", "notes": "...", "pub_date": "<ISO date>", "platforms": { "windows-x86_64": { "signature": "<contents of the .sig>", "url": "<installer download address>" } } }`.
+To publish a version:
 
-Installed Electron copies cannot update into this build by themselves (a different mechanism and key): a one-time reinstall, or a bridge release of the Electron app that points at this installer, is needed.
+1. Set the version (see above), run `node tools/build-release.mjs` and `node tools/smoke-release.mjs ...`.
+2. Create a GitHub release tagged `v<version>` in the repository named in `UPDATE_ENDPOINT` (`src-tauri/src/updatesetup.rs`; `VOXELPORT/VoxelPort-App` by default) and attach
+   `latest.json`, `VoxelPort_<version>_x64-setup.exe` and `VoxelPort-Setup.exe`. The app reads `releases/latest/download/latest.json`, and GitHub's "latest" **skips
+   pre-releases**: a release marked "pre-release" is not offered as an update.
+3. That repository's latest release is also what the Electron app's updater reads (`latest.yml`); a release without it shows the Electron app nothing, which is harmless but means
+   Electron copies are not moved to this build by an update. They need a one-time reinstall (their data does not carry over automatically; see MIGRATION_PLAN.md).
+
+The signature is bound to the version (`--app-version`, done by the script) and the app refuses one that is not.

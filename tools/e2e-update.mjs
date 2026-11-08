@@ -25,6 +25,7 @@ fs.writeFileSync(profilesFile, JSON.stringify({ version: 2, servers: [] }));
 
 // ── Throwaway signing keys and a signed stand-in installer ──────────────────────────────────────────────────
 const repo = path.join(import.meta.dirname, '..');
+const appVersion = JSON.parse(fs.readFileSync(path.join(repo, 'src-tauri', 'tauri.conf.json'), 'utf8')).version;
 const cli = path.join(repo, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 const signer = (...args) => execFileSync(process.execPath, [cli, 'signer', ...args], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const makeKey = (name) => { const f = path.join(testRoot, name); signer('generate', '--ci', '-p', '', '-w', f); return { priv: f, pub: fs.readFileSync(`${f}.pub`, 'utf8').trim() }; };
@@ -134,7 +135,7 @@ try {
     const r = await page.ev('vp.update.check()');
     check('an older version is "up to date"', r.status === 'up-to-date' && (await page.ev('vp.update.state()')).readyToInstall === false, J(r));
   });
-  setScenario('0.1.0', signatures.goodNew);
+  setScenario(appVersion, signatures.goodNew); // the version the app itself reports
   await session({}, async (page) => {
     check('the same version is "up to date" too', (await page.ev('vp.update.check()')).status === 'up-to-date');
   });

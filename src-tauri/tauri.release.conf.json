@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VoxelPort",
+  "identifier": "in.voxelport.app",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VoxelPort",
+        "width": 640,
+        "height": 800,
+        "minWidth": 540,
+        "minHeight": 640
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "VoxelPort",
+    "shortDescription": "Host a Minecraft server from your PC, free.",
+    "license": "MIT",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": "VoxelPort",
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Migration plan: VoxelPort desktop, Electron to Tauri v2 + Rust
 
-Status: **started, all 87 of 87 channels ported; steps 1 to 10 done** (see FEATURE_PARITY.md for the exact, generated count).
+Status: **all 87 of 87 channels ported; steps 1 to 11 done (installer, signing, release scripts). First release candidate: 2.0.0-beta.1** (see FEATURE_PARITY.md for the exact, generated count).
 The Electron app (`../VoxelPort-App`) is untouched and fully working. Everything here lives in this separate folder
 and its own git repository.
 
@@ -50,7 +50,7 @@ Sizes are the Electron module's line count, as a rough guide only.
 | 8 done | relay tunnel, regions, custom address, Bedrock endpoint, public list entry | tunnel 688, regions 97, bedrockEndpoint 48, relayUrlSafety | the core of the product. Automatic voice-chat setup (`voiceSetup.js`) and the in-game relay announcement (`notice.js`) are left for later |
 | 9 done | add-ons, modpacks, Bedrock install, runtime info, crash explain, perf | addons 272, modpackImport 239, bedrock 284, runtimeInfo 98, crashExplain 169, perfMonitor 168 | Modrinth and Geyser downloads, checksums. CPU and memory are read from the operating system directly (no PowerShell process); a chat line can no longer pass for the server's `tick query` answer or its lag warning |
 | 10 done | updater, support, presence, notices, diagnostics, voice chat, one-copy lock | updater 120, support 159, discordPresence 158, notice 99, diagnostics 62, voiceSetup 78 | polish and release plumbing. The updater is Tauri's (minisign signature, bound to the version, so a validly signed older release cannot be passed off as a newer one); it says `not-configured` in release builds until a signing key is set. Voice chat now installs its plugin by the real Modrinth id (Electron's install of a missing voice plugin always failed). A player's chat can no longer pass for the relay's or the server's own lines |
-| 11 | installer, signing | n/a | the NSIS installer (direct download only, no Microsoft Store build), the update signing key, optional code signing; see risks |
+| 11 done | installer, signing, release scripts | n/a | the NSIS installer (3.04 MiB, per-user, direct download only, no Microsoft Store build), the update signing key (generated, kept outside the repository), `tools/build-release.mjs`, and `tools/smoke-release.mjs` (18 checks of the real installer). Not done: code signing (needs a certificate) and moving existing Electron data across (below) |
 
 The 57 Electron test files are the specification for steps 3 to 10: each module's tests should be ported with it.
 
@@ -64,14 +64,16 @@ The 57 Electron test files are the specification for steps 3 to 10: each module'
   is Chromium's `os_crypt` (an AES-GCM key in `Local State`, itself DPAPI-protected), **not** plain DPAPI. The Tauri build
   stores its own with plain DPAPI (`CryptProtectData`, per Windows user, plus a fixed entropy string), so it cannot read
   Electron's files today and vice versa. A one-way reader for the `os_crypt` format (read `Local State`, unprotect the key,
-  AES-GCM decrypt the `v10` blob) is needed before the Tauri build may share the Electron app's data folder. Not started;
-  the dev build uses its own identity, so no real device token or Discord session is touched.
+  AES-GCM decrypt the `v10` blob) is needed before the Tauri build may share the Electron app's data folder. Not started. **This now matters**: the release build
+  has its own identity (`in.voxelport.app`), so it starts with a **new** device token. Someone moving from the Electron app keeps their address, custom name and
+  supporter perks (all tied to the token) only by restoring the encrypted address backup (their Discord account plus the passphrase; ported) or by this reader
+  being built. The reader would run once, on the person's own PC and with their consent, and is the main thing between this build and replacing the Electron app.
 - **Web view differences.** Electron ships its own Chromium; Tauri uses the system WebView2. The renderer's CSS and
   fonts matched in the screens captured so far, but every screen needs a visual pass.
-- **Size will grow.** The 4.4 MB executable has about 11% of the backend. HTTP, zip, WebSocket and TLS support will add
-  to it; the figure in PERFORMANCE_COMPARISON.md is not a promise for the finished app.
-- **Code signing.** No signing certificate is configured here. Nothing built in this workspace is signed, and none of
-  it should be described as a verified publisher.
+- **Size.** Measured on the finished backend: the program is 7.63 MiB and the installer 3.04 MiB (PERFORMANCE_COMPARISON.md). Idle memory and start-up are
+  **not** better than Electron's: the web view dominates both.
+- **Code signing.** No code-signing certificate is configured. The installer shows Windows' "unknown publisher" warning, and none of it should be described as
+  a verified publisher. This is separate from the update signature (a key generated for this app, kept outside the repository), which is what keeps updates safe.
 - **Port fidelity.** JavaScript regexes, path handling and number types differ from Rust's; each port needs the old
   tests, not just a read-through.
 - **Unreleased work.** Web control is excluded on purpose. When it ships in Electron, it becomes its own step.

@@ -21,7 +21,7 @@ use crate::{dialogs, insights, AppState};
 
 /// The public half of the key that release builds are signed with (`tauri signer generate`). While it is empty, release builds report
 /// `not-configured` and never install anything. The private half lives only with whoever signs releases (see BUILD_INSTRUCTIONS.md).
-pub const UPDATE_PUBLIC_KEY: &str = "";
+pub const UPDATE_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc3ODMwQzAwNzE0MDhENzUKUldSMWpVQnhBQXlEZDN4bmpCVW1nKzJmMHU3bzgzNmdYZFRabk9vQzRsL0pQWVFtMzdvZitpdjEK";
 /// Where the update manifest (`latest.json`) is published: the latest release of the app's GitHub repository.
 const UPDATE_ENDPOINT: &str = "https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/latest.json";
 const FIRST_CHECK_AFTER: Duration = Duration::from_secs(10);

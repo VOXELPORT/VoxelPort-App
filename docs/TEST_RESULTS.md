@@ -105,6 +105,10 @@ Real debug window, a stand-in website for `support.json`, a **stand-in Discord o
 
 Real debug window; a stand-in installer **signed with a throwaway key made by the script** and served by a stand-in update server. Covers: the Check for updates button finding a newer version and the banner being told; the background download and signature check; a ready update not being downloaded again; **installing asking first when a server is running, and "no" changing nothing**; with "yes" the server being saved and stopped *before* the installer starts (proved by the stand-in server's own stop marker), the installer running with the updater's arguments, and the app ending; and the updates that must never be installed: **bytes changed after signing**, **signed for an older version but announced as a newer one (a downgrade; the signature itself is valid)**, and **signed with another key** (each never offered, reported as an error, and no installer ran); an older and the same version being "up to date"; and a development build saying it cannot update itself, why, and never asking the update server.
 
+## The real installer (`tools/smoke-release.mjs`, 18 checks, 18 passed)
+
+The release installer (`VoxelPort_2.0.0-beta.1_x64-setup.exe`, 3.04 MiB) and the release program, run for real: a silent per-user install into a chosen folder, its entry in "Apps & features" with the right name, version and publisher, **other VoxelPort installs and their shortcuts left exactly as they were**, the installed app opening its window and answering (version, no Electron, its own data folder, no servers), the page unable to call the updater or an unknown channel, the update check working (not "unsupported"), a second copy ending at once, and an uninstall that removes the program and its entry and keeps the person's data. A release build has no test switches, so this app really did ask the accounts service for its public status and GitHub for the update manifest; it never signed in.
+
 ## Not tested
 
 - Closing the window while a server runs (the quit handler is written; the stop-and-wait logic is covered by the core
@@ -119,7 +123,9 @@ Real debug window; a stand-in installer **signed with a throwaway key made by th
 - Region measuring against the real status endpoints (the choice logic is tested with measurements supplied; the real HTTP measuring is written but not exercised).
 - A real Geyser/Bedrock client.
 - A real Discord app: presence is checked against a stand-in on a real named pipe with Discord's frame format as the Electron app uses it, not against Discord itself (development builds refuse to touch the real Discord).
+- **A real update, end to end, with the real installer.** The update flow is tested with a stand-in installer in a development build, and the real installer is tested for install, run and uninstall, but no run has taken an installed app through a real update (it needs two released versions and a published manifest; release builds cannot be pointed at a test server). Tauri's updater and Tauri's installer are made to work together, but this pairing has not been watched.
 - A real update from a real GitHub release: the signature check, the anti-downgrade rule and the install flow are run against a stand-in installer and a local update server, not against a published `latest.json` and a real NSIS installer. **Release builds report "not configured" until the signing key is set** (BUILD_INSTRUCTIONS.md).
+- The installer on a PC without WebView2 (it downloads it), over a slow connection, to a path with spaces or non-English characters, or as an administrator; the Windows "unknown publisher" warning itself; and the installer's own screens when run by hand (only the silent path was run).
 - Real Simple Voice Chat or Plasmo Voice loading the written config, and a real relay handing out a voice port (the stand-in relay does).
 - The native save dialog for the error report and the native file picker for modpacks (answered from debug-only switches, like the folder picker).
 - Starting the app a second time while the first is minimised or hidden (the second copy ends; bringing the window to the front is written, not seen).

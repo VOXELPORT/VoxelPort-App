@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Map, Value};
 use tauri::{Emitter, Manager};
 use voxelport_core::mc_versions::{self, Endpoints};
-use voxelport_core::net::{Fetcher, HostPolicy};
+use voxelport_core::net::Fetcher;
 use voxelport_core::removal::{check_deletable, Refusal};
 use voxelport_core::server_install::{self, InstallFiles, Phase};
 use voxelport_core::profiles;
@@ -23,7 +23,7 @@ const KNOWN_TYPES: &[&str] = &["vanilla", "paper", "fabric"];
 pub(crate) fn services() -> (Fetcher, Endpoints) {
     #[cfg(debug_assertions)]
     if let Ok(base) = std::env::var("VOXELPORT_MC_API") {
-        let mut policy = HostPolicy::exact(&["127.0.0.1"]);
+        let mut policy = voxelport_core::net::HostPolicy::exact(&["127.0.0.1"]);
         policy.https_only = false;
         let ep = Endpoints { vanilla_manifest: format!("{base}/mojang/version_manifest_v2.json"), paper_api: format!("{base}/paper"), fabric_meta: format!("{base}/fabric") };
         return (Fetcher::new(policy, "Server", mc_versions::USER_AGENT), ep);
