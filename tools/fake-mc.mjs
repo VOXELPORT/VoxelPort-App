@@ -11,6 +11,9 @@ import { storedZip } from './fake-adoptium.mjs';
 const hex = (algo, b) => crypto.createHash(algo).update(b).digest('hex');
 
 // `opts.bedrockExe`: the file served as bedrock_server.exe inside the Bedrock Dedicated Server archive (the test stand-in server).
+let bedrockVersion = '1.26.63.1';
+let bedrockBroken = false;
+
 export function startFakeMc(port, opts = {}) {
   const base = `http://127.0.0.1:${port}`;
   const state = { hits: 0, mode: { wrongVersion: false, noAuthMe: false } };
@@ -40,13 +43,19 @@ export function startFakeMc(port, opts = {}) {
     ] });
     if ((m = p.match(/^\/mojang\/v\/(.+)\.json$/))) { const z = jar(claimed(m[1])); return json(res, { downloads: { server: { url: `${base}/dl/vanilla-${m[1]}.jar`, sha1: hex('sha1', z) } } }); }
     if ((m = p.match(/^\/dl\/vanilla-(.+)\.jar$/))) { res.writeHead(200); return res.end(jar(claimed(m[1]))); }
-    // Mojang's download-link service and the Bedrock Dedicated Server archive it names.
+    // Mojang's download-link service and the Bedrock Dedicated Server archive it names. A test can publish a newer release
+    // (/__bedrock/version?v=1.26.70.2) and make the archive unavailable (/__bedrock/break?on=1).
+    if (p === '/__bedrock/version') { bedrockVersion = new URL(req.url, base).searchParams.get('v') || bedrockVersion; return json(res, { version: bedrockVersion }); }
+    if (p === '/__bedrock/break') { bedrockBroken = new URL(req.url, base).searchParams.get('on') === '1'; return json(res, { broken: bedrockBroken }); }
     if (p === '/api/links') return json(res, { result: { links: [
-      { downloadType: 'serverBedrockLinux', downloadUrl: `${base}/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.63.1.zip` },
-      { downloadType: 'serverBedrockWindows', downloadUrl: `${base}/bedrockdedicatedserver/bin-win/bedrock-server-1.26.63.1.zip` },
+      { downloadType: 'serverBedrockLinux', downloadUrl: `${base}/bedrockdedicatedserver/bin-linux/bedrock-server-${bedrockVersion}.zip` },
+      { downloadType: 'serverBedrockWindows', downloadUrl: `${base}/bedrockdedicatedserver/bin-win/bedrock-server-${bedrockVersion}.zip` },
     ] } });
-    if (p === '/bedrockdedicatedserver/bin-win/bedrock-server-1.26.63.1.zip' && opts.bedrockExe) {
+    if (p === `/bedrockdedicatedserver/bin-win/bedrock-server-${bedrockVersion}.zip` && opts.bedrockExe && bedrockBroken) { res.writeHead(404); return res.end('gone'); }
+    if (p === `/bedrockdedicatedserver/bin-win/bedrock-server-${bedrockVersion}.zip` && opts.bedrockExe) {
+      const newer = bedrockVersion !== '1.26.63.1';
       const zip = storedZip([
+        ...(newer ? [['new_in_this_version.txt', Buffer.from(bedrockVersion)], ['worlds/Bedrock level/level.dat', Buffer.from('from the archive')], ['allowlist.json', Buffer.from('[]')]] : []),
         ['bedrock_server.exe', fs.readFileSync(opts.bedrockExe)],
         ['server.properties', Buffer.from('# Mojang defaults\nserver-name=Dedicated Server\ngamemode=survival\ndifficulty=easy\nmax-players=10\nserver-port=19132\nserver-portv6=19133\nlevel-name=Bedrock level\nallow-list=false\nonline-mode=true\n')],
         ['behavior_packs/vanilla/manifest.json', Buffer.from('{}')],

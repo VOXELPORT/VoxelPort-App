@@ -282,3 +282,113 @@ fn mojangs_real_service_names_a_current_windows_release() {
     assert!(release.url.starts_with("https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-"));
     assert!(release.version.split('.').count() >= 3);
 }
+
+// ─── Updating an installed server ───────────────────────────────────────────
+
+/// A newer archive: a different program, a new default server.properties (which must NOT replace the person's), a new file, and a changed pack file.
+fn newer_zip() -> Vec<u8> {
+    let mut buf = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut buf);
+    let opts = zip::write::SimpleFileOptions::default();
+    zip.start_file("bedrock_server.exe", opts).unwrap();
+    zip.write_all(&fs::read(env!("CARGO_BIN_EXE_vp-fake-server")).unwrap()).unwrap();
+    zip.write_all(b"NEWER").unwrap();
+    zip.start_file("server.properties", opts).unwrap();
+    zip.write_all(b"# newer defaults\nserver-name=Dedicated Server\ngamemode=creative\nbrand-new-line=1\n").unwrap();
+    zip.start_file("allowlist.json", opts).unwrap();
+    zip.write_all(b"[]").unwrap();
+    zip.start_file("worlds/Bedrock level/levelname.txt", opts).unwrap();
+    zip.write_all(b"from the archive").unwrap();
+    zip.start_file("behavior_packs/vanilla/manifest.json", opts).unwrap();
+    zip.write_all(b"{\"v\":2}").unwrap();
+    zip.start_file("new_in_this_version.txt", opts).unwrap();
+    zip.write_all(b"new").unwrap();
+    zip.finish().unwrap();
+    buf.into_inner()
+}
+
+/// An installed server with a world, settings, an allow-list and a pack of the person's own.
+fn installed(root: &std::path::Path) -> std::path::PathBuf {
+    let dir = root.join("bedrock");
+    let (server, ep) = mojang_with_links(server_zip(), "serverBedrockWindows");
+    bds::install_server_files(&InstallRequest { dir: &dir, port: 19140, server_name: "Mine" }, &fetcher(), &ep, &|_| {}).unwrap();
+    server.close();
+    fs::create_dir_all(dir.join("worlds").join("Bedrock level")).unwrap();
+    fs::write(dir.join("worlds").join("Bedrock level").join("levelname.txt"), "my world").unwrap();
+    fs::write(dir.join("allowlist.json"), "[{\"name\":\"Steve\"}]").unwrap();
+    fs::write(dir.join("permissions.json"), "[{\"permission\":\"operator\",\"xuid\":\"1\"}]").unwrap();
+    fs::create_dir_all(dir.join("behavior_packs").join("mine")).unwrap();
+    fs::write(dir.join("behavior_packs").join("mine").join("manifest.json"), "my pack").unwrap();
+    dir
+}
+
+#[test]
+fn an_update_replaces_the_program_and_mojangs_files_and_keeps_everything_that_is_the_persons() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = installed(root.path());
+    let props_before = fs::read_to_string(dir.join("server.properties")).unwrap();
+    let (server, ep) = mojang_with_links(newer_zip(), "serverBedrockWindows");
+    let phases = std::sync::Mutex::new(Vec::new());
+    let release = bds::update_server_files(&dir, &fetcher(), &ep, &|p| phases.lock().unwrap().push(matches!(p, Phase::Verifying))).unwrap();
+    assert_eq!(release.version, "1.26.63.1");
+    assert!(phases.lock().unwrap().contains(&true), "the archive is checked before anything is copied");
+    // New: the program (its bytes end with NEWER), the new file, the changed pack file.
+    assert!(fs::read(dir.join("bedrock_server.exe")).unwrap().ends_with(b"NEWER"));
+    assert_eq!(fs::read_to_string(dir.join("new_in_this_version.txt")).unwrap(), "new");
+    assert_eq!(fs::read_to_string(dir.join("behavior_packs/vanilla/manifest.json")).unwrap(), "{\"v\":2}");
+    // The person's: world, settings, allow-list, permissions, their own pack.
+    assert_eq!(fs::read_to_string(dir.join("worlds/Bedrock level/levelname.txt")).unwrap(), "my world");
+    assert_eq!(fs::read_to_string(dir.join("server.properties")).unwrap(), props_before);
+    assert_eq!(fs::read_to_string(dir.join("allowlist.json")).unwrap(), "[{\"name\":\"Steve\"}]");
+    assert!(fs::read_to_string(dir.join("permissions.json")).unwrap().contains("operator"));
+    assert_eq!(fs::read_to_string(dir.join("behavior_packs/mine/manifest.json")).unwrap(), "my pack");
+    // No leftovers.
+    assert!(!dir.join(".bedrock-server-update.zip").exists() && !dir.join(".bedrock-update-staging").exists());
+    server.close();
+}
+
+#[test]
+fn an_update_of_a_folder_that_is_not_a_bedrock_server_is_refused_and_writes_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("not-a-server");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("notes.txt"), "mine").unwrap();
+    let (server, ep) = mojang_with_links(newer_zip(), "serverBedrockWindows");
+    let err = bds::update_server_files(&dir, &fetcher(), &ep, &|_| {}).unwrap_err();
+    assert!(err.contains("bedrock_server.exe is missing"), "{err}");
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+    server.close();
+}
+
+#[test]
+fn an_update_that_cannot_download_or_is_not_a_bedrock_server_changes_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = installed(root.path());
+    let exe_before = fs::read(dir.join("bedrock_server.exe")).unwrap();
+    // The service does not answer.
+    let dead = Endpoints { links_api: "http://127.0.0.1:1/api/links".into() };
+    assert!(bds::update_server_files(&dir, &fetcher(), &dead, &|_| {}).is_err());
+    // The archive holds no program.
+    let mut buf = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut buf);
+    zip.start_file("readme.txt", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.write_all(b"hello").unwrap();
+    zip.finish().unwrap();
+    let (server, ep) = mojang_with_links(buf.into_inner(), "serverBedrockWindows");
+    let err = bds::update_server_files(&dir, &fetcher(), &ep, &|_| {}).unwrap_err();
+    assert!(err.contains("not a Bedrock server"), "{err}");
+    server.close();
+    // An archive that tries to leave its folder.
+    let mut buf = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut buf);
+    zip.start_file("../escape.txt", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.write_all(b"x").unwrap();
+    zip.finish().unwrap();
+    let (server, ep) = mojang_with_links(buf.into_inner(), "serverBedrockWindows");
+    assert!(bds::update_server_files(&dir, &fetcher(), &ep, &|_| {}).is_err());
+    server.close();
+    assert_eq!(fs::read(dir.join("bedrock_server.exe")).unwrap(), exe_before, "the program is untouched");
+    assert!(!root.path().join("escape.txt").exists());
+    assert!(!dir.join(".bedrock-server-update.zip").exists() && !dir.join(".bedrock-update-staging").exists());
+    assert_eq!(fs::read_to_string(dir.join("worlds/Bedrock level/levelname.txt")).unwrap(), "my world");
+}

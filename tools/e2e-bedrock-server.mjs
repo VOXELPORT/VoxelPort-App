@@ -159,7 +159,38 @@ try {
     // ── importing the folder, and removing the server ──
     const found = await page.ev(`vp.server.detectExisting(${J(dir)})`);
     check('a Bedrock server folder is recognised as one', found.looksLikeServer === true && found.guessedType === 'bedrock-server' && found.hasBedrockServer === true && found.guessedPort === PORT, J(found));
-    check('changing the version is declined plainly', /not built for Bedrock servers/.test((await page.ev(`vp.server.changeVersion(${J(id)}, '1.26.63.1')`)).error || ''));
+    // ── updating the server ──
+    const get = async (p) => (await fetch(mc.base + p)).json();
+    const openSettings = async () => { await page.ev(`window.openSettingsScreen(${J(id)})`); await sleep(900); };
+    await openSettings();
+    check('the settings screen has an update row for a Bedrock server', (await hidden(page, '#setBdsUpdate')) === false);
+    check('it says the server is on the current release and offers nothing', await waitFor(async () => /on the current Bedrock server \(1\.26\.63\.1\)/.test(await page.ev("document.getElementById('setBdsUpdateText').textContent")), 8000) && (await page.ev("document.getElementById('setBdsUpdateBtn').disabled")) === true);
+    let r = await page.ev(`vp.server.changeVersion(${J(id)}, '1.26.63.1')`);
+    check('updating a server that is already current is declined plainly', r.ok === false && /already on the current Bedrock server/.test(r.error), J(r));
+    await get('/__bedrock/version?v=1.26.70.2');
+    check('a newer release shows as the one version on offer', J(await page.ev("vp.server.versions('bedrock-server')")) === '["1.26.70.2"]');
+    await openSettings();
+    check('the update row now offers it, with the button on', await waitFor(async () => /newer Bedrock server is available: 1\.26\.70\.2/.test(await page.ev("document.getElementById('setBdsUpdateText').textContent")), 8000) && (await page.ev("document.getElementById('setBdsUpdateBtn').disabled")) === false);
+    r = await page.ev(`vp.server.changeVersion(${J(id)}, '1.0.0.0')`);
+    check('a version that is not the current release is refused', r.ok === false && /Only the current Bedrock server/.test(r.error), J(r));
+    // Something of the person's inside a folder the archive also ships, and the settings as they are now.
+    fs.mkdirSync(path.join(dir, 'behavior_packs', 'mine'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'behavior_packs', 'mine', 'manifest.json'), 'my pack');
+    const propsBefore = fs.readFileSync(path.join(dir, 'server.properties'), 'utf8');
+    const levelBefore = fs.readFileSync(path.join(world, 'level.dat'), 'utf8');
+    const backupsBefore = (await page.ev(`vp.backups.info(${J(id)})`)).backups.length;
+    await get('/__bedrock/break?on=1');
+    r = await page.ev(`vp.server.changeVersion(${J(id)}, '1.26.70.2')`);
+    check('when the download fails the server is untouched and the error points to the backup', r.ok === false && /restore the backup/.test(r.error) && !fs.existsSync(path.join(dir, 'new_in_this_version.txt')) && (await page.ev(`vp.server.list().then((l) => l.find((p) => p.id === ${J(id)}).version)`)) === '1.26.63.1', J(r));
+    await get('/__bedrock/break?on=0');
+    r = await page.ev(`vp.server.changeVersion(${J(id)}, '1.26.70.2')`);
+    check('the update goes through and records the new version', r.ok === true && r.profile.version === '1.26.70.2' && /same version as the server/.test(r.warning || ''), J(r));
+    check('it made a backup first', (await page.ev(`vp.backups.info(${J(id)})`)).backups.length > backupsBefore);
+    check('the new release is in place (a new file, and the program)', fs.readFileSync(path.join(dir, 'new_in_this_version.txt'), 'utf8') === '1.26.70.2' && fs.existsSync(path.join(dir, 'bedrock_server.exe')));
+    check('the world, the settings and the person\'s own pack are exactly as they were', fs.readFileSync(path.join(world, 'level.dat'), 'utf8') === levelBefore && fs.readFileSync(path.join(dir, 'server.properties'), 'utf8') === propsBefore && fs.readFileSync(path.join(dir, 'behavior_packs', 'mine', 'manifest.json'), 'utf8') === 'my pack');
+    check('no download or staging leftovers', !fs.existsSync(path.join(dir, '.bedrock-server-update.zip')) && !fs.existsSync(path.join(dir, '.bedrock-update-staging')));
+    await openSettings();
+    check('the update row is back to "current"', await waitFor(async () => /on the current Bedrock server \(1\.26\.70\.2\)/.test(await page.ev("document.getElementById('setBdsUpdateText').textContent")), 8000));
   });
 
   // A second run: it starts again from what is on disk, and a missing program is a plain error.

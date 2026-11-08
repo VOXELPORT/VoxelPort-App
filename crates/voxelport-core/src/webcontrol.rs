@@ -226,7 +226,8 @@ fn system_now() -> i64 {
 
 impl RemoteControl {
     pub fn new(link: Arc<dyn Link>, actions: Arc<dyn Actions>) -> Arc<Self> {
-        Arc::new(Self { link, actions, stopped: AtomicBool::new(true), wake: Notify::new(), state: Mutex::new(State::default()), now_ms: system_now })
+        // Running from the start: a `stop()` that comes before `run()` gets going must still win (a second `sync` could otherwise be revived by it).
+        Arc::new(Self { link, actions, stopped: AtomicBool::new(false), wake: Notify::new(), state: Mutex::new(State::default()), now_ms: system_now })
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -387,7 +388,6 @@ impl RemoteControl {
 
     /// Runs both loops until `stop()` (or until the account is no longer allowed).
     pub async fn run(self: Arc<Self>) {
-        self.stopped.store(false, Ordering::SeqCst);
         tokio::join!(self.poll_loop(), self.report_loop());
     }
 
@@ -685,5 +685,18 @@ mod tests {
         let before = link.calls.lock().unwrap().len();
         tokio::time::sleep(Duration::from_secs(60)).await;
         assert_eq!(link.calls.lock().unwrap().len(), before, "nothing more is sent");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_that_comes_before_the_loop_has_started_still_wins() {
+        // The shell may replace a loop that was spawned a moment ago and has not run yet; that loop must not come back to life.
+        let link = FakeLink::new(vec![]);
+        let rc = RemoteControl::new(link.clone(), FakeActions::new(true));
+        assert!(rc.snapshot().running, "a new loop counts as running from the start");
+        rc.stop();
+        assert!(!rc.snapshot().running);
+        tokio::time::timeout(Duration::from_secs(5), rc.clone().run()).await.expect("run returns at once");
+        assert!(link.calls.lock().unwrap().is_empty(), "a stopped loop sends nothing");
+        assert!(!rc.snapshot().running);
     }
 }

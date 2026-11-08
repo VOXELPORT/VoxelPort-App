@@ -58,6 +58,8 @@ Starting a server goes through the real Discord gate: a fresh install is blocked
 | `VOXELPORT_TEST_FOLDER=<path>` | answer the folder picker with this path |
 | `VOXELPORT_TEST_REMOVE=cancel\|list\|delete` | answer the delete question |
 
+Web control (friends starting and stopping a server from the web) is for testers and is **off in every build**, release builds included, unless the app is started with the environment variable `VOXELPORT_WEB_CONTROL=1` or the argument `--web-control`. Without it the library card is hidden, the backend refuses to switch it on and nothing is sent to the accounts service. `tools/e2e-webcontrol.mjs` runs both cases through the real window against `tools/fake-accounts.mjs` (which also stands in for the control routes).
+
 `tools/fake-accounts.mjs` is a stand-in accounts service that checks PKCE like the real one. `tools/e2e-gate.mjs` starts
 it, launches the debug build, and drives the whole gate through the real window (20 checks). To exercise server start
 with no Minecraft at all, a stand-in program named `java.exe` goes in a folder passed as the third argument:

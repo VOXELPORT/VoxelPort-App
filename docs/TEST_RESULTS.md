@@ -129,7 +129,7 @@ The release installer (`VoxelPort_2.0.0-beta.1_x64-setup.exe`, 3.08 MiB) and the
   tests, but a real window close was not exercised).
 - A real Minecraft server, real Java, Bedrock/Geyser startup.
 - A real Temurin download from the real Adoptium (the stand-in is used; a real run needs the internet and ~50 MB).
-- Linux/macOS Java install (not built).
+- Linux/macOS: the app is Windows only; the Linux and macOS code paths compile but are not part of any release.
 - The real accounts service and a real Discord sign-in (the stand-in is used; a real run needs the user's own Discord).
 - The native folder picker and the native delete dialog themselves: the end-to-end runs answer them from a debug-only switch, and I did not click through them by hand (the person was away from the screen).
 - The scheduled backup firing on its 30-minute timer (the due/dirty rules are in the code; the end-to-end run covers the live, stop-time and manual paths, not a 30-minute wait).
@@ -151,10 +151,9 @@ The release installer (`VoxelPort_2.0.0-beta.1_x64-setup.exe`, 3.08 MiB) and the
 - The crash explanations against real captured console output: the rules are checked against lines in the real wording, not against recordings of real crashes.
 - The performance sampler on Linux (written, and compiled only there; this build is Windows) and on macOS (not built, reports nothing).
 - The native file picker for a `.mrpack` (answered from a debug-only switch, like the folder picker).
-- `server:changeVersion` (not ported: it must run a backup first).
+- `server:changeVersion` on a real Paper/Fabric/Vanilla download (it is ported, backs up first, and is covered with stand-ins; a real download was not run).
 - A real download of a real Vanilla/Paper/Fabric jar (the stand-ins are used).
 - Reading Electron's `safeStorage` files (different format, see MIGRATION_PLAN.md risks).
 - Concurrent managed processes: the product runs one server at a time, so this was not built.
 - Crash recovery across an app restart and persistent services: the product has neither.
-- The installer, installation behaviour, updates: **not built yet**.
 - The Electron test suite (57 files) has not been ported; those tests are the specification for the remaining modules.

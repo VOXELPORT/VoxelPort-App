@@ -247,6 +247,85 @@ fn install_into(req: &InstallRequest, fetcher: &Fetcher, ep: &Endpoints, on_phas
     Ok(release)
 }
 
+// ─── Updating an installed server ───────────────────────────────────────────
+
+/// What belongs to the person in a Bedrock server folder, by its name at the top: an update never replaces these (Mojang's own advice for moving to a
+/// newer server). Everything else comes from the new archive; files the person added inside `behavior_packs` or `resource_packs` stay, because files
+/// are copied over one by one and nothing is deleted.
+const KEEP: [&str; 4] = ["worlds", "server.properties", "allowlist.json", "permissions.json"];
+
+fn is_kept(name: &std::ffi::OsStr) -> bool {
+    let n = name.to_string_lossy().to_ascii_lowercase();
+    KEEP.contains(&n.as_str())
+}
+
+/// Copies `from` over `to` (a file or a folder), one file at a time, never writing through a link and never deleting. Blocking.
+fn copy_over(from: &Path, to: &Path) -> Result<(), String> {
+    let meta = fs::symlink_metadata(from).map_err(|e| e.to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("The download holds a link, so nothing was updated.".into());
+    }
+    if meta.is_dir() {
+        match fs::symlink_metadata(to) {
+            Ok(m) if m.file_type().is_symlink() || !m.is_dir() => return Err(format!("{} is not a plain folder, so the update stopped.", to.display())),
+            Ok(_) => {}
+            Err(_) => fs::create_dir_all(to).map_err(|e| format!("Could not create {}: {e}", to.display()))?,
+        }
+        for entry in fs::read_dir(from).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            copy_over(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        return Ok(());
+    }
+    if let Ok(m) = fs::symlink_metadata(to) {
+        if m.file_type().is_symlink() || m.is_dir() {
+            return Err(format!("{} is not a plain file, so the update stopped.", to.display()));
+        }
+    }
+    fs::copy(from, to).map(|_| ()).map_err(|e| format!("Could not replace {}: {e}", to.display()))
+}
+
+/// Downloads the current Bedrock server and puts it over the one in `dir`, keeping the world(s), `server.properties`, `allowlist.json` and
+/// `permissions.json`. The archive is unpacked into a side folder and checked first, and only then copied in, with the program last: a download
+/// that fails or is not a Bedrock server changes nothing. If the copying itself stops half-way (a full disk, a file in use) the error says so; the
+/// caller makes a backup before calling this, and that is how it is put right. Blocking.
+pub fn update_server_files(dir: &Path, fetcher: &Fetcher, ep: &Endpoints, on_phase: &dyn Fn(Phase)) -> Result<Release, String> {
+    server_exe(dir)?; // only a folder that already holds this server is updated
+    let zip_path = dir.join(".bedrock-server-update.zip");
+    let staging = dir.join(".bedrock-update-staging");
+    let clean = || {
+        let _ = fs::remove_file(&zip_path);
+        let _ = fs::remove_dir_all(&staging);
+    };
+    clean();
+    let result = (|| -> Result<Release, String> {
+        on_phase(Phase::Resolving);
+        let release = latest_release(fetcher, ep)?;
+
+        on_phase(Phase::Downloading { received: 0, total: 0 });
+        fetcher.download(&release.url, &zip_path, MAX_ZIP_BYTES, None, 0, &|received, total| on_phase(Phase::Downloading { received, total }))?;
+
+        on_phase(Phase::Verifying);
+        fs::create_dir_all(&staging).map_err(|e| format!("Could not make room for the update: {e}"))?;
+        extract_zip_safely(&zip_path, &staging)?;
+        match fs::symlink_metadata(staging.join(EXE)) {
+            Ok(m) if m.is_file() => {}
+            _ => return Err("The download is not a Bedrock server (it holds no bedrock_server.exe), so nothing was updated.".into()),
+        }
+
+        // Everything but the program first, then the program: a copy that stops early never leaves a new program with old support files.
+        let mut names: Vec<std::ffi::OsString> = fs::read_dir(&staging).map_err(|e| e.to_string())?.filter_map(|e| e.ok()).map(|e| e.file_name()).collect();
+        names.sort();
+        for name in names.iter().filter(|n| !is_kept(n) && n.to_string_lossy() != EXE) {
+            copy_over(&staging.join(name), &dir.join(name))?;
+        }
+        copy_over(&staging.join(EXE), &dir.join(EXE))?;
+        Ok(release)
+    })();
+    clean();
+    result
+}
+
 /// The program to run for a server folder: a plain file named `bedrock_server.exe` directly inside it (never a link, never a path the
 /// profile could point elsewhere).
 pub fn server_exe(dir: &Path) -> Result<PathBuf, String> {

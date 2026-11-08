@@ -357,7 +357,7 @@ pub async fn change_version(state: &AppState, args: &Value) -> Value {
     let id = str_arg(args, "id").unwrap_or_default().to_string();
     let Some(profile) = profiles::get(&state.data_dir, &id) else { return fail("Server profile not found.".into()) };
     if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
-        return fail("Changing the version is not built for Bedrock servers yet. To move to a newer one, install a new Bedrock server and restore this one's backup into it.".into());
+        return update_bedrock(state, &id, &profile, str_arg(args, "version")).await;
     }
     let version = match str_arg(args, "version").map(str::trim) {
         Some(v) if !v.is_empty() => v.to_string(),
@@ -443,4 +443,71 @@ pub async fn change_version(state: &AppState, args: &Value) -> Value {
     warnings.push(if ty == "fabric" { format!("Check that your mods support Minecraft {version}.") } else { format!("Check that your plugins support Minecraft {version}.") });
     progress(&state.app, json!({ "phase": "done" }));
     json!({ "ok": true, "profile": updated, "warning": warnings.join(" ") })
+}
+
+/// "Update" for a Bedrock Dedicated Server: only the current release exists, so this moves the server to it. A backup comes first and is never
+/// skipped; the world, settings, allow-list and permissions stay (see `bds::update_server_files`).
+async fn update_bedrock(state: &AppState, id: &str, profile: &Value, wanted: Option<&str>) -> Value {
+    let fail = |e: String| json!({ "ok": false, "error": e });
+    if crate::serverconfig::is_running(state, id) {
+        return fail("Stop the server before updating it.".into());
+    }
+    if crate::backupservice::is_busy(state, id) {
+        return fail("A backup or restore is running for this server. Try again in a moment.".into());
+    }
+    let dir = PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
+    // The current release, so the screen can say what it would do and a stale choice is caught.
+    progress(&state.app, json!({ "phase": "resolving" }));
+    let latest = tokio::task::spawn_blocking(|| {
+        let (f, ep) = bds_services();
+        bds::latest_release(&f, &ep)
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    let latest = match latest {
+        Ok(r) => r,
+        Err(e) => return fail(format!("Could not find the current Bedrock server: {e}. The server is unchanged.")),
+    };
+    if let Some(w) = wanted.map(str::trim).filter(|w| !w.is_empty() && *w != latest.version) {
+        return fail(format!("Only the current Bedrock server ({}) can be installed, not {w}.", latest.version));
+    }
+    if profile["version"] == latest.version.as_str() {
+        return fail(format!("This server is already on the current Bedrock server ({}).", latest.version));
+    }
+
+    // 1. Back up first, so nothing is lost if the update goes wrong (never skipped).
+    progress(&state.app, json!({ "phase": "backing-up" }));
+    let backup = crate::backupservice::create(state, id, "manual").await;
+    if backup["ok"] == false {
+        return fail(format!("Couldn't back the server up first, so nothing was changed ({}).", backup["error"].as_str().unwrap_or("backup failed")));
+    }
+
+    // 2. Download, check and copy it in.
+    let app = state.app.clone();
+    let updated = tokio::task::spawn_blocking(move || {
+        let (f, ep) = bds_services();
+        bds::update_server_files(&dir, &f, &ep, &|p| match p {
+            Phase::Resolving => progress(&app, json!({ "phase": "resolving" })),
+            Phase::Downloading { received, total } => progress(&app, json!({ "phase": "downloading", "received": received, "total": total })),
+            Phase::Verifying => progress(&app, json!({ "phase": "verifying" })),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    let release = match updated {
+        Ok(r) => r,
+        Err(e) => return fail(format!("{e} If the server no longer starts, restore the backup that was just made on the Backups screen.")),
+    };
+
+    // 3. Record the new version.
+    let mut changes = Map::new();
+    changes.insert("version".into(), json!(release.version));
+    let profile = match profiles::update(&state.data_dir, id, &changes) {
+        Ok(u) => u,
+        Err(e) => return fail(e),
+    };
+    progress(&state.app, json!({ "phase": "done" }));
+    json!({ "ok": true, "profile": profile, "warning": "Bedrock players need the same version as the server: anyone who cannot join should update Minecraft on their device." })
 }

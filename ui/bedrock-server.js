@@ -59,7 +59,45 @@
     note.textContent = bedrock
       ? say('Bedrock Dedicated Server {version}. Players join with the server name and port shown on the server screen once it is public. Changes apply after a restart.', { version: (data.profile && data.profile.version) || '' })
       : '';
+    applyUpdateRow(bedrock ? data.profile : null);
     return bedrock;
+  }
+
+  /** The update row of the settings screen: says whether a newer Bedrock server exists and, on a click, moves the server to it. */
+  let updateFor = null;
+  async function applyUpdateRow(profile) {
+    const box = byId('setBdsUpdate');
+    if (!box) return;
+    box.classList.toggle('hidden', !isProfile(profile));
+    if (!isProfile(profile)) { updateFor = null; return; }
+    const text = byId('setBdsUpdateText');
+    const btn = byId('setBdsUpdateBtn');
+    const msg = byId('setBdsUpdateMsg');
+    updateFor = profile.id;
+    msg.textContent = '';
+    btn.disabled = true;
+    text.textContent = say('Checking for a newer Bedrock server…');
+    let latest = null;
+    try { const list = await window.vp.server.versions(TYPE); latest = Array.isArray(list) && list.length ? String(list[0]) : null; } catch (e) { latest = null; }
+    if (updateFor !== profile.id) return; // the person moved on to another server
+    if (!latest) { text.textContent = say('Could not check for a newer Bedrock server right now.'); return; }
+    if (latest === profile.version) { text.textContent = say('This server is on the current Bedrock server ({version}).', { version: latest }); return; }
+    text.textContent = say('A newer Bedrock server is available: {latest} (this one is {version}). Updating makes a backup first and keeps your worlds, settings and allow-list. Stop the server first. Players need the same version on their device.', { latest, version: profile.version || '?' });
+    btn.disabled = false;
+    btn.onclick = async () => {
+      btn.disabled = true;
+      msg.textContent = say('Updating… (a backup is made first)');
+      let res = null;
+      try { res = await window.vp.server.changeVersion(profile.id, latest); } catch (e) { res = { ok: false, error: String(e) }; }
+      if (res && res.ok) {
+        profile.version = latest;
+        text.textContent = say('This server is on the current Bedrock server ({version}).', { version: latest });
+        msg.textContent = say('Updated to {version}.', { version: latest }) + ' ' + (res.warning ? say(res.warning) : '');
+      } else {
+        msg.textContent = (res && res.error) || say('The update did not work.');
+        btn.disabled = false;
+      }
+    };
   }
 
   /** The friends-only screen: gamertags (which may hold spaces) on the server's allow-list. */

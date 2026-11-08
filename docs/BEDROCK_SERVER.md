@@ -73,8 +73,7 @@ world(s), the two config files and its metadata.
 
 ## What it does not do (yet), on purpose
 
-* **No update or version change.** Changing the version says plainly that it is not built. To move to a newer server, install a new Bedrock
-  server and restore this one's backup into it.
+* **No choice of version.** Mojang publishes only the current release, so there is nothing to pick. The settings screen has an **Update the server** row instead: it says whether a newer release exists and, on a click (server stopped), makes a backup first (never skipped), downloads the new archive, checks it, and copies it over the server folder. The world(s), `server.properties`, `allowlist.json` and `permissions.json` are never replaced, files the person added inside `behavior_packs`/`resource_packs` stay, and the program is copied last. A download that fails, holds no `bedrock_server.exe`, or tries to leave its folder changes nothing; a copy that stops half-way says so and points to the backup that was just made. Bedrock players need the same version as the server (the screen says so).
 * **No public server-list entry.** The list shows a Java address; a Bedrock server has none, so it is never listed (the toggle is hidden).
 * **No custom name** (`name.voxelport.in`): names point at the Java port, and Bedrock needs a port anyway.
 * No voice chat, no add-ons screen, no TPS (that is a Java number), no "why it stopped" explanations (they read Java output).
