@@ -1,6 +1,6 @@
 [package]
 name = "voxelport-tauri"
-version = "2.0.0-beta.1"
+version = "2.0.0-beta.2"
 edition = "2021"
 description = "VoxelPort desktop (Tauri v2 + Rust migration build)"
 license = "MIT"

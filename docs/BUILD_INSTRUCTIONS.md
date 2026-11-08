@@ -139,7 +139,7 @@ It refuses to build if the version in `Cargo.toml` and `tauri.conf.json` differ,
 key it is about to sign with (an update signed with the wrong key would be refused by every installed copy). Nothing is uploaded.
 
 The development build keeps its own identity (`in.voxelport.app.dev`, product name "VoxelPort Tauri Dev") so it never touches a person's real data; the release
-config only overrides the name, identifier and installer settings. The current version is **2.0.0-beta.1**, chosen to continue above the Electron app's 1.17.1; change it in
+config only overrides the name, identifier and installer settings. The current version is **2.0.0-beta.2**, chosen to continue above the Electron app's 1.17.1; change it in
 `src-tauri/Cargo.toml`, `crates/voxelport-core/Cargo.toml`, `src-tauri/tauri.conf.json` and `package.json` together (the script checks the first and third).
 
 The installer is **not code-signed**: Windows shows an "unknown publisher" warning (SmartScreen) until a code-signing certificate is added. That is separate from the update

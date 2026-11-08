@@ -40,7 +40,13 @@ if (fs.existsSync(appData) || fs.existsSync(localData)) throw new Error(`${ident
 if (regQuery(uninstallKey)) throw new Error(`${product} of this kind is already installed (${uninstallKey}): refusing to run.`);
 fs.rmSync(installDir, { recursive: true, force: true });
 const stopCopiesOf = (exe) => { try { execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance Win32_Process -Filter "Name='voxelport-tauri.exe'" | Where-Object { $_.ExecutablePath -eq '${exe.replace(/'/g, "''")}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`], { stdio: 'ignore' }); } catch { /* none running */ } };
-const installedAt = () => (regQuery(uninstallKey)?.match(/InstallLocation\s+REG_SZ\s+"?([^\r\n"]+)"?/)?.[1] || '').trim();
+// Read through PowerShell as UTF-8: `reg query` prints in the console's code page, which turns a folder named with accented letters into nonsense.
+const installedAt = () => {
+  try {
+    const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `[Console]::OutputEncoding = [Text.Encoding]::UTF8; (Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${product}' -ErrorAction Stop).InstallLocation`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return out.trim().replace(/^"|"$/g, '');
+  } catch { return ''; }
+};
 let where = installDir;
 const before = { desktop: snapshot(desktop), startMenu: snapshot(startMenu) };
 
@@ -49,7 +55,7 @@ try {
   // ── Install ──────────────────────────────────────────────────────────────
   // Every process this test starts is told the synthetic APPDATA, the installer too (it starts a copy of the app itself): the release build looks
   // for the previous app there, so none of them can see a real person's old data.
-  execFileSync(installer, ['/S', '/NS', `/D=${installDir}`], { stdio: 'ignore', timeout: 120000, env: { ...process.env, APPDATA: roaming } });
+  execFileSync(installer, ['/S', '/NS', `/D=${installDir}`], { stdio: 'ignore', timeout: 120000, windowsVerbatimArguments: true, env: { ...process.env, APPDATA: roaming } });
   where = installedAt() || installDir;
   const exe = path.join(where, 'voxelport-tauri.exe');
   check('the installer installs silently and puts the program and an uninstaller in one folder', fs.existsSync(exe) && fs.existsSync(path.join(where, 'uninstall.exe')), where);
