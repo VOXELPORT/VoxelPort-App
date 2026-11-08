@@ -126,10 +126,10 @@ try {
   // A fresh profile starts at the Discord sign-in page. The intro must not open behind it; it opens once that page is gone.
   const locked = await page.ev("document.body.classList.contains('discord-locked')");
   check('behind the sign-in page the explaining screen stays out of the way', locked === false || (await page.ev(`!${$('screen-moved')}.classList.contains('active')`)));
-  await sleep(3000); // a person signs in long after the app has started; do not race its start-up
-  // The app puts the sign-in page back whenever its Discord state is pushed again (which a real sign-in would have changed), so this records that the screen
-  // opened at all, rather than catching it open at one instant.
+  // The app puts the sign-in page back whenever its Discord state is pushed again (which a real sign-in would have changed), and it may also lift it by
+  // itself when the accounts service answers, so this records that the screen opened at all, from now on, rather than catching it open at one instant.
   await page.ev(`(() => { window.__movedOpened = false; new MutationObserver(() => { if (${$('screen-moved')}.classList.contains('active')) window.__movedOpened = true; }).observe(${$('screen-moved')}, { attributes: true, attributeFilter: ['class'] }); return true; })()`);
+  await sleep(3000); // a person signs in long after the app has started; do not race its start-up
   if (locked) await page.ev("document.body.classList.remove('discord-locked')");
   check('the first time, the screen that explains it opens by itself (as soon as the sign-in page is gone)', await waitFor(async () => page.ev('window.__movedOpened'), 8000), await page.ev('document.body.className + " | active: " + [...document.querySelectorAll(".screen.active")].map((e) => e.id)'));
   const info = await page.ev('vp.migrate.info()');
