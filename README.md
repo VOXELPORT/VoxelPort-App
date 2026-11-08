@@ -22,13 +22,22 @@
 
 <p align="center"><sub>macOS coming soon · <a href="https://voxelport.in">voxelport.in</a></sub></p>
 
+> [!IMPORTANT]
+> **VoxelPort has moved to a new app (2.0 beta).** It is rebuilt on newer technology: about 3 MB instead of over 100 MB, it opens faster, does everything this app does, and is where every new feature goes.
+>
+> **Move in one click:** update this app to 1.18.0 and press **Update to the new VoxelPort**. It downloads and checks the new app, installs it, brings your servers, backups, VoxelPort ID, address and settings across, then removes this app. Your server folders and worlds are never touched, and if anything goes wrong this app and your data stay exactly as they are.
+>
+> **Or install it directly:** [VoxelPort-Setup.exe](https://github.com/VOXELPORT/VoxelPort-App/releases/download/v2.0.0-beta.1/VoxelPort-Setup.exe) for Windows. You sign in with Discord once in the new app.
+>
+> **Windows 11 Smart App Control:** the new app is not code-signed yet, so with Smart App Control on, Windows blocks its installer and there is no "Run anyway" button. To install it, switch Smart App Control off (Settings › Privacy & security › Windows Security › App & browser control › Smart App Control settings › Off); Windows cannot turn it back on later without reinstalling Windows. If you would rather not, keep using this app, which keeps working.
+
 ---
 
 ## ⚡ Zero to online in four steps
 
 | | |
 |:-:|---|
-| **1** | **Install** the app from [voxelport.in](https://voxelport.in) or the [latest release](https://github.com/VOXELPORT/VoxelPort-App/releases/latest) and sign in with Discord once. Friends never need an account. |
+| **1** | **Install** the [new app](https://github.com/VOXELPORT/VoxelPort-App/releases/download/v2.0.0-beta.1/VoxelPort-Setup.exe) (or this app from [voxelport.in](https://voxelport.in) or the [latest release](https://github.com/VOXELPORT/VoxelPort-App/releases/latest), which then moves you to the new one) and sign in with Discord once. Friends never need an account. |
 | **2** | **Create** a new server (Vanilla, Paper or Fabric) or **import** one you already have. |
 | **3** | Press **Start**, then **Make public**. You get an address like `play.voxelport.in:26137`. |
 | **4** | Friends paste it into **Multiplayer → Add Server**. Done. |
