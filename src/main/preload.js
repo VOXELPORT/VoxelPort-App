@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('vp', {
       'update:available',
       'update:downloaded',
       'update:error',
+      'migrate:progress',
       'tunnel:name',
       'tunnel:nameError',
       'perf:sample',
@@ -189,5 +190,12 @@ contextBridge.exposeInMainWorld('vp', {
     state: () => ipcRenderer.invoke('update:state'),
     check: () => ipcRenderer.invoke('update:check'),
     install: () => ipcRenderer.invoke('update:install'),
+  },
+
+  // "VoxelPort has moved": the move to the new app (see migrateToTauri.js).
+  migrate: {
+    info: () => ipcRenderer.invoke('migrate:info'),
+    start: () => ipcRenderer.invoke('migrate:start'),
+    openPage: () => ipcRenderer.invoke('migrate:openPage'),
   },
 });
