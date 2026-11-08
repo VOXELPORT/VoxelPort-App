@@ -7,6 +7,7 @@
   <title>VoxelPort</title>
   <script src="theme-init.js"></script>
   <script src="tauri-bridge.js"></script>
+  <script src="bedrock-server.js"></script>
   <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="theme-dark.css" />
@@ -72,8 +73,8 @@
       <button id="toggleBtn" class="primary">Start hosting</button>
 
       <section id="share" class="share hidden">
-        <div class="share-label">Share this address with players</div>
-        <div class="address-row">
+        <div class="share-label" id="shareLabel">Share this address with players</div>
+        <div class="address-row" id="shareAddressRow">
           <code id="address">—</code>
           <button id="copyBtn" class="ghost" title="Copy">Copy</button>
         </div>
@@ -145,7 +146,7 @@
         <button id="recheckJavaBtn" class="ghost hidden">Re-check</button>
       </div>
 
-      <label class="field">
+      <label class="field" id="ramField">
         <span class="label">Memory (RAM) — <span id="ramValueLabel">–</span> MB</span>
         <input id="ramSlider" type="range" min="512" max="4096" step="256" />
         <span class="hint" id="ramHint">Recommended based on your PC's specs.</span>
@@ -167,7 +168,7 @@
 
       <label class="field eula-row">
         <input type="checkbox" id="eulaCheck" />
-        <span>I agree to the <a href="https://www.minecraft.net/eula" target="_blank" rel="noreferrer">Minecraft EULA</a>.</span>
+        <span id="eulaText">I agree to the <a href="https://www.minecraft.net/eula" target="_blank" rel="noreferrer">Minecraft EULA</a>.</span>
       </label>
 
       <button id="installBtn" class="primary" disabled>Install &amp; start</button>
@@ -206,6 +207,7 @@
           <option value="vanilla">Vanilla</option>
           <option value="paper">Paper</option>
           <option value="fabric">Fabric</option>
+          <option value="bedrock-server">Bedrock Server</option>
         </select>
       </label>
 
@@ -351,7 +353,7 @@
           <div><strong class="region-used">—</strong><span>region</span></div>
         </div>
 
-        <div class="name-box">
+        <div class="name-box" id="nameBox">
           <div class="name-view hidden" id="nameView">
             <span>Your address: <b id="nameCurrent">—</b></span>
             <span class="spacer"></span>
@@ -408,13 +410,14 @@
           <span class="label">Local port</span>
           <input id="setPort" type="number" min="1" max="65535" inputmode="numeric" />
         </label>
-        <label class="field">
+        <label class="field" data-java-only>
           <span class="label">Memory (RAM) — <span id="setRamLabel">–</span> MB</span>
           <input id="setRam" type="range" min="512" step="256" />
         </label>
+        <p class="hint hidden" id="setBdsNote"></p>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-java-only>
         <div class="set-group-title">Minecraft version</div>
         <dl class="about-list" id="setRuntimeList">
           <div><dt>Installed</dt><dd id="setInstalledVersion">…</dd></div>
@@ -436,7 +439,7 @@
         <div class="set-fields" id="setFields"></div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-java-only>
         <div class="set-group-title">Bedrock players</div>
         <label class="toggle-row">
           <input type="checkbox" id="setBedrock" />
@@ -445,7 +448,7 @@
         <div class="hint" id="setBedrockMsg"></div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-java-only>
         <div class="set-group-title">Player accounts</div>
         <label class="toggle-row">
           <input type="checkbox" id="setCracked" />
@@ -458,7 +461,7 @@
         <div class="hint" id="setAccountsMsg"></div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-java-only>
         <div class="set-group-title">Public server list</div>
         <label class="toggle-row">
           <input type="checkbox" id="setListed" />
@@ -470,7 +473,7 @@
         </label>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-java-only>
         <div class="set-group-title">Voice chat · Supporter Plus</div>
         <p class="hint">Your Supporter Plus rank syncs automatically when your server is public. VoxelPort sets up voice chat for Paper and Fabric. Share only your server joining address.</p>
         <p class="hint" id="setVoiceStatus" role="status"></p>

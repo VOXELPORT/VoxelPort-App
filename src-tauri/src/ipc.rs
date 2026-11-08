@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 
 use tauri::{Emitter, State};
-use voxelport_core::{StartConfig, Status};
+use voxelport_core::{bds, StartConfig, Status};
 
 use voxelport_core::profiles;
 
@@ -209,6 +209,10 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
         return Ok(json!({ "ok": false, "error": "Already getting Java ready for a server — one moment." }));
     }
     profiles::touch(&state.data_dir, id);
+    // A Bedrock Dedicated Server needs no Java: it has its own program and its own start.
+    if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
+        return start_bedrock_server(state, id, &profile).await;
+    }
     let name = profile["name"].as_str().unwrap_or("This server").to_string();
     let mut cfg = StartConfig::new(
         profile["serverDir"].as_str().unwrap_or_default(),
@@ -270,6 +274,29 @@ pub async fn start_profile(state: &AppState, id: &str, retried: bool) -> Result<
     // profile is set before the first status event goes out.
     *state.active_profile.lock().unwrap() = Some(id.to_string());
     match state.server.start(&cfg).await {
+        Ok(()) => {
+            insights::on_start(state);
+            Ok(json!({ "ok": true }))
+        }
+        Err(e) => {
+            *state.active_profile.lock().unwrap() = None;
+            Ok(json!({ "ok": false, "error": e.to_string() }))
+        }
+    }
+}
+
+/// Starts a Bedrock Dedicated Server from its folder. Nothing Java is involved: no Java check or install, no Geyser, no voice plugin.
+async fn start_bedrock_server(state: &AppState, id: &str, profile: &Value) -> Result<Value, String> {
+    let dir = std::path::PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
+    appmisc::note_server_start(
+        state,
+        appmisc::ServerNote { server_type: bds::TYPE_ID.to_string(), version: profile["version"].as_str().unwrap_or_default().to_string(), build: None, port: profile["port"].as_u64() },
+        false,
+    );
+    tunnelsetup::prepare_bedrock_server_start(state, profile).await;
+    *state.java_watch.lock().unwrap() = None;
+    *state.active_profile.lock().unwrap() = Some(id.to_string());
+    match state.server.start_bedrock(&dir).await {
         Ok(()) => {
             insights::on_start(state);
             Ok(json!({ "ok": true }))

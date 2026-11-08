@@ -21,8 +21,13 @@ pub struct Server {
 impl Server {
     /// `route(method, target, body)` answers one request.
     pub fn start(route: impl Fn(&str, &str, &str) -> (u16, Vec<u8>) + Send + 'static) -> Server {
+        Self::start_with(|_| route)
+    }
+    /// Like `start`, for an answer that needs to name the server's own port (a link to a file on the same server).
+    pub fn start_with<R: Fn(&str, &str, &str) -> (u16, Vec<u8>) + Send + 'static>(make: impl FnOnce(u16) -> R) -> Server {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        let route = make(port);
         let (stop, asked) = (Arc::new(AtomicBool::new(false)), Arc::new(Mutex::new(Vec::new())));
         let (s2, a2) = (stop.clone(), asked.clone());
         std::thread::spawn(move || {

@@ -9,14 +9,18 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
 use tauri::{Emitter, Manager};
-use voxelport_core::backups::{self, BackupInfo, CreateOptions, RestoreOptions};
-use voxelport_core::{profiles, server_install, server_process::strip_log_prefix, Status};
+use voxelport_core::backups::{self, BackupInfo, BedrockCreateOptions, CreateOptions, RestoreOptions};
+use voxelport_core::server_process::Flavor;
+use voxelport_core::{bds, profiles, server_install, server_process::strip_log_prefix, Status};
 
 use crate::discord::say;
 use crate::{dialogs, secrets, serverconfig, AppState};
 
 const SAVE_WAIT: Duration = Duration::from_secs(60);
 const CHECK_EVERY: Duration = Duration::from_secs(60);
+/// How long a Bedrock server gets to answer one `save query`, and how long the list of files is waited for after it says "ready".
+const QUERY_WAIT: Duration = Duration::from_secs(2);
+const LIST_SETTLE: Duration = Duration::from_millis(600);
 /// A "server stopped" backup is skipped when the last one is this recent.
 const RECENT_MS: i64 = 2 * 60 * 1000;
 const PROGRESS_EVERY: Duration = Duration::from_millis(250);
@@ -36,6 +40,8 @@ pub struct Backups {
     timer: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     /// Waiters for a line the server prints ("Saved the game").
     waiters: Mutex<Vec<(fn(&str) -> bool, tokio::sync::oneshot::Sender<()>)>>,
+    /// While a Bedrock server holds its saves: the files and lengths its `save query` answers listed (Some = collecting).
+    lengths: Mutex<Option<Vec<(String, u64)>>>,
 }
 
 fn now_ms() -> i64 {
@@ -92,14 +98,18 @@ pub fn describe(state: &AppState, args: &Value) -> Result<Value, String> {
     let profile = profiles::get(&state.data_dir, id).ok_or(NOT_FOUND)?;
     let dir = dir_for(state, id)?;
     let server_dir = PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
-    let level = backups::level_name_of(&server_dir);
+    let has_world = if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
+        backups::bedrock_world_exists(&server_dir, &backups::bedrock_level_name_of(&server_dir))
+    } else {
+        !backups::existing_worlds(&server_dir, &backups::level_name_of(&server_dir)).is_empty()
+    };
     Ok(json!({
         "backups": backups::list_backups(&dir).iter().map(backups::BackupEntry::to_json).collect::<Vec<_>>(),
         "settings": backups::backup_settings(&profile).to_json(),
         "dir": dir.to_string_lossy(),
         "busy": is_busy(state, id),
         "running": serverconfig::is_running(state, id),
-        "hasWorld": !backups::existing_worlds(&server_dir, &level).is_empty(),
+        "hasWorld": has_world,
     }))
 }
 
@@ -164,11 +174,24 @@ fn is_saved(message: &str) -> bool {
 
 /// Called for every line the server prints.
 pub fn note_log_line(state: &AppState, line: &str) {
+    if state.backups.lengths.lock().unwrap().is_some() && state.server.flavor() == Flavor::Bedrock {
+        let found = bds::parse_save_files(&bds::strip_log_prefix(line));
+        if !found.is_empty() {
+            if let Some(list) = state.backups.lengths.lock().unwrap().as_mut() {
+                for (name, len) in found {
+                    match list.iter_mut().find(|(n, _)| *n == name) {
+                        Some(entry) => entry.1 = len,
+                        None => list.push((name, len)),
+                    }
+                }
+            }
+        }
+    }
     let mut waiters = state.backups.waiters.lock().unwrap();
     if waiters.is_empty() {
         return;
     }
-    let message = strip_log_prefix(line);
+    let message = if state.server.flavor() == Flavor::Bedrock { bds::strip_log_prefix(line) } else { strip_log_prefix(line) };
     let mut keep = Vec::new();
     for (matcher, tx) in waiters.drain(..) {
         if matcher(&message) {
@@ -180,6 +203,31 @@ pub fn note_log_line(state: &AppState, line: &str) {
     *waiters = keep;
 }
 
+/// Asks a running Bedrock server to hold its saves and waits until it says the files may be copied (`save hold`, then `save query` until it
+/// answers "Data saved. Files are now ready to be copied."). Returns the files and lengths it reported, or nothing when it never said ready
+/// (the files are then copied whole, from disk).
+async fn hold_bedrock_world(state: &AppState) -> Vec<(String, u64)> {
+    *state.backups.lengths.lock().unwrap() = Some(Vec::new());
+    state.server.send_command("save hold").await;
+    let deadline = Instant::now() + SAVE_WAIT;
+    let mut ready = false;
+    while Instant::now() < deadline {
+        // The waiter is registered before the command goes out (join polls it first).
+        let (got, _) = tokio::join!(wait_for_log(state, bds::is_save_ready, QUERY_WAIT), state.server.send_command("save query"));
+        if got {
+            ready = true;
+            break;
+        }
+    }
+    if ready {
+        tokio::time::sleep(LIST_SETTLE).await; // the list of files follows the line that says ready
+    } else {
+        log(state, "[VoxelPort] The server was slow to save; backing up what is on disk.");
+    }
+    let lengths = state.backups.lengths.lock().unwrap().take().unwrap_or_default();
+    if ready { lengths } else { Vec::new() }
+}
+
 /// Makes a backup now. `reason`: manual, auto or stop. If the server is running it is told to save and to hold its saves while
 /// the files are copied; saving is always switched back on afterwards.
 pub async fn create(state: &AppState, id: &str, reason: &str) -> Value {
@@ -188,6 +236,7 @@ pub async fn create(state: &AppState, id: &str, reason: &str) -> Value {
     if !state.backups.busy.lock().unwrap().insert(id.to_string()) {
         return json!({ "ok": false, "error": "A backup or restore is already running for this server.", "code": "busy" });
     }
+    let is_bds = bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default());
     let active = serverconfig::is_running(state, id);
     if active && state.server.status() != Status::Online {
         state.backups.busy.lock().unwrap().remove(id);
@@ -197,7 +246,12 @@ pub async fn create(state: &AppState, id: &str, reason: &str) -> Value {
     let mut saving_held = false;
     let result: Result<backups::Created, backups::BackupError> = async {
         emit(state, json!({ "profileId": id, "reason": reason, "phase": "starting" }));
-        if live {
+        let mut lengths: Vec<(String, u64)> = Vec::new();
+        if live && is_bds {
+            log(state, "[VoxelPort] Saving the world for a backup…");
+            saving_held = true;
+            lengths = hold_bedrock_world(state).await;
+        } else if live {
             log(state, "[VoxelPort] Saving the world for a backup…");
             saving_held = true;
             state.server.send_command("save-off").await;
@@ -213,7 +267,7 @@ pub async fn create(state: &AppState, id: &str, reason: &str) -> Value {
         let app = state.app.clone();
         let last = std::sync::Mutex::new(Instant::now() - PROGRESS_EVERY);
         let created = tokio::task::spawn_blocking(move || {
-            backups::create_backup(&CreateOptions { backup_dir: &dir2, server_dir: &server_dir, reason: &reason_s, info, now_ms: now_ms(), worlds: None, level_names: None }, &|p| {
+            let report = |p: backups::Progress| {
                 let mut l = last.lock().unwrap();
                 if p.done != p.total && l.elapsed() < PROGRESS_EVERY {
                     return;
@@ -223,7 +277,12 @@ pub async fn create(state: &AppState, id: &str, reason: &str) -> Value {
                 m.insert("profileId".into(), json!(id2));
                 m.insert("reason".into(), json!(reason_s));
                 let _ = app.emit("backup:progress", Value::Object(m));
-            })
+            };
+            if is_bds {
+                backups::create_backup_bedrock(&BedrockCreateOptions { backup_dir: &dir2, server_dir: &server_dir, reason: &reason_s, info, now_ms: now_ms(), levels: None, lengths }, &report)
+            } else {
+                backups::create_backup(&CreateOptions { backup_dir: &dir2, server_dir: &server_dir, reason: &reason_s, info, now_ms: now_ms(), worlds: None, level_names: None }, &report)
+            }
         })
         .await
         .map_err(|e| backups::BackupError { code: "failed", message: e.to_string() })??;
@@ -251,8 +310,9 @@ pub async fn create(state: &AppState, id: &str, reason: &str) -> Value {
         }
     };
     if saving_held && serverconfig::is_running(state, id) {
-        state.server.send_command("save-on").await;
+        state.server.send_command(if is_bds { "save resume" } else { "save-on" }).await;
     }
+    *state.backups.lengths.lock().unwrap() = None;
     state.backups.busy.lock().unwrap().remove(id);
     out
 }
@@ -269,11 +329,19 @@ pub async fn restore(state: &AppState, args: &Value) -> Value {
     let when = format!("{:04}-{:02}-{:02} {:02}:{:02}", p.y, p.mo, p.d, p.h, p.mi);
     let pname = profile["name"].as_str().unwrap_or("").to_string();
     let title = say(state, &format!("Restore the backup from {when}?"), &format!("{when} wala backup restore karein?"));
-    let detail = say(
-        state,
-        &format!("{pname} goes back to how it was then. Anything built since is replaced. If the backup includes server.jar, that file is restored too. Your current world and jar are saved first so you can undo this."),
-        &format!("{pname} waisi ho jayegi jaisi tab thi. Uske baad ka sab kuch badal jayega. Backup mein server.jar hai to woh bhi restore hogi. Abhi wali world aur jar pehle save hoti hain, to undo kar sakte ho."),
-    );
+    let detail = if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
+        say(
+            state,
+            &format!("{pname} goes back to how it was then. Anything built since is replaced. Your current world is saved first so you can undo this."),
+            &format!("{pname} waisi ho jayegi jaisi tab thi. Uske baad ka sab kuch badal jayega. Abhi wali world pehle save hoti hai, to undo kar sakte ho."),
+        )
+    } else {
+        say(
+            state,
+            &format!("{pname} goes back to how it was then. Anything built since is replaced. If the backup includes server.jar, that file is restored too. Your current world and jar are saved first so you can undo this."),
+            &format!("{pname} waisi ho jayegi jaisi tab thi. Uske baad ka sab kuch badal jayega. Backup mein server.jar hai to woh bhi restore hogi. Abhi wali world aur jar pehle save hoti hain, to undo kar sakte ho."),
+        )
+    };
     if !dialogs::confirm_restore(&state.app, title, detail, [say(state, "Cancel", "Cancel"), say(state, "Restore", "Restore karo")]).await {
         return json!({ "ok": false, "cancelled": true });
     }
@@ -291,13 +359,16 @@ async fn restore_confirmed(state: &AppState, profile: &Value, name: &str) -> Val
     let Ok(dir) = dir_for(state, &id) else { return json!({ "ok": false, "error": "Invalid server id." }) };
     let server_dir = PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
     let (name2, info, app, id2, dir2, sd2) = (name.to_string(), info_of(profile), state.app.clone(), id.clone(), dir.clone(), server_dir.clone());
+    let bedrock = bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default());
     let result = tokio::task::spawn_blocking(move || {
-        backups::restore_backup(&RestoreOptions { backup_dir: &dir2, server_dir: &sd2, name: &name2, info, now_ms: now_ms(), max_entries: backups::MAX_ENTRIES }, &|p| {
+        let options = RestoreOptions { backup_dir: &dir2, server_dir: &sd2, name: &name2, info, now_ms: now_ms(), max_entries: backups::MAX_ENTRIES };
+        let report = |p: backups::Progress| {
             let mut m = dir_json(&p);
             m.insert("profileId".into(), json!(id2));
             m.insert("reason".into(), json!("restore"));
             let _ = app.emit("backup:progress", Value::Object(m));
-        })
+        };
+        if bedrock { backups::restore_backup_bedrock(&options, &report) } else { backups::restore_backup(&options, &report) }
     })
     .await
     .map_err(|e| backups::BackupError { code: "failed", message: e.to_string() })

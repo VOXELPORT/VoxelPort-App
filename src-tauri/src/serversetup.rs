@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 use tauri::{Emitter, Manager};
+use voxelport_core::bds::{self, InstallRequest};
 use voxelport_core::mc_versions::{self, Endpoints};
 use voxelport_core::net::Fetcher;
 use voxelport_core::removal::{check_deletable, Refusal};
@@ -16,7 +17,7 @@ use crate::dialogs::{self, RemoveChoice};
 use crate::discord::say;
 use crate::{catalog, secrets, AppState};
 
-const KNOWN_TYPES: &[&str] = &["vanilla", "paper", "fabric"];
+const KNOWN_TYPES: &[&str] = &["vanilla", "paper", "fabric", "bedrock-server"];
 
 /// The version services and the download client. A development build can point at a local test server
 /// (`VOXELPORT_MC_API=http://127.0.0.1:<port>`); a release build always uses the real ones.
@@ -29,6 +30,18 @@ pub(crate) fn services() -> (Fetcher, Endpoints) {
         return (Fetcher::new(policy, "Server", mc_versions::USER_AGENT), ep);
     }
     (mc_versions::server_fetcher(), Endpoints::production())
+}
+
+/// Where the Bedrock Dedicated Server comes from. A development build can point at a local test server
+/// (`VOXELPORT_BDS_API=http://127.0.0.1:<port>`, which serves `/api/links`); a release build always uses Mojang's.
+pub(crate) fn bds_services() -> (Fetcher, bds::Endpoints) {
+    #[cfg(debug_assertions)]
+    if let Ok(base) = std::env::var("VOXELPORT_BDS_API") {
+        let mut policy = voxelport_core::net::HostPolicy::exact(&["127.0.0.1"]);
+        policy.https_only = false;
+        return (Fetcher::new(policy, "Bedrock server", bds::USER_AGENT), bds::Endpoints { links_api: format!("{base}/api/links") });
+    }
+    (bds::fetcher(), bds::Endpoints::production())
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
@@ -50,6 +63,10 @@ fn int(v: &Value) -> Option<i64> {
 pub async fn versions(ty: &str) -> Result<Value, String> {
     let ty = ty.to_string();
     let list = tokio::task::spawn_blocking(move || {
+        if bds::is_bedrock_server(&ty) {
+            let (f, ep) = bds_services();
+            return bds::list_versions(&f, &ep);
+        }
         let (f, ep) = services();
         mc_versions::list_versions(&f, &ep, &ty)
     })
@@ -107,8 +124,43 @@ fn progress(app: &tauri::AppHandle, payload: Value) {
     let _ = app.emit("install:progress", payload);
 }
 
+/// Installs a Bedrock Dedicated Server: Mojang's archive is downloaded and unpacked, the port and name are set, and the profile is
+/// recorded. There is no Java, no RAM setting and no template for it.
+async fn install_bedrock_server(state: &AppState, args: &Value) -> Result<Value, String> {
+    let port = match args.get("port") {
+        None | Some(Value::Null) => bds::DEFAULT_PORT,
+        Some(p) => int(p).filter(|p| (1..=65535).contains(p)).ok_or("Enter a valid server port (1–65535).")?,
+    };
+    let dir: PathBuf = match args.get("serverDir") {
+        None | Some(Value::Null) => fresh_server_dir(state),
+        Some(Value::String(s)) if Path::new(s).is_absolute() => PathBuf::from(s),
+        Some(_) => return Err("Invalid server folder.".into()),
+    };
+    let name = str_arg(args, "name").map(str::trim).filter(|n| !n.is_empty()).unwrap_or("Bedrock server").chars().take(60).collect::<String>();
+    let (app, dir2, name2) = (state.app.clone(), dir.clone(), name.clone());
+    let release = tokio::task::spawn_blocking(move || {
+        let (f, ep) = bds_services();
+        bds::install_server_files(&InstallRequest { dir: &dir2, port, server_name: &name2 }, &f, &ep, &|p| {
+            progress(&app, match p {
+                Phase::Resolving => json!({ "phase": "resolving" }),
+                Phase::Downloading { received, total } => json!({ "phase": "downloading", "received": received, "total": total }),
+                Phase::Verifying => json!({ "phase": "verifying" }),
+            })
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // A Bedrock server uses no Java memory setting; the profile still stores one (the store requires it), and nothing reads it.
+    let profile = profiles::create(&state.data_dir, &json!({ "name": name, "type": bds::TYPE_ID, "version": release.version, "serverDir": dir.to_string_lossy(), "port": port, "minRamMb": 1024, "maxRamMb": 1024 }))?;
+    progress(&state.app, json!({ "phase": "done" }));
+    Ok(json!({ "ok": true, "profile": profile, "warning": Value::Null }))
+}
+
 /// Installs a new server: the jar is downloaded and checked, the files are written, and the profile is recorded.
 pub async fn install(state: &AppState, args: &Value) -> Result<Value, String> {
+    if str_arg(args, "type") == Some(bds::TYPE_ID) {
+        return install_bedrock_server(state, args).await;
+    }
     let template_id = str_arg(args, "templateId").filter(|t| !t.is_empty());
     let template = match template_id {
         Some(id) => Some((id, catalog::template_properties(id).ok_or("Unknown template.")?)),
@@ -219,7 +271,11 @@ pub fn update_profile(state: &AppState, args: &Value) -> Result<Value, String> {
     let updated = profiles::update(&state.data_dir, id, &safe)?;
     if safe.contains_key("port") {
         if let (Some(dir), Some(port)) = (updated["serverDir"].as_str(), updated["port"].as_i64()) {
-            let _ = server_install::update_server_properties_safely(Path::new(dir), &[("server-port".to_string(), port.to_string())]);
+            let mut lines = vec![("server-port".to_string(), port.to_string())];
+            if bds::is_bedrock_server(updated["type"].as_str().unwrap_or_default()) {
+                lines.push(("server-portv6".to_string(), bds::port_v6_for(port).to_string()));
+            }
+            let _ = server_install::update_server_properties_safely(Path::new(dir), &lines);
         }
     }
     Ok(updated)
@@ -300,6 +356,9 @@ pub async fn change_version(state: &AppState, args: &Value) -> Value {
     let fail = |e: String| json!({ "ok": false, "error": e });
     let id = str_arg(args, "id").unwrap_or_default().to_string();
     let Some(profile) = profiles::get(&state.data_dir, &id) else { return fail("Server profile not found.".into()) };
+    if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
+        return fail("Changing the version is not built for Bedrock servers yet. To move to a newer one, install a new Bedrock server and restore this one's backup into it.".into());
+    }
     let version = match str_arg(args, "version").map(str::trim) {
         Some(v) if !v.is_empty() => v.to_string(),
         _ => return fail("Choose a Minecraft version.".into()),

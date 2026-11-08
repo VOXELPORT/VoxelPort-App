@@ -5,6 +5,8 @@ pub mod account;
 pub mod addon_registry;
 pub mod addons;
 pub mod backups;
+pub mod bds;
+pub mod bds_allowlist;
 pub mod bedrock_endpoint;
 pub mod bedrock_install;
 pub mod bedrock;

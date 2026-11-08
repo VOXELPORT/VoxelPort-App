@@ -30,6 +30,7 @@ importChooseFolderBtn.addEventListener('click', async () => {
     importDetectText.textContent = t("This folder doesn't look like an existing Minecraft server yet — you can still add it, VoxelPort just won't detect any settings.");
   } else {
     const found = [];
+    if (info.hasBedrockServer) found.push('bedrock_server.exe');
     if (info.hasServerJar) found.push('server.jar');
     if (info.hasProperties) found.push('server.properties');
     if (info.hasWorld) found.push('world/');
@@ -48,7 +49,7 @@ importConfirmBtn.addEventListener('click', async () => {
     const result = await window.vp.server.import({
       name: importName.value.trim(),
       type: importType.value,
-      port: Number(importPort.value) || 25565,
+      port: Number(importPort.value) || (importType.value === 'bedrock-server' ? 19132 : 25565),
       minRamMb: Number(importRamSlider.value),
       maxRamMb: Number(importRamSlider.value),
       serverDir: importDir,

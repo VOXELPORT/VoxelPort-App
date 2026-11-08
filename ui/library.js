@@ -5,7 +5,7 @@ const addServerBtn = $('addServerBtn');
 const importServerBtn = $('importServerBtn');
 
 function typeLabel(type) {
-  return { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[type] || type;
+  return window.VPBedrockServer.typeName(type);
 }
 
 function statusForProfile(profile) {
@@ -60,7 +60,7 @@ function renderCards() {
     const icon = document.createElement('div');
     icon.className = 'server-card-icon';
     icon.dataset.type = profile.type;
-    icon.textContent = ({ paper: 'P', fabric: 'F', vanilla: 'V' })[profile.type] || 'M';
+    icon.textContent = ({ paper: 'P', fabric: 'F', vanilla: 'V', 'bedrock-server': 'B' })[profile.type] || 'M';
     icon.setAttribute('aria-hidden', 'true');
 
     const info = document.createElement('div');

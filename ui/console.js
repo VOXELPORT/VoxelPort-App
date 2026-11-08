@@ -116,14 +116,16 @@ function renderAddress() {
     srvAltAddress.textContent = customAddress.address ? t('Also works: {address}', { address: plain }) : '';
     srvAltAddress.classList.toggle('hidden', !customAddress.address);
   }
-  const bedrockOn = Boolean(!awaitingAssignment && isPublic && assigned && managingProfile && managingProfile.bedrock);
+  const bedrockServer = window.VPBedrockServer.isProfile(managingProfile) || Boolean(assigned && assigned.bedrockServer);
+  window.VPBedrockServer.applyShareLayout(bedrockServer);
+  const bedrockOn = Boolean(!awaitingAssignment && isPublic && assigned && managingProfile && (managingProfile.bedrock || bedrockServer));
   const bedrock = bedrockOn ? assignedBedrockAddress() : null;
   srvBedrock.classList.toggle('hidden', !bedrock);
   srvBedrockHost.textContent = bedrock ? bedrock.host : '—';
   srvBedrockPort.textContent = bedrock ? String(bedrock.port) : '—';
   srvBedrockStatus.textContent = !bedrockOn ? ''
     : !bedrock ? t('Bedrock needs an updated relay.')
-    : assigned.bedrockReady !== true ? t('Restart your server once to activate this Bedrock address.') : '';
+    : assigned.bedrockReady !== true && !bedrockServer ? t('Restart your server once to activate this Bedrock address.') : '';
   srvBedrockStatus.classList.toggle('hidden', !srvBedrockStatus.textContent);
   srvListed.classList.toggle('hidden', !(managingProfile && managingProfile.listing && managingProfile.listing.enabled));
   const hasName = Boolean(customAddress.name) && !editingName;
@@ -180,13 +182,15 @@ $('nameRemoveBtn').addEventListener('click', async () => {
 function currentInviteData() {
   if (!assigned) return null;
   const plain = `${assigned.host}:${assigned.port}`;
-  const bedrockOn = Boolean(managingProfile && managingProfile.bedrock);
+  const bedrockServer = window.VPBedrockServer.isProfile(managingProfile) || Boolean(assigned && assigned.bedrockServer);
+  const bedrockOn = Boolean(managingProfile && (managingProfile.bedrock || bedrockServer));
   return {
     name: managingProfile && managingProfile.name,
     version: managingProfile && managingProfile.version,
     address: customAddress.address || plain,
     plainAddress: customAddress.address ? plain : '',
-    bedrock: bedrockOn && assigned.bedrockReady === true ? assignedBedrockAddress() : null,
+    bedrock: bedrockOn && (assigned.bedrockReady === true || bedrockServer) ? assignedBedrockAddress() : null,
+    bedrockOnly: bedrockServer,
   };
 }
 window.currentInviteData = currentInviteData;
@@ -211,6 +215,7 @@ function setBar(id, fraction, level) {
 window.vp.on('perf:sample', (p) => {
   if (!isThisProfileActive()) return;
   perfPanel.classList.remove('hidden');
+  window.VPBedrockServer.applyPerfLayout(window.VPBedrockServer.isProfile(managingProfile));
   if (p.cpuPercent !== null) {
     $('perfCpu').textContent = `${Math.round(p.cpuPercent)}%`;
     setBar('perfCpuBar', p.cpuPercent / 100, p.cpuPercent > 85 ? 'bad' : p.cpuPercent > 60 ? 'warn' : '');
@@ -314,7 +319,7 @@ window.openManagementScreen = async function openManagementScreen(id) {
   if (!profile) { showScreen('screen-library'); return; }
   managingProfile = profile;
   mgName.textContent = profile.name;
-  mgMeta.textContent = t('{type} • {version} • port {port}', { type: { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type, version: profile.version, port: profile.port });
+  mgMeta.textContent = t('{type} • {version} • port {port}', { type: window.VPBedrockServer.typeName(profile.type), version: profile.version, port: profile.port });
   renderManagementScreen();
 };
 
@@ -325,7 +330,7 @@ window.refreshManagedProfile = async function refreshManagedProfile() {
   if (!profile) return;
   managingProfile = profile;
   mgName.textContent = profile.name;
-  mgMeta.textContent = t('{type} • {version} • port {port}', { type: { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[profile.type] || profile.type, version: profile.version, port: profile.port });
+  mgMeta.textContent = t('{type} • {version} • port {port}', { type: window.VPBedrockServer.typeName(profile.type), version: profile.version, port: profile.port });
   renderManagementScreen();
 };
 window.consoleProfileId = () => managingProfileId;

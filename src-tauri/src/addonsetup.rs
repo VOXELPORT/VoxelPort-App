@@ -352,7 +352,7 @@ async fn bedrock_set_inner(state: &AppState, profile: &Value, id: &str, enabled:
         tunnelsetup::tunnel_stop(state).await;
         *state.tunnels.bedrock_restarted_for.lock().unwrap() = None;
         let udp = (updated["bedrock"] == true).then(|| local_bedrock_port(&updated));
-        tunnelsetup::start_internal(state, tunnelsetup::StartArgs { local_port: updated["port"].clone(), relay_url: None, profile_id: Some(id.to_string()), udp_port: udp }).await;
+        tunnelsetup::start_internal(state, tunnelsetup::StartArgs { local_port: updated["port"].clone(), relay_url: None, profile_id: Some(id.to_string()), udp_port: udp, separate_bedrock: true }).await;
     }
     json!({ "ok": true, "profile": updated, "restartNeeded": is_running(state, id) })
 }

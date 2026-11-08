@@ -43,8 +43,13 @@ pub struct Insights {
     stop_requested: AtomicBool,
 }
 
+/// The running server is a Bedrock Dedicated Server: no Java memory limit, no `/tick`, and none of the Java crash explanations apply.
+fn active_is_bedrock_server(state: &AppState) -> bool {
+    state.active_profile.lock().unwrap().clone().and_then(|id| profiles::get(&state.data_dir, &id)).is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default()))
+}
+
 fn send_perf(state: &AppState) {
-    let max_ram = state.active_profile.lock().unwrap().clone().and_then(|id| profiles::get(&state.data_dir, &id)).and_then(|p| p["maxRamMb"].as_u64());
+    let max_ram = if active_is_bedrock_server(state) { None } else { state.active_profile.lock().unwrap().clone().and_then(|id| profiles::get(&state.data_dir, &id)).and_then(|p| p["maxRamMb"].as_u64()) };
     let payload = state.insights.perf.lock().unwrap().to_json(max_ram);
     let _ = state.app.emit("perf:sample", payload);
 }
@@ -78,6 +83,9 @@ pub fn on_start(state: &AppState) {
 /// The server is online: start asking it for its tick time now and then (Minecraft 1.20.3 and newer has `/tick`).
 pub fn on_online(state: &AppState) {
     stop_tick_polling(state);
+    if active_is_bedrock_server(state) {
+        return;
+    }
     let version = state.active_profile.lock().unwrap().clone().and_then(|id| profiles::get(&state.data_dir, &id)).and_then(|p| p["version"].as_str().map(str::to_string));
     if !version.is_some_and(|v| perf::supports_tick_query(&v)) {
         return;
@@ -151,6 +159,9 @@ pub fn on_exit(state: &AppState, exited_profile: Option<&str>, code: Option<i32>
     i.monitor.stop();
     stop_tick_polling(state);
     let (Some(id), false, false) = (exited_profile, i.stop_requested.load(Ordering::SeqCst), java_fix) else { return };
+    if profiles::get(&state.data_dir, id).is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default())) {
+        return; // the explanations read Java output
+    }
     let lines: Vec<String> = {
         let recent = i.recent.lock().unwrap();
         recent.iter().skip(recent.len().saturating_sub(EXPLAIN_LINES)).cloned().collect()

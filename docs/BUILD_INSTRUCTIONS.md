@@ -93,6 +93,16 @@ changing the Minecraft version (36 checks; test folder `...\e2e-backups`). It re
 `tools/e2e-tunnel.mjs` covers making a server public through `tools/fake-relay.mjs` (49 checks; test folder `...\e2e-tunnel`). It also needs
 port 25590 free on 127.0.0.1 for a stand-in "Minecraft" that echoes.
 
+`tools/e2e-bedrock-server.mjs` covers the Bedrock Dedicated Server type (see [BEDROCK_SERVER.md](BEDROCK_SERVER.md)): the wizard, a start with no Java on the PATH, players, settings, the allow-list, live and stopped backups, restore, and a datagram through `tools/fake-relay.mjs` (48 checks; test folder `...\e2e-bedrock`). Its last argument is the stand-in server, which it serves inside a fake Mojang archive as `bedrock_server.exe` (the stand-in poses as a Bedrock server when it is named that, and answers UDP when `VP_FAKE_UDP_ECHO` is set):
+
+```
+node tools/e2e-bedrock-server.mjs "%CD%\target\debug\voxelport-tauri.exe" "%APPDATA%\in.voxelport.app.dev" C:\Users\<you>\vp-tauri-test\e2e-bedrock "%CD%\target\debug\vp-fake-server.exe"
+```
+
+It needs ports 8797 and 8799 free, and removes the backups and the wizard's server folder it made. One more test asks Mojang's real link service which Bedrock server is current (one small request, nothing is downloaded); it is skipped by default: `cargo test -p voxelport-core --test bds -- --ignored`.
+
+`ui/` is built, not edited: `node tools/build-ui.js` copies the pinned Electron renderer and then applies `ui-extra/` (new files) and `tools/ui-patches-bedrock.js` (the few anchored changes the Bedrock type makes). A patch whose anchor is missing stops the build, so a change in the pinned renderer can never turn one into a silent no-op. Rebuild the app (`cargo build`) afterwards: the screens are embedded in it.
+
 The six scripts delete only the identity files the gate creates in that data folder (`device-token.json`, `discord-gate.json`,
 `app-session.json`) and ends only the processes it started, by PID.
 

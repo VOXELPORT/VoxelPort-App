@@ -159,6 +159,8 @@ ramSlider.addEventListener('input', () => {
 });
 
 async function runJavaCheck() {
+  // A Bedrock Dedicated Server needs no Java: the Java and memory rows go, and there is nothing to wait for.
+  if (window.VPBedrockServer.applyConfigScreen(wizardState.type)) { javaSatisfied = true; updateInstallEnabled(); return; }
   javaStatusText.textContent = window.t('Checking for Java…');
   installJavaBtn.classList.add('hidden');
   recheckJavaBtn.classList.add('hidden');
@@ -237,7 +239,7 @@ installBtn.addEventListener('click', async () => {
       name: wizardState.name,
       type: wizardState.type,
       version: wizardState.version,
-      port: Number(serverPort.value) || 25565,
+      port: Number(serverPort.value) || (window.VPBedrockServer.isType(wizardState.type) ? 19132 : 25565),
       minRamMb: wizardState.ramMb,
       maxRamMb: wizardState.ramMb,
       serverDir: wizardState.serverDir,
@@ -267,6 +269,9 @@ window.vp.on('install:progress', (p) => {
     installText.textContent = p.total
       ? window.t('Downloading… {pct}% ({done} / {total} MB)', { pct, done: mb(p.received), total: mb(p.total) })
       : window.t('Downloading…');
+  } else if (p.phase === 'verifying') {
+    installFill.style.width = '100%';
+    installText.textContent = window.t('Checking the download…');
   } else if (p.phase === 'cracked') {
     installFill.style.width = '100%';
     installText.textContent = window.t('Setting up player passwords and skins…');

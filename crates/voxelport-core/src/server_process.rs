@@ -20,6 +20,7 @@ use tokio::process::{ChildStdin, Command};
 use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 use tokio::task::JoinHandle;
 
+use crate::bds;
 use crate::bedrock::{self, BedrockError, BedrockOptions};
 use crate::log_buffer::{cut, LogBuffer};
 
@@ -44,6 +45,13 @@ fn jar_re() -> &'static Regex { static R: OnceLock<Regex> = OnceLock::new(); re(
 /// for the server saying it.
 pub fn strip_log_prefix(line: &str) -> String {
     prefix_re().replace(line, "").trim_end().to_string()
+}
+
+/// Which kind of server is running: the console of a Java server and of a Bedrock Dedicated Server print different lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flavor {
+    Java,
+    Bedrock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +94,8 @@ pub enum StartError {
     InvalidJar,
     InvalidRam,
     Bedrock(BedrockError),
+    /// A Bedrock Dedicated Server folder without its program, or with something else in its place.
+    ServerExe(String),
     Spawn(String),
 }
 
@@ -98,7 +108,8 @@ impl std::fmt::Display for StartError {
             StartError::InvalidJar => f.write_str("invalid server jar name."),
             StartError::InvalidRam => f.write_str("invalid RAM allocation."),
             StartError::Bedrock(e) => write!(f, "{e}"),
-            StartError::Spawn(e) => write!(f, "could not start Java: {e}"),
+            StartError::ServerExe(e) => f.write_str(e),
+            StartError::Spawn(e) => write!(f, "could not start the server: {e}"),
         }
     }
 }
@@ -206,6 +217,7 @@ impl EventReceiver {
 
 struct State {
     status: Status,
+    flavor: Flavor,
     running: bool,
     generation: u64,
     online: Vec<String>,
@@ -248,6 +260,7 @@ impl ServerProcess {
             policy,
             state: Mutex::new(State {
                 status: Status::Stopped,
+                flavor: Flavor::Java,
                 running: false,
                 generation: 0,
                 online: Vec::new(),
@@ -307,14 +320,39 @@ impl ServerProcess {
         self.start_command(cmd).await
     }
 
+    /// Start a Bedrock Dedicated Server: its own program in the server folder, no arguments (everything it needs is in the folder's
+    /// `server.properties`), run with the folder as its working directory.
+    pub async fn start_bedrock(&self, server_dir: &Path) -> Result<(), StartError> {
+        if self.is_running() {
+            return Err(StartError::AlreadyRunning);
+        }
+        let exe = match bds::server_exe(server_dir) {
+            Ok(p) => p,
+            Err(e) => {
+                self.inner.state.lock().unwrap().flavor = Flavor::Bedrock;
+                self.emit_log(format!("Refusing to start: {e}"));
+                self.set_status(Status::Crashed);
+                return Err(StartError::ServerExe(e));
+            }
+        };
+        let mut cmd = Command::new(exe);
+        cmd.current_dir(server_dir);
+        self.start_command_as(cmd, Flavor::Bedrock).await
+    }
+
     /// Run an already-built command as the managed process. The checks live in [`build_command`]; this is public so
     /// tests can run a stand-in server.
-    pub async fn start_command(&self, mut cmd: Command) -> Result<(), StartError> {
+    pub async fn start_command(&self, cmd: Command) -> Result<(), StartError> {
+        self.start_command_as(cmd, Flavor::Java).await
+    }
+
+    pub async fn start_command_as(&self, mut cmd: Command, flavor: Flavor) -> Result<(), StartError> {
         {
             let mut st = self.inner.state.lock().unwrap();
             if st.running {
                 return Err(StartError::AlreadyRunning);
             }
+            st.flavor = flavor;
             st.running = true;
             st.generation += 1;
             st.online.clear();
@@ -328,7 +366,7 @@ impl ServerProcess {
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                self.emit_log(format!("Failed to start Java: {e}"));
+                self.emit_log(if flavor == Flavor::Bedrock { format!("Failed to start the Bedrock server: {e}") } else { format!("Failed to start Java: {e}") });
                 self.finish(Some(-1)).await;
                 return Err(StartError::Spawn(e.to_string()));
             }
@@ -442,10 +480,24 @@ impl ServerProcess {
     /// A console player button (kick, op, ban...). The name must look like one a server prints, so it can never
     /// carry a second command.
     pub async fn player_action(&self, action: &str, name: &str) -> bool {
-        if !self.is_running() || !PLAYER_ACTIONS.contains(&action) || !player_re().is_match(name) {
+        if !self.is_running() {
+            return false;
+        }
+        if self.flavor() == Flavor::Bedrock {
+            return match bds::player_command(action, name) {
+                Some(line) => self.send_command(&line).await,
+                None => false,
+            };
+        }
+        if !PLAYER_ACTIONS.contains(&action) || !player_re().is_match(name) {
             return false;
         }
         self.send_command(&format!("{action} {name}")).await
+    }
+
+    /// Which kind of server was started last.
+    pub fn flavor(&self) -> Flavor {
+        self.inner.state.lock().unwrap().flavor
     }
 
     // ----- internals -----
@@ -473,12 +525,13 @@ impl ServerProcess {
         if line.is_empty() {
             return;
         }
-        let message = strip_log_prefix(&line);
+        let bedrock = self.flavor() == Flavor::Bedrock;
+        let message = if bedrock { bds::strip_log_prefix(&line) } else { strip_log_prefix(&line) };
         self.emit_log(line);
 
         let became_ready = {
             let mut st = self.inner.state.lock().unwrap();
-            if st.status == Status::Starting && ready_re().is_match(&message) {
+            if st.status == Status::Starting && (if bedrock { bds::is_ready(&message) } else { ready_re().is_match(&message) }) {
                 st.status = Status::Online;
                 true
             } else {
@@ -488,8 +541,9 @@ impl ServerProcess {
         if became_ready {
             self.emit(Event::Status(Status::Online));
         }
-        if let Some(c) = join_re().captures(&message) {
-            let name = c[1].to_string();
+        let joined = if bedrock { bds::player_joined(&message) } else { join_re().captures(&message).map(|c| c[1].to_string()) };
+        let left = if bedrock { bds::player_left(&message) } else { leave_re().captures(&message).map(|c| c[1].to_string()) };
+        if let Some(name) = joined {
             let names = {
                 let mut st = self.inner.state.lock().unwrap();
                 if !st.online.contains(&name) {
@@ -500,8 +554,7 @@ impl ServerProcess {
             self.emit(Event::Players(names.len()));
             self.emit(Event::Names(names));
         }
-        if let Some(c) = leave_re().captures(&message) {
-            let name = c[1].to_string();
+        if let Some(name) = left {
             let names = {
                 let mut st = self.inner.state.lock().unwrap();
                 st.online.retain(|n| *n != name);

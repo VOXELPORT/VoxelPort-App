@@ -40,6 +40,7 @@
       listEl.appendChild(li);
     }
     emptyEl.classList.toggle('hidden', friends.length > 0);
+    if (status.enabled && friends.length === 0) stateText.textContent += ' ' + t('Nobody is on the list yet, so nobody can join, not even you. Add your own name first, or turn this off.');
   }
 
   async function refresh() {
@@ -96,6 +97,7 @@
     friendsProfileId = id;
     friendsProfile = await window.vp.server.get(id);
     $('friendsServerName').textContent = (friendsProfile && friendsProfile.name) || '';
+    window.VPBedrockServer.applyFriendsLayout(friendsProfile);
     addMsg.textContent = '';
     input.value = '';
     await refresh();

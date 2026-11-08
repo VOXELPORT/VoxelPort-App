@@ -214,6 +214,9 @@ pub struct StartArgs {
     pub relay_url: Option<String>,
     pub profile_id: Option<String>,
     pub udp_port: Option<u16>,
+    /// Ask the relay for a separate permanent Bedrock port (a Java server with Geyser). A Bedrock Dedicated Server asks for plain UDP
+    /// instead, which the relay serves on the same port number as the server's one public address: one port to share, not two.
+    pub separate_bedrock: bool,
 }
 
 async fn wait_for_stopped(t: &Tunnel, within: Duration) {
@@ -348,7 +351,7 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
         token: state.device.lock().unwrap().token.clone(),
         local_port: port,
         udp_port: a.udp_port,
-        bedrock_port: a.udp_port,
+        bedrock_port: if a.separate_bedrock { a.udp_port } else { None },
         voice_port,
         voice_auto,
         client: Some(format!("desktop/{}", env!("CARGO_PKG_VERSION"))),
@@ -359,7 +362,7 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
 
 /// `tunnel:start`: the manual flow (a server the person runs themselves).
 pub async fn tunnel_start(state: &AppState, args: &Value) -> Value {
-    start_internal(state, StartArgs { local_port: args["localPort"].clone(), relay_url: str_arg(args, "relayUrl").map(str::to_string), profile_id: None, udp_port: None }).await
+    start_internal(state, StartArgs { local_port: args["localPort"].clone(), relay_url: str_arg(args, "relayUrl").map(str::to_string), profile_id: None, udp_port: None, separate_bedrock: false }).await
 }
 
 /// `server:makePublic`.
@@ -375,8 +378,10 @@ pub async fn make_public(state: &AppState, args: &Value) -> Value {
     }
     // A deliberate make-public clears the once-per-endpoint auto-restart guard, so a fresh attempt can relaunch for Bedrock again.
     *state.tunnels.bedrock_restarted_for.lock().unwrap() = None;
-    let udp = (profile["bedrock"] == true).then(|| crate::serverconfig::local_bedrock_port(&profile));
-    start_internal(state, StartArgs { local_port: profile["port"].clone(), relay_url: None, profile_id: Some(id.to_string()), udp_port: udp }).await
+    // A Bedrock Dedicated Server is reached over UDP only, on the port it listens on; a Java server with Geyser has its own Bedrock port.
+    let is_bds = voxelport_core::bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default());
+    let udp = (is_bds || profile["bedrock"] == true).then(|| crate::serverconfig::local_bedrock_port(&profile));
+    start_internal(state, StartArgs { local_port: profile["port"].clone(), relay_url: None, profile_id: Some(id.to_string()), udp_port: udp, separate_bedrock: !is_bds }).await
 }
 
 pub async fn tunnel_stop(state: &AppState) -> Value {
@@ -407,7 +412,8 @@ pub fn on_server_exit(state: &AppState, exited: Option<&str>) {
 
 /// The public server-list entry for a profile, or None if it is not opted in.
 pub fn build_listing(state: &AppState, profile: &Value) -> Option<Value> {
-    if profile["listing"]["enabled"] != true {
+    // The public list shows a Java address; a Bedrock Dedicated Server has none, so it is never listed.
+    if profile["listing"]["enabled"] != true || voxelport_core::bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
         return None;
     }
     let dir = std::path::PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
@@ -626,6 +632,14 @@ fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::Unboun
                         continue;
                     }
                     let id = state.tunnels.public_profile();
+                    let is_bds = id.as_deref().and_then(|i| profiles::get(&state.data_dir, i)).is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default()));
+                    if is_bds {
+                        // One public port carries both halves of a Bedrock server's connection (TCP signalling, UDP game traffic), so that is the
+                        // address; the server only has to be told it (once), exactly as Geyser is.
+                        let ready = on_assigned(&app, &state, &tunnel, id.as_deref(), &public_host, Some(port));
+                        emit(&state, "tunnel:assigned", json!({ "port": port, "host": public_host, "bedrockPort": port, "bedrockReady": ready, "bedrockServer": true }));
+                        continue;
+                    }
                     let ready = on_assigned(&app, &state, &tunnel, id.as_deref(), &public_host, bedrock_port);
                     emit(&state, "tunnel:assigned", json!({ "port": port, "host": public_host, "bedrockPort": bedrock_port, "bedrockReady": ready }));
                 }
@@ -735,7 +749,8 @@ async fn auto_restart_for_bedrock(app: &tauri::AppHandle, id: &str, endpoint: &F
         return;
     }
     *state.tunnels.bedrock_restarted_for.lock().unwrap() = Some(key);
-    log("[VoxelPort] Activating the Bedrock address — restarting the server once. Java players reconnect automatically.");
+    let who = if profiles::get(&state.data_dir, id).is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default())) { "Players" } else { "Java players" };
+    log(&format!("[VoxelPort] Activating the Bedrock address — restarting the server once. {who} reconnect automatically."));
     state.tunnels.bedrock_restarting.store(true, Ordering::SeqCst);
     restart_for_bedrock(&state, id).await;
     state.tunnels.bedrock_restarting.store(false, Ordering::SeqCst);
@@ -758,6 +773,33 @@ async fn restart_for_bedrock(state: &AppState, id: &str) {
     match ipc::start_profile(state, id, false).await {
         Ok(r) if r["ok"] == true => {}
         _ => log("[VoxelPort] Could not restart automatically; Start the server once to activate Bedrock."),
+    }
+}
+
+/// Before a Bedrock Dedicated Server starts: tells it the public address clients must use, in its own setting
+/// (`server-udp-ports=<relay IP>:<public port>:<local port>`), from the address remembered the last time it was public. With none remembered (the
+/// first time) it is told only its local port, and [`on_assigned`] restarts it once when the relay names the address. Best effort: a failure is
+/// said in the console and the server still starts.
+pub async fn prepare_bedrock_server_start(state: &AppState, profile: &Value) {
+    let id = profile["id"].as_str().unwrap_or_default().to_string();
+    let local_port = crate::serverconfig::local_bedrock_port(profile);
+    let token = state.device.lock().unwrap().token.clone();
+    let mut value = local_port.to_string();
+    let mut launched = None;
+    if let Some(e) = read_bedrock_endpoint(&state.data_dir, &id, &token) {
+        let host = e.public_host.clone();
+        match tokio::task::spawn_blocking(move || voxelport_core::bds::resolve_public_ip(&host)).await.ok().flatten() {
+            Some(ip) => {
+                value = voxelport_core::bds::udp_ports_value(Some(ip), e.public_port, local_port);
+                launched = Some((id.clone(), FullEndpoint { local_port, public_host: e.public_host, public_port: e.public_port }));
+            }
+            None => emit(state, "server:log", format!("[VoxelPort] Could not look up {}, so the server starts without its public address.", e.public_host)),
+        }
+    }
+    state.tunnels.set_bedrock_launch(launched);
+    let dir = std::path::PathBuf::from(profile["serverDir"].as_str().unwrap_or_default());
+    if let Err(e) = voxelport_core::server_install::update_server_properties_safely(&dir, &[("server-udp-ports".to_string(), value)]) {
+        emit(state, "server:log", format!("[VoxelPort] Could not set the server's public address: {e}"));
     }
 }
 

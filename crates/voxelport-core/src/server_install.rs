@@ -113,14 +113,16 @@ pub fn update_server_properties_safely(dir: &Path, changes: &[(String, String)])
 pub fn detect_existing_server(dir: &Path) -> Value {
     let has = |n: &str| dir.join(n).exists();
     let (jar, props, eula, world, mods, plugins) = (has("server.jar"), has("server.properties"), has("eula.txt"), has("world"), has("mods"), has("plugins"));
-    let guessed_type = if mods { Some("fabric") } else if plugins { Some("paper") } else if jar || props { Some("vanilla") } else { None };
+    // A Bedrock Dedicated Server folder: its program, and its worlds live under `worlds`.
+    let (bedrock, worlds) = (has(crate::bds::EXE), has("worlds"));
+    let guessed_type = if bedrock { Some(crate::bds::TYPE_ID) } else if mods { Some("fabric") } else if plugins { Some("paper") } else if jar || props { Some("vanilla") } else { None };
     let guessed_port = props
         .then(|| fs::read_to_string(dir.join("server.properties")).ok())
         .flatten()
         .and_then(|t| t.lines().find_map(|l| l.strip_prefix("server-port=")?.trim_end().parse::<u32>().ok()));
     json!({
-        "hasServerJar": jar, "hasProperties": props, "hasEula": eula, "hasWorld": world, "hasMods": mods, "hasPlugins": plugins,
-        "looksLikeServer": jar || props || world, "guessedType": guessed_type, "guessedPort": guessed_port,
+        "hasServerJar": jar, "hasProperties": props, "hasEula": eula, "hasWorld": world, "hasMods": mods, "hasPlugins": plugins, "hasBedrockServer": bedrock,
+        "looksLikeServer": jar || props || world || bedrock || worlds, "guessedType": guessed_type, "guessedPort": guessed_port,
     })
 }
 

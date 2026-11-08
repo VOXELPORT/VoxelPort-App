@@ -41,7 +41,7 @@ try {
     const s = await page.ev('vp.discordSignIn()');
     check('signed in first', s.ok && s.state.allowed, JSON.stringify(s));
 
-    check('the three server types are listed', JSON.stringify((await page.ev('vp.server.types()')).map((t) => t.id)) === '["vanilla","paper","fabric"]');
+    check('the four server types are listed (Java: Vanilla, Paper, Fabric; and the Bedrock Dedicated Server)', JSON.stringify((await page.ev('vp.server.types()')).map((t) => t.id)) === '["vanilla","paper","fabric","bedrock-server"]');
     check('vanilla lists releases only', JSON.stringify(await page.ev("vp.server.versions('vanilla')")) === '["1.21.4","1.20.1"]');
     check('paper lists newest group first', JSON.stringify(await page.ev("vp.server.versions('paper')")) === '["1.21.4","1.21.3","1.20.6"]');
     check('fabric lists stable versions only', JSON.stringify(await page.ev("vp.server.versions('fabric')")) === '["1.21.4"]');

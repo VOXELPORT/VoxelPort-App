@@ -31,7 +31,7 @@ pub fn is_valid(p: &Value) -> bool {
 
     let ok_core = field("id").and_then(Value::as_str).is_some_and(|s| !s.is_empty())
         && field("name").and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty())
-        && field("type").and_then(Value::as_str).is_some_and(|t| matches!(t, "vanilla" | "paper" | "fabric"))
+        && field("type").and_then(Value::as_str).is_some_and(|t| matches!(t, "vanilla" | "paper" | "fabric" | "bedrock-server"))
         && field("version").and_then(Value::as_str).is_some_and(|s| !s.is_empty())
         && field("serverDir").and_then(Value::as_str).is_some_and(|s| Path::new(s).is_absolute())
         && field("port").is_some_and(|v| int_in(v, 1, 65535));

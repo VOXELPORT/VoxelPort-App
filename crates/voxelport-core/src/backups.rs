@@ -279,6 +279,8 @@ struct FileItem {
     rel: String,
     size: u64,
     mtime: std::time::SystemTime,
+    /// Copy no more than this many bytes (a Bedrock server tells exactly how much of each file belongs to the saved world).
+    limit: Option<u64>,
 }
 
 /// Every regular file under `abs`. Symbolic links are never followed (and never saved).
@@ -294,7 +296,7 @@ fn collect_files(abs: &Path, rel: &str, out: &mut Vec<FileItem>) -> std::io::Res
             collect_files(&entry.path(), &rel_path, out)?;
         } else if ft.is_file() {
             let m = entry.metadata()?;
-            out.push(FileItem { abs: entry.path(), rel: rel_path, size: m.len(), mtime: m.modified().unwrap_or(std::time::UNIX_EPOCH) });
+            out.push(FileItem { abs: entry.path(), rel: rel_path, size: m.len(), mtime: m.modified().unwrap_or(std::time::UNIX_EPOCH), limit: None });
         }
     }
     Ok(())
@@ -413,7 +415,7 @@ pub fn create_backup(o: &CreateOptions, on_progress: &dyn Fn(Progress)) -> Resul
     for f in CONFIG_FILES.iter().copied().chain([SERVER_JAR]) {
         let abs = o.server_dir.join(f);
         match fs::symlink_metadata(&abs) {
-            Ok(m) if m.is_file() => files.push(FileItem { abs, rel: f.to_string(), size: m.len(), mtime: m.modified().unwrap_or(std::time::UNIX_EPOCH) }),
+            Ok(m) if m.is_file() => files.push(FileItem { abs, rel: f.to_string(), size: m.len(), mtime: m.modified().unwrap_or(std::time::UNIX_EPOCH), limit: None }),
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) if f == SERVER_JAR => return Err(fail("failed", format!("Could not back up server.jar: {e}"))),
@@ -477,12 +479,15 @@ fn write_zip(partial: &Path, meta: &Value, files: &[FileItem], total: u64, on_pr
         // One file at a time, so a world with thousands of files never opens thousands at once.
         let mut input = fs::File::open(&f.abs).map_err(|e| failed(&e))?;
         zip.start_file(&f.rel, opts(dos_time(f.mtime), f.size >= 4 * GB)).map_err(|e| failed(&e))?;
-        loop {
-            let n = input.read(&mut buf).map_err(|e| failed(&e))?;
+        let mut remaining = f.limit.unwrap_or(u64::MAX);
+        while remaining > 0 {
+            let want = buf.len().min(usize::try_from(remaining).unwrap_or(usize::MAX));
+            let n = input.read(&mut buf[..want]).map_err(|e| failed(&e))?;
             if n == 0 {
                 break;
             }
             zip.write_all(&buf[..n]).map_err(|e| failed(&e))?;
+            remaining -= n as u64;
             done += n as u64;
         }
         on_progress(Progress { phase: "zipping", done, total });
@@ -541,6 +546,10 @@ pub fn read_backup_info(file: &Path, max_entries: usize) -> Result<BackupContent
         }
     }
     let Some(meta) = meta else { return Err(fail("not-voxelport", "That file is not a VoxelPort backup.")) };
+    if meta["layout"] == "bedrock" {
+        check_bedrock_backup(&meta, &entries)?;
+        return Ok(BackupContents { meta, entries, uncompressed });
+    }
     // A backup may only ever put back the folders of its own world, whatever its metadata claims.
     let own = allowed_folders(&meta);
     let worlds_ok = meta["worlds"].as_array().is_some_and(|w| !w.is_empty() && w.iter().all(|x| x.as_str().is_some_and(|s| own.contains(s))));
@@ -655,6 +664,9 @@ pub fn restore_backup(o: &RestoreOptions, on_progress: &dyn Fn(Progress)) -> Res
     let phase = |phase: &'static str| on_progress(Progress { phase, done: 0, total: 0 });
     phase("checking");
     let BackupContents { meta, uncompressed, .. } = read_backup_info(&file, o.max_entries)?;
+    if meta["layout"] == "bedrock" {
+        return Err(fail("wrong-kind", "That backup is from a Bedrock server, so it can't be put back on a Java server."));
+    }
     if uncompressed > MAX_RESTORE_BYTES {
         return Err(fail("too-big", "That backup is too big to restore."));
     }
@@ -765,6 +777,259 @@ pub fn restore_backup(o: &RestoreOptions, on_progress: &dyn Fn(Progress)) -> Res
         _ => None,
     };
     Ok(Restored { level_name: backup_level, previous_level_name: previous, safety_backup: safety.map(|s| s.name), restored_server })
+}
+
+// ─── Bedrock Dedicated Server worlds ─────────────────────────────────────────
+//
+// A Bedrock server keeps its world in `worlds/<level-name>` (the level name may hold spaces), and the files that go with it are
+// `allowlist.json` and `permissions.json`. A backup of one is the same kind of zip with `"layout": "bedrock"` in its metadata, so the list,
+// the schedule, the retention and the screens are shared; only what is saved and put back differs. A Java server's backup and a Bedrock
+// one are never mixed up: each refuses the other.
+
+pub const BEDROCK_WORLDS_DIR: &str = "worlds";
+/// Who may join and what they may do.
+pub const BEDROCK_CONFIG_FILES: [&str; 2] = ["allowlist.json", "permissions.json"];
+const BEDROCK_DEFAULT_LEVEL: &str = "Bedrock level";
+
+/// The level-name from `server.properties` ("Bedrock level" when it is missing or not a plain name).
+pub fn bedrock_level_name_of(server_dir: &Path) -> String {
+    match crate::settings::read_properties_file_raw(server_dir).get("level-name") {
+        Some(n) if is_plain_name(n) => n.clone(),
+        _ => BEDROCK_DEFAULT_LEVEL.into(),
+    }
+}
+
+pub fn bedrock_world_exists(server_dir: &Path, level: &str) -> bool {
+    is_plain_name(level) && is_real_directory(&server_dir.join(BEDROCK_WORLDS_DIR).join(level))
+}
+
+/// What the entries of a Bedrock backup may be: its metadata, the two config files, and files inside the worlds it names.
+fn check_bedrock_backup(meta: &Value, entries: &[String]) -> Result<(), BackupError> {
+    let bad = || fail("bad-backup", "That backup is from a newer VoxelPort or is damaged.");
+    let level = meta["levelName"].as_str().filter(|l| is_plain_name(l)).ok_or_else(bad)?;
+    let worlds: Vec<&str> = meta["worlds"].as_array().ok_or_else(bad)?.iter().filter_map(Value::as_str).collect();
+    let single = meta["reason"] != "before-restore";
+    if meta["format"] != json!(FORMAT) || worlds.is_empty() || worlds.len() > MAX_LEVEL_NAMES || !worlds.contains(&level) || !worlds.iter().all(|w| is_plain_name(w)) || (single && worlds.len() != 1) {
+        return Err(bad());
+    }
+    if meta["serverFiles"].as_array().is_some_and(|a| !a.is_empty()) {
+        return Err(fail("bad-backup", "That backup has invalid server files."));
+    }
+    if !entries.iter().any(|e| *e == format!("{BEDROCK_WORLDS_DIR}/{level}/level.dat")) {
+        return Err(fail("bad-backup", "That backup has no world in it."));
+    }
+    let allowed = |e: &str| e == META_NAME || BEDROCK_CONFIG_FILES.contains(&e) || worlds.iter().any(|w| e.starts_with(&format!("{BEDROCK_WORLDS_DIR}/{w}/")));
+    if let Some(stray) = entries.iter().find(|e| !allowed(e)) {
+        return Err(fail("bad-backup", format!("That backup holds a file it should not ({stray}), so it was not used.")));
+    }
+    Ok(())
+}
+
+pub struct BedrockCreateOptions<'a> {
+    pub backup_dir: &'a Path,
+    pub server_dir: &'a Path,
+    pub reason: &'a str,
+    pub info: BackupInfo,
+    pub now_ms: i64,
+    /// Only for "before-restore": every level to save (default: the server's own).
+    pub levels: Option<Vec<String>>,
+    /// What `save query` reported for a running server: each file under `worlds/` ("<level>/db/000003.log") and how many bytes of it belong
+    /// to the saved world. Empty for a stopped server, whose files are all complete.
+    pub lengths: Vec<(String, u64)>,
+}
+
+/// Zips the world of a Bedrock server (and its allow-list and permissions) into `backup_dir`. Same promise as [`create_backup`]: the file only
+/// gets its final name once it has been written and checked.
+pub fn create_backup_bedrock(o: &BedrockCreateOptions, on_progress: &dyn Fn(Progress)) -> Result<Created, BackupError> {
+    let reason = REASONS.into_iter().find(|r| *r == o.reason).ok_or_else(|| fail("invalid", "Unknown backup reason."))?;
+    if o.levels.is_some() && reason != "before-restore" {
+        return Err(fail("invalid", "A list of worlds is only for the copy made before a restore."));
+    }
+    let own = bedrock_level_name_of(o.server_dir);
+    let wanted: Vec<String> = o.levels.clone().unwrap_or_else(|| vec![own.clone()]);
+    let mut seen = HashSet::new();
+    let levels: Vec<String> = wanted.into_iter().filter(|l| seen.insert(l.clone()) && bedrock_world_exists(o.server_dir, l)).take(MAX_LEVEL_NAMES).collect();
+    if levels.is_empty() {
+        return Err(fail("no-world", "There is no world to back up yet. Start the server once so it creates one."));
+    }
+    let level = if levels.contains(&own) { own } else { levels[0].clone() };
+
+    let exact: std::collections::HashMap<&str, u64> = o.lengths.iter().map(|(f, n)| (f.as_str(), *n)).collect();
+    let mut files: Vec<FileItem> = Vec::new();
+    for l in &levels {
+        let mut found: Vec<FileItem> = Vec::new();
+        collect_files(&o.server_dir.join(BEDROCK_WORLDS_DIR).join(l), &format!("{BEDROCK_WORLDS_DIR}/{l}"), &mut found).map_err(|e| fail("failed", format!("The backup failed: {e}")))?;
+        for mut f in found {
+            if let Some(len) = f.rel.strip_prefix(&format!("{BEDROCK_WORLDS_DIR}/")).and_then(|r| exact.get(r)) {
+                f.limit = Some(*len);
+                f.size = f.size.min(*len);
+            }
+            files.push(f);
+        }
+    }
+    for f in BEDROCK_CONFIG_FILES {
+        let abs = o.server_dir.join(f);
+        if let Ok(m) = fs::symlink_metadata(&abs) {
+            if m.is_file() {
+                files.push(FileItem { abs, rel: f.to_string(), size: m.len(), mtime: m.modified().unwrap_or(std::time::UNIX_EPOCH), limit: None });
+            }
+        }
+    }
+    let total: u64 = files.iter().map(|f| f.size).sum();
+    fs::create_dir_all(o.backup_dir).map_err(|e| fail("failed", format!("The backup failed: {e}")))?;
+    if let Some(free) = free_bytes(o.backup_dir) {
+        if free < total + SPARE_BYTES {
+            return Err(fail("disk-full", format!("Not enough free disk space for a backup (needs about {} MB).", total.div_ceil(MB))));
+        }
+    }
+
+    let name = unique_name(o.backup_dir, o.now_ms, reason);
+    let partial = o.backup_dir.join(format!("{name}.partial"));
+    let mut meta = json!({
+        "format": FORMAT,
+        "layout": "bedrock",
+        "createdAt": iso_utc(o.now_ms),
+        "reason": reason,
+        "levelName": level,
+        "worlds": levels,
+        "serverFiles": [],
+    });
+    meta["serverType"] = json!(o.info.server_type);
+    meta["version"] = json!(o.info.version);
+    meta["appVersion"] = json!(o.info.app_version);
+
+    let result = write_zip(&partial, &meta, &files, total, on_progress).and_then(|()| {
+        let written = read_backup_info(&partial, MAX_ENTRIES)?; // proves it opens, has the world, and holds nothing else
+        if written.meta["levelName"] != json!(level) {
+            return Err(fail("bad-backup", "The backup could not be verified."));
+        }
+        fs::rename(&partial, o.backup_dir.join(&name)).map_err(|e| fail("failed", format!("The backup failed: {e}")))
+    });
+    if let Err(e) = result {
+        let _ = fs::remove_file(&partial);
+        return Err(e);
+    }
+    let size = fs::metadata(o.backup_dir.join(&name)).map(|m| m.len()).unwrap_or(0);
+    Ok(Created { created_at: parse_backup_name(&name).map(|(t, _)| t).unwrap_or(o.now_ms), name, size, reason, worlds: levels })
+}
+
+/// Puts a Bedrock backup back. Same promises as [`restore_backup`]: the server must be stopped, what is there now is saved first, the
+/// swap is undone if it fails half way, and a backup of a Java server is refused. The caller sets `level-name` in `server.properties`.
+pub fn restore_backup_bedrock(o: &RestoreOptions, on_progress: &dyn Fn(Progress)) -> Result<Restored, BackupError> {
+    if parse_backup_name(o.name).is_none() {
+        return Err(fail("bad-name", "That is not one of VoxelPort's backups."));
+    }
+    let file = o.backup_dir.join(o.name);
+    if !file.exists() {
+        return Err(fail("missing", "That backup is gone."));
+    }
+    let phase = |phase: &'static str| on_progress(Progress { phase, done: 0, total: 0 });
+    phase("checking");
+    let BackupContents { meta, uncompressed, .. } = read_backup_info(&file, o.max_entries)?;
+    if meta["layout"] != "bedrock" {
+        return Err(fail("wrong-kind", "That backup is from a Java server, so it can't be put back on a Bedrock server."));
+    }
+    if uncompressed > MAX_RESTORE_BYTES {
+        return Err(fail("too-big", "That backup is too big to restore."));
+    }
+    if let Some(free) = free_bytes(o.server_dir) {
+        if (free as f64) < uncompressed as f64 * 1.05 + SPARE_BYTES as f64 {
+            return Err(fail("disk-full", format!("Not enough free disk space to restore (needs about {} MB).", uncompressed.div_ceil(MB))));
+        }
+    }
+    let backup_level = meta["levelName"].as_str().unwrap_or(BEDROCK_DEFAULT_LEVEL).to_string();
+    let backup_worlds: Vec<String> = meta["worlds"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let previous = bedrock_level_name_of(o.server_dir);
+    // Every world the swap moves out of the way (and deletes) must be in the copy made first.
+    let mut touched: Vec<String> = Vec::new();
+    for w in std::iter::once(previous.clone()).chain(backup_worlds.iter().cloned()) {
+        if !touched.contains(&w) {
+            touched.push(w);
+        }
+    }
+    let to_save: Vec<String> = touched.iter().filter(|w| bedrock_world_exists(o.server_dir, w)).cloned().collect();
+    let mut safety = None;
+    if !to_save.is_empty() {
+        phase("saving-current");
+        safety = Some(create_backup_bedrock(
+            &BedrockCreateOptions { backup_dir: o.backup_dir, server_dir: o.server_dir, reason: "before-restore", info: o.info.clone(), now_ms: o.now_ms, levels: Some(to_save), lengths: Vec::new() },
+            &|_| {},
+        )?);
+    }
+
+    let id = o.now_ms.max(0);
+    let tmp = o.server_dir.join(format!(".vp-restore-{id}"));
+    let old = o.server_dir.join(format!(".vp-old-{id}"));
+    let worlds_dir = o.server_dir.join(BEDROCK_WORLDS_DIR);
+    let (mut moved, mut placed, mut lists_kept, mut lists_added) = (Vec::<String>::new(), Vec::<String>::new(), Vec::<String>::new(), Vec::<String>::new());
+    let swap = (|| -> Result<(), BackupError> {
+        fs::create_dir_all(&tmp).map_err(|e| fail("failed", e.to_string()))?;
+        let mut done = 0u64;
+        on_progress(Progress { phase: "unpacking", done, total: uncompressed });
+        extract_all(&file, &tmp, &mut |n| {
+            done += n;
+            on_progress(Progress { phase: "unpacking", done, total: uncompressed });
+        })?;
+        if !tmp.join(BEDROCK_WORLDS_DIR).join(&backup_level).join("level.dat").exists() {
+            return Err(fail("bad-backup", "That backup has no world in it."));
+        }
+        phase("swapping");
+        fs::create_dir_all(old.join(BEDROCK_WORLDS_DIR)).map_err(|e| fail("failed", e.to_string()))?;
+        fs::create_dir_all(&worlds_dir).map_err(|e| fail("failed", e.to_string()))?;
+        for w in &touched {
+            if !bedrock_world_exists(o.server_dir, w) {
+                continue;
+            }
+            rename_with_retry(&worlds_dir.join(w), &old.join(BEDROCK_WORLDS_DIR).join(w)).map_err(|e| fail("failed", e.to_string()))?;
+            moved.push(w.clone());
+        }
+        for w in &backup_worlds {
+            let from = tmp.join(BEDROCK_WORLDS_DIR).join(w);
+            if !is_real_directory(&from) {
+                continue;
+            }
+            rename_with_retry(&from, &worlds_dir.join(w)).map_err(|e| fail("failed", e.to_string()))?;
+            placed.push(w.clone());
+        }
+        for f in BEDROCK_CONFIG_FILES {
+            let from = tmp.join(f);
+            if !from.exists() {
+                continue;
+            }
+            let to = o.server_dir.join(f);
+            match fs::symlink_metadata(&to) {
+                Ok(m) if !m.is_file() => return Err(fail("unsafe", "A server file is not a regular file, so it was not replaced.")),
+                Ok(_) => {
+                    fs::copy(&to, old.join(f)).map_err(|e| fail("failed", e.to_string()))?;
+                    lists_kept.push(f.to_string());
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => lists_added.push(f.to_string()),
+                Err(e) => return Err(fail("failed", e.to_string())),
+            }
+            fs::copy(&from, &to).map_err(|e| fail("failed", e.to_string()))?;
+        }
+        Ok(())
+    })();
+    if let Err(err) = swap {
+        for w in &placed {
+            rm_quiet(&worlds_dir.join(w));
+        }
+        for w in &moved {
+            let _ = rename_with_retry(&old.join(BEDROCK_WORLDS_DIR).join(w), &worlds_dir.join(w));
+        }
+        for f in &lists_kept {
+            let _ = fs::copy(old.join(f), o.server_dir.join(f));
+        }
+        for f in &lists_added {
+            rm_quiet(&o.server_dir.join(f));
+        }
+        rm_quiet(&tmp);
+        rm_quiet(&old);
+        return Err(if err.code == "failed" { fail("failed", format!("The restore failed and your world was left as it was: {}", err.message)) } else { err });
+    }
+    rm_quiet(&tmp);
+    rm_quiet(&old); // the "before restore" backup holds the previous world
+    Ok(Restored { level_name: backup_level, previous_level_name: previous, safety_backup: safety.map(|s| s.name), restored_server: None })
 }
 
 // ─── Housekeeping ────────────────────────────────────────────────────────────

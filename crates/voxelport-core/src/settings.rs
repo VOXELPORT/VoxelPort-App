@@ -39,10 +39,34 @@ pub const SETTINGS: &[Setting] = &[
     Setting { key: "level-seed", label: "World seed (new worlds only)", kind: Kind::Text { max: 64, def: "" } },
 ];
 
+/// What the Settings screen changes on a Bedrock Dedicated Server. Its `server.properties` is a different file from Java's: other keys, other
+/// values. `online-mode` (Xbox sign-in) and the other security keys are absent here for the same reason as above.
+pub const BEDROCK_SETTINGS: &[Setting] = &[
+    Setting { key: "server-name", label: "Name in the server list", kind: Kind::Text { max: 50, def: "A VoxelPort server" } },
+    Setting { key: "gamemode", label: "Game mode", kind: Kind::Enum { options: &["survival", "creative", "adventure"], def: "survival" } },
+    Setting { key: "difficulty", label: "Difficulty", kind: Kind::Enum { options: &["peaceful", "easy", "normal", "hard"], def: "easy" } },
+    Setting { key: "max-players", label: "Max players", kind: Kind::Int { min: 1, max: 1000, def: 10 } },
+    Setting { key: "allow-list", label: "Allow-list (only approved players)", kind: Kind::Bool { def: false } },
+    Setting { key: "allow-cheats", label: "Allow cheats", kind: Kind::Bool { def: false } },
+    Setting { key: "default-player-permission-level", label: "New players can", kind: Kind::Enum { options: &["visitor", "member", "operator"], def: "member" } },
+    Setting { key: "view-distance", label: "View distance (chunks)", kind: Kind::Int { min: 5, max: 64, def: 32 } },
+    Setting { key: "tick-distance", label: "Simulation distance (chunks)", kind: Kind::Int { min: 4, max: 12, def: 4 } },
+    Setting { key: "level-seed", label: "World seed (new worlds only)", kind: Kind::Text { max: 64, def: "" } },
+];
+
+/// The settings of a server type.
+pub fn settings_for(server_type: &str) -> &'static [Setting] {
+    if crate::bds::is_bedrock_server(server_type) { BEDROCK_SETTINGS } else { SETTINGS }
+}
+
 /// The field list the Settings screen draws (same shape as the Electron app's `SETTINGS`).
 pub fn fields_json() -> Value {
+    fields_json_for("")
+}
+
+pub fn fields_json_for(server_type: &str) -> Value {
     Value::Array(
-        SETTINGS
+        settings_for(server_type)
             .iter()
             .map(|s| match s.kind {
                 Kind::Text { max, def } => json!({ "key": s.key, "label": s.label, "type": "text", "max": max, "def": def }),
@@ -140,6 +164,28 @@ pub fn parse_properties(text: &str) -> HashMap<String, String> {
     out
 }
 
+/// A Bedrock Dedicated Server's `server.properties`: plain `key=value` lines in UTF-8, with no escapes (a backslash is a backslash, and
+/// "é" is "é", not "\u00e9"). Reading it as Java's format would mangle names and writing it that way would show the escapes in the game.
+pub fn parse_properties_raw(text: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for raw in text.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw).trim_start();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            if !key.trim().is_empty() {
+                out.insert(key.trim().to_string(), value.to_string());
+            }
+        }
+    }
+    out
+}
+
+pub fn read_properties_file_raw(server_dir: &Path) -> HashMap<String, String> {
+    fs::read_to_string(server_dir.join("server.properties")).map(|t| parse_properties_raw(&t)).unwrap_or_default()
+}
+
 pub fn read_properties_file(server_dir: &Path) -> HashMap<String, String> {
     fs::read_to_string(server_dir.join("server.properties")).map(|t| parse_properties(&t)).unwrap_or_default()
 }
@@ -157,9 +203,13 @@ fn parse_int_prefix(raw: &str) -> Option<i64> {
 
 /// Current values of every editable setting (defaults where missing or unreadable).
 pub fn read_settings(server_dir: &Path) -> Value {
-    let props = read_properties_file(server_dir);
+    read_settings_for("", server_dir)
+}
+
+pub fn read_settings_for(server_type: &str, server_dir: &Path) -> Value {
+    let props = if crate::bds::is_bedrock_server(server_type) { read_properties_file_raw(server_dir) } else { read_properties_file(server_dir) };
     let mut out = Map::new();
-    for s in SETTINGS {
+    for s in settings_for(server_type) {
         let raw = props.get(s.key);
         let v = match (s.kind, raw) {
             (Kind::Text { def, .. } | Kind::Enum { def, .. }, None) => json!(def),
@@ -190,10 +240,14 @@ fn js_number(v: &Value) -> Option<f64> {
 /// Validates changes from the screens and returns them as escaped `server.properties` strings. Unknown keys and invalid
 /// values are errors: the screen never sends them, so a bad value means something is wrong.
 pub fn validate_settings(changes: &Value) -> Result<Vec<(String, String)>, String> {
+    validate_settings_for("", changes)
+}
+
+pub fn validate_settings_for(server_type: &str, changes: &Value) -> Result<Vec<(String, String)>, String> {
     let Some(map) = changes.as_object() else { return Err("Invalid settings.".into()) };
     let mut out: Vec<(String, String)> = Vec::new();
     for (key, value) in map {
-        let Some(s) = SETTINGS.iter().find(|s| s.key == key) else { return Err(format!("\"{key}\" can't be changed here.")) };
+        let Some(s) = settings_for(server_type).iter().find(|s| s.key == key) else { return Err(format!("\"{key}\" can't be changed here.")) };
         let text = match s.kind {
             Kind::Bool { .. } => match value {
                 Value::Bool(b) => (if *b { "true" } else { "false" }).to_string(),
@@ -217,12 +271,13 @@ pub fn validate_settings(changes: &Value) -> Result<Vec<(String, String)>, Strin
                 if clean.chars().count() > max {
                     return Err(format!("{} can be at most {max} characters.", s.label));
                 }
-                escape_value(clean)
+                // Java's file escapes non-ASCII text; the Bedrock server's file holds it as it is.
+                if crate::bds::is_bedrock_server(server_type) { clean.to_string() } else { escape_value(clean) }
             }
         };
         out.push((key.clone(), text));
     }
-    // Whitelist on should actually keep non-whitelisted players out.
+    // Whitelist on should actually keep non-whitelisted players out. (The Bedrock server has one key, `allow-list`, for both.)
     if let Some((_, v)) = out.iter().find(|(k, _)| k == "white-list").cloned() {
         out.push(("enforce-whitelist".into(), v));
     }
@@ -308,6 +363,40 @@ mod tests {
         assert!(err(json!({ "motd": "x".repeat(60) })).contains("at most"));
         assert_eq!(err(json!("nope")), "Invalid settings.");
         assert_eq!(err(Value::Null), "Invalid settings.");
+    }
+
+    #[test]
+    fn a_bedrock_server_has_its_own_settings_and_keeps_the_security_keys_out_of_reach() {
+        let d = tmp();
+        std::fs::write(d.path().join("server.properties"), "# Mojang defaults\nserver-name=Dedicated Server\ngamemode=creative\nmax-players=7\nview-distance=oops\nallow-list=true\nonline-mode=true\n").unwrap();
+        let ty = crate::bds::TYPE_ID;
+        let v = read_settings_for(ty, d.path());
+        assert_eq!((v["server-name"].clone(), v["gamemode"].clone(), v["max-players"].clone(), v["view-distance"].clone(), v["allow-list"].clone()), ("Dedicated Server".into(), "creative".into(), 7.into(), 32.into(), true.into()));
+        assert_eq!(v["default-player-permission-level"], "member", "missing gives the default");
+        assert!(v.get("motd").is_none() && v.get("pvp").is_none(), "Java's settings are not shown");
+        assert!(read_settings_for("paper", d.path()).get("server-name").is_none());
+        // Its file has no escapes: a name keeps its accents and backslashes, in both directions.
+        let raw = validate_settings_for(ty, &json!({ "server-name": "Café 🎮 a\\b" })).unwrap();
+        assert_eq!(raw[0].1, "Café 🎮 a\\b");
+        update_server_properties_safely(d.path(), &raw).unwrap();
+        assert_eq!(read_settings_for(ty, d.path())["server-name"], "Café 🎮 a\\b");
+        assert!(std::fs::read_to_string(d.path().join("server.properties")).unwrap().contains("server-name=Café 🎮 a\\b"));
+        assert_eq!(validate_settings(&json!({ "motd": "Café" })).unwrap()[0].1, "Caf\\u00e9", "Java's file still escapes it");
+
+        let out = validate_settings_for(ty, &json!({ "server-name": " Pocket Realm ", "gamemode": "adventure", "max-players": "12", "allow-list": true, "tick-distance": 8 })).unwrap();
+        let get = |k: &str| out.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str());
+        assert_eq!((get("server-name"), get("gamemode"), get("max-players"), get("allow-list"), get("tick-distance")), (Some("Pocket Realm"), Some("adventure"), Some("12"), Some("true"), Some("8")));
+        assert!(get("enforce-whitelist").is_none(), "that is a Java key");
+        let err = |v: Value| validate_settings_for(ty, &v).unwrap_err();
+        assert!(err(json!({ "gamemode": "spectator" })).contains("Invalid"), "the Bedrock server has no spectator mode");
+        assert!(err(json!({ "online-mode": false })).contains("can't be changed"));
+        assert!(err(json!({ "motd": "x" })).contains("can't be changed"), "Java keys are refused on a Bedrock server");
+        assert!(err(json!({ "tick-distance": 20 })).contains("between"));
+        assert!(validate_settings(&json!({ "server-name": "x" })).unwrap_err().contains("can't be changed"), "and Bedrock keys on a Java one");
+        // Saved lines keep Mojang's comments and the keys the app does not own.
+        update_server_properties_safely(d.path(), &validate_settings_for(ty, &json!({ "difficulty": "hard" })).unwrap()).unwrap();
+        let text = std::fs::read_to_string(d.path().join("server.properties")).unwrap();
+        assert!(text.starts_with("# Mojang defaults\n") && text.contains("online-mode=true") && text.contains("difficulty=hard"));
     }
 
     #[test]

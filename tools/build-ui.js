@@ -5,8 +5,8 @@
 // cannot drift from the app they replace:
 //   node tools/build-ui.js
 //
-//   1. ui/            the released renderer, byte for byte, plus two small changes to index.html:
-//                     the bridge script tag, and `connect-src ipc:` in its CSP so the page may reach the backend.
+//   1. ui/            the released renderer, plus two small changes to index.html (the bridge script tag, and `connect-src ipc:` in
+//                     its CSP so the page may reach the backend) and the Bedrock Dedicated Server type's patches (ui-extra/, tools/ui-patches-bedrock.js).
 //   2. ui/tauri-bridge.js   preload.js with ipcRenderer.invoke(...) turned into call(...) and ipcRenderer.on(...)
 //                     turned into Tauri event listeners.
 //   3. src-tauri/src/channels.in   every invoke channel in preload.js.
@@ -64,6 +64,20 @@ html = html.replace("script-src 'self'; base-uri 'none'", "script-src 'self'; co
 if (!html.includes('<script src="theme-init.js"></script>')) throw new Error('index.html: theme-init script tag not found');
 html = html.replace('<script src="theme-init.js"></script>', '<script src="theme-init.js"></script>\n  <script src="tauri-bridge.js"></script>');
 fs.writeFileSync(indexPath, html);
+
+// --- the Bedrock Dedicated Server type -----------------------------------------------------------------------
+// New code lives in ui-extra/ (copied in as it is); the few places where the released screens must differ are patches
+// (tools/ui-patches-bedrock.js). A patch whose anchor is missing stops the build, so a change in the pinned renderer
+// can never turn one into a silent no-op.
+for (const f of fs.readdirSync(path.join(root, 'ui-extra'))) fs.copyFileSync(path.join(root, 'ui-extra', f), path.join(ui, f));
+const touched = new Map();
+for (const p of require('./ui-patches-bedrock.js')) {
+  const file = path.join(ui, p.file);
+  const text = touched.get(file) ?? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  if (!text.includes(p.find)) throw new Error(`ui patch: anchor not found in ${p.file}: ${p.find.slice(0, 80)}`);
+  touched.set(file, p.all ? text.split(p.find).join(p.replace) : text.replace(p.find, () => p.replace));
+}
+for (const [file, text] of touched) fs.writeFileSync(file, text);
 
 // --- channel allow-list for the Rust side ------------------------------------------------------------------
 const channels = [...new Set([...preload.matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]))].sort();

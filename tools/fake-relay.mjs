@@ -15,6 +15,7 @@ export async function startFakeRelay(port = 0) {
   await new Promise((r) => wss.on('listening', r));
   let host = null; // the current tunnel connection
   const players = new Map(); // conn -> { chunks: Buffer[], waiters: [] }
+  const datagrams = new Map(); // conn -> replies the host sent back as UDP
 
   wss.on('connection', (ws) => {
     state.connections++;
@@ -22,6 +23,7 @@ export async function startFakeRelay(port = 0) {
     ws.on('message', (data, isBinary) => {
       if (isBinary) {
         const conn = data.subarray(1, 17).toString('hex');
+        if (data[0] === 2) { datagrams.get(conn)?.push(Buffer.from(data.subarray(17))); return; } // kind 2: UDP
         const p = players.get(conn);
         if (p) { p.chunks.push(Buffer.from(data.subarray(17))); p.waiters.splice(0).forEach((w) => w()); }
         return;
@@ -44,7 +46,8 @@ export async function startFakeRelay(port = 0) {
       else if (m.type === 'data') {
         const p = players.get(m.conn);
         if (p) { p.chunks.push(Buffer.from(m.data, 'base64')); p.waiters.splice(0).forEach((w) => w()); }
-      } else if (m.type === 'close') players.delete(m.conn);
+      } else if (m.type === 'udp') datagrams.get(m.conn)?.push(Buffer.from(m.data, 'base64'));
+      else if (m.type === 'close') players.delete(m.conn);
     });
     ws.on('close', () => { if (host === ws) host = null; });
   });
@@ -63,6 +66,18 @@ export async function startFakeRelay(port = 0) {
       while (Buffer.concat(p.chunks).length < Buffer.byteLength(data) && Date.now() < deadline) await new Promise((r) => { p.waiters.push(r); setTimeout(r, 100); });
       const got = Buffer.concat(p.chunks);
       return { conn, got, close: () => host?.send(JSON.stringify({ type: 'close', conn })) };
+    },
+    /** A Bedrock player's datagram goes to the host as a UDP frame; the first reply comes back (or null after a few seconds). */
+    async udp(data) {
+      const conn = crypto.randomBytes(16).toString('hex');
+      datagrams.set(conn, []);
+      host.send(JSON.stringify({ type: 'udp', conn, ip: '203.0.113.9', data: Buffer.from(data).toString('base64') }));
+      const deadline = Date.now() + 5000;
+      while (!datagrams.get(conn).length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+      const got = datagrams.get(conn)[0] ?? null;
+      host.send(JSON.stringify({ type: 'udp_close', conn }));
+      datagrams.delete(conn);
+      return got;
     },
     notice(message, seconds) { host?.send(JSON.stringify(message ? { type: 'notice', message, seconds } : { type: 'notice' })); },
     drop() { host?.close(); },

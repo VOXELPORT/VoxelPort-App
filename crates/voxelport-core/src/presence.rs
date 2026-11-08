@@ -92,6 +92,7 @@ pub fn build_activity(info: &PresenceInfo, started_at: u64) -> Value {
         "paper" => "Paper",
         "fabric" => "Fabric",
         "vanilla" => "Vanilla",
+        "bedrock-server" => "Bedrock",
         _ => "Minecraft",
     };
     let players = info.players.min(9999);

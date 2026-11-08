@@ -224,14 +224,33 @@ succeeds and says so, and the server keeps normal Minecraft accounts (never a ha
 - **Page-facing glue** (`src-tauri/src/discord.rs`): builds `discord:state`, re-checks every 15 minutes and when the window
   regains focus (at most once a minute), opens only exact `https://discord.gg/<code>` invites.
 
+## The Bedrock Dedicated Server (`bds.rs`, `bds_allowlist.rs`, and the Bedrock parts of `server_process.rs`, `backups.rs`, `settings.rs`)
+
+A server type of its own (`bedrock-server`), added after 2.0.0-beta.1; the whole story is in [BEDROCK_SERVER.md](BEDROCK_SERVER.md). The shape of it:
+
+- `bds.rs` knows where the archive comes from (Mojang's link service, `www.minecraft.net`, two exact hosts), unpacks it with the same path rules as a
+  backup, reads the server's console lines and builds its commands. `bds_allowlist.rs` is friends-only over `allowlist.json`, answering in the same shape
+  as `whitelist.rs` so the screen is shared.
+- `ServerProcess` gained a *flavor* (`Java` or `Bedrock`), set when it starts: it only changes which lines mean "online", "joined" and "left", and which
+  console buttons exist. Everything else (bounded logs, the stop-then-kill rule, one server at a time) is shared.
+- Backups keep one zip format; a Bedrock one carries `"layout": "bedrock"`, is read by stricter rules (only its world(s), two config files and its
+  metadata may be inside) and is refused by a Java restore, and the other way round. A running server is saved with `save hold` / `save query` /
+  `save resume`, and each file is cut to the length the server reported.
+- The shell branches on the type in a handful of places (install, start, settings, friends-only, backups, the public tunnel, the performance panel); a
+  Bedrock server never reaches the Java checks, Geyser, voice or the crash explanations.
+- The screens are the Electron renderer plus anchored patches (`tools/ui-patches-bedrock.js`) and one new file (`ui-extra/bedrock-server.js`),
+  applied by `tools/build-ui.js`.
+
 ## Security posture
 
 - The page may call one backend command, `ipc` (an app manifest in `build.rs` plus a capability for the `main`
   window), and listen for events. No filesystem, shell, HTTP or dialog plugin is granted to the page. The updater and single-instance plugins are registered but granted to nobody; the Rust side does its own HTTPS (ureq with rustls) to the accounts service, the download hosts and voxelport.in only.
 - Content-Security-Policy stays as strict as the Electron page's, plus `connect-src ipc:` for the backend channel.
 - Server profiles are validated on load with the same rules as Electron; a corrupt or hand-edited entry is dropped.
-- Downloads go through one allow-listed, checksummed, size-capped client, and every zip is read with path checks (done). Not yet done: reading
-  Electron's `os_crypt` secrets (planned with its module in MIGRATION_PLAN.md).
+- Downloads go through one allow-listed, size-capped client (checksummed wherever the publisher gives a checksum; Mojang gives none for the Bedrock
+  server, so that one rests on the two allowed hosts and the archive checks), and every zip is read with path checks (done). Importing a folder, like
+  importing a Java one, means Start runs what is in it (`bedrock_server.exe` instead of `server.jar`); the person chooses the folder and presses Start.
+  Not yet done: reading Electron's `os_crypt` secrets (planned with its module in MIGRATION_PLAN.md).
 
 ## Not built, on purpose
 

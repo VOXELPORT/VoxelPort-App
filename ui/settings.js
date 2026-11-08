@@ -75,6 +75,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   const data = await window.vp.server.getSettings(id);
   const { profile, fields, values, bedrock, listing, totalMemMb } = data;
   fieldDefs = fields;
+  window.VPBedrockServer.applySettingsLayout(data);
 
   setSubtitle.textContent = profile.name;
   setName.value = profile.name;
@@ -100,7 +101,7 @@ window.openSettingsScreen = async function openSettingsScreen(id) {
   setListingDesc.value = listing.description || '';
   setListingDesc.disabled = !listing.enabled;
 
-  await renderRuntimeInfo(id, profile, data.running);
+  if (!data.bedrockServer) await renderRuntimeInfo(id, profile, data.running);
 
   if (data.running) showSetMsg(t('This server is running — gameplay changes apply after a restart.'), 'info');
   showScreen('screen-settings');

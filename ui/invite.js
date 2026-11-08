@@ -16,6 +16,7 @@
       bedrockServer: 'Server',
       bedrockPort: 'Port',
       how: 'How to join: Minecraft → Multiplayer → Add Server → paste the address.',
+      bedrockHow: 'How to join: Minecraft Bedrock → Play → Servers → Add Server → type the server and the port.',
       footer: `No mods needed. Free server, hosted with VoxelPort: ${SITE}`,
     },
     hinglish: {
@@ -27,6 +28,7 @@
       bedrockServer: 'Server',
       bedrockPort: 'Port',
       how: 'Kaise judo: Minecraft → Multiplayer → Add Server → address paste karo.',
+      bedrockHow: 'Kaise judo: Minecraft Bedrock → Play → Servers → Add Server → server aur port daalo.',
       footer: `Koi mod nahi chahiye. Free server, VoxelPort se bana hai: ${SITE}`,
     },
   };
@@ -46,8 +48,15 @@
    * @param {string} [o.plainAddress] host:port, shown as the fallback when `address` is a custom name
    * @param {{host: string, port: number|string}|null} [o.bedrock]
    */
-  function buildInviteMessage({ lang = 'en', name, version, address, plainAddress, bedrock = null }) {
+  function buildInviteMessage({ lang = 'en', name, version, address, plainAddress, bedrock = null, bedrockOnly = false }) {
     const w = WORDS[lang] || WORDS.en;
+    if (bedrockOnly) {
+      // A Bedrock Dedicated Server has no Java address: only the Bedrock server and port.
+      const only = [w.title(oneLine(name, 60)), '', w.bedrock];
+      if (bedrock && bedrock.host && bedrock.port) only.push(`${w.bedrockServer}: ${oneLine(bedrock.host, 120)}   ${w.bedrockPort}: ${oneLine(bedrock.port, 6)}`);
+      only.push('', w.bedrockHow, w.footer);
+      return only.join('\n');
+    }
     const ver = oneLine(version, 20);
     const lines = [w.title(oneLine(name, 60)), ''];
     lines.push(w.java(ver && ver !== 'unknown' ? ver : ''));

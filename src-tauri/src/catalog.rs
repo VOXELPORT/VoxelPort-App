@@ -11,7 +11,12 @@ fn catalog() -> &'static Value {
 }
 
 pub fn types() -> Value {
-    catalog()["types"].clone()
+    let mut types = catalog()["types"].clone();
+    // The Bedrock Dedicated Server is not in the Electron app's list, so it is added here and not in catalog.json (which is generated).
+    if let Some(list) = types.as_array_mut() {
+        list.push(serde_json::json!({ "id": voxelport_core::bds::TYPE_ID, "label": voxelport_core::bds::LABEL }));
+    }
+    types
 }
 
 pub fn templates() -> Value {
@@ -32,7 +37,7 @@ mod tests {
     fn the_snapshot_has_what_the_screens_need() {
         let types = types();
         let ids: Vec<&str> = types.as_array().unwrap().iter().filter_map(|t| t["id"].as_str()).collect();
-        assert_eq!(ids, ["vanilla", "paper", "fabric"]);
+        assert_eq!(ids, ["vanilla", "paper", "fabric", "bedrock-server"]);
         let templates = templates();
         assert!(templates.as_array().unwrap().len() >= 5);
         assert!(templates.as_array().unwrap().iter().all(|t| t["id"].is_string() && t["label"].is_string() && t["type"].is_string() && t["cracked"].is_boolean()));

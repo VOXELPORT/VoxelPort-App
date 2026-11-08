@@ -8,9 +8,10 @@ use std::sync::atomic::Ordering;
 
 use serde_json::{json, Map, Value};
 use tauri::Emitter;
+use voxelport_core::bds;
 use voxelport_core::bedrock::bedrock_port;
 use voxelport_core::cracked::{self, Modrinth};
-use voxelport_core::{profiles, server_files, server_install, settings, whitelist};
+use voxelport_core::{bds_allowlist, profiles, server_files, server_install, settings, whitelist};
 
 use crate::{sys, AppState};
 
@@ -39,6 +40,10 @@ fn bedrock_supported(server_type: &str) -> bool {
 }
 
 pub(crate) fn local_bedrock_port(profile: &Value) -> u16 {
+    // A Bedrock Dedicated Server listens on its own port (UDP).
+    if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) {
+        return profile["port"].as_u64().map(|p| p as u16).unwrap_or(bds::DEFAULT_PORT as u16);
+    }
     let java = profile["port"].as_u64().map(|p| p as u16);
     let voice = profile["voice"]["port"].as_u64().map(|p| p as u16);
     bedrock_port(&dir_of(profile), java, None, voice)
@@ -50,10 +55,12 @@ pub fn settings_get(state: &AppState, args: &Value) -> Result<Value, String> {
     let profile = profile_of(state, args).ok_or(NOT_FOUND)?;
     let id = profile["id"].as_str().unwrap_or_default().to_string();
     let listing = if profile["listing"].is_object() { profile["listing"].clone() } else { json!({ "enabled": false, "description": "" }) };
+    let ty = profile["type"].as_str().unwrap_or("").to_string();
     Ok(json!({
         "profile": profile,
-        "fields": settings::fields_json(),
-        "values": settings::read_settings(&dir_of(&profile)),
+        "fields": settings::fields_json_for(&ty),
+        "values": settings::read_settings_for(&ty, &dir_of(&profile)),
+        "bedrockServer": bds::is_bedrock_server(&ty),
         "bedrock": { "supported": bedrock_supported(profile["type"].as_str().unwrap_or("")), "enabled": profile["bedrock"] == true, "port": local_bedrock_port(&profile) },
         "listing": listing,
         "totalMemMb": sys::total_memory_mb().unwrap_or(8192),
@@ -74,10 +81,13 @@ fn int_of(v: &Value) -> Option<i64> {
 pub fn settings_save(state: &AppState, args: &Value) -> Result<Value, String> {
     let profile = profile_of(state, args).ok_or(NOT_FOUND)?;
     let id = profile["id"].as_str().unwrap_or_default().to_string();
-    let mut props = settings::validate_settings(args.get("properties").filter(|p| !p.is_null()).unwrap_or(&json!({})))?;
+    let ty = profile["type"].as_str().unwrap_or("").to_string();
+    let is_bds = bds::is_bedrock_server(&ty);
+    let mut props = settings::validate_settings_for(&ty, args.get("properties").filter(|p| !p.is_null()).unwrap_or(&json!({})))?;
     let mut changes = Map::new();
 
-    if let Some(voice) = args.get("voice").filter(|v| !v.is_null()) {
+    // Voice chat, the Java memory setting and the public list are for Java servers; a Bedrock server has none of them.
+    if let Some(voice) = args.get("voice").filter(|v| !v.is_null() && !is_bds) {
         let port = int_of(&voice["port"]).filter(|p| (1..=65535).contains(p));
         let plugin = voice["plugin"].as_str().filter(|p| matches!(*p, "simple" | "plasmo"));
         let (Some(enabled), Some(plugin), Some(port)) = (voice["enabled"].as_bool(), plugin, port.filter(|_| voice["port"].is_number())) else {
@@ -96,13 +106,17 @@ pub fn settings_save(state: &AppState, args: &Value) -> Result<Value, String> {
         changes.insert("port".into(), json!(port));
         props.retain(|(k, _)| k != "server-port");
         props.push(("server-port".into(), port.to_string()));
+        if is_bds {
+            props.retain(|(k, _)| k != "server-portv6");
+            props.push(("server-portv6".into(), bds::port_v6_for(port).to_string()));
+        }
     }
-    if let Some(r) = args.get("ramMb").filter(|r| !r.is_null()) {
+    if let Some(r) = args.get("ramMb").filter(|r| !r.is_null() && !is_bds) {
         let ram = int_of(r).filter(|r| (512..=131_072).contains(r)).ok_or("Invalid RAM amount.")?;
         changes.insert("minRamMb".into(), json!(ram));
         changes.insert("maxRamMb".into(), json!(ram));
     }
-    if let Some(l) = args.get("listing").filter(|l| !l.is_null()) {
+    if let Some(l) = args.get("listing").filter(|l| !l.is_null() && !is_bds) {
         let enabled = l["enabled"].as_bool().ok_or("Invalid server-list setting.")?;
         let description: String = l["description"].as_str().map(|d| d.chars().filter(|c| !(*c <= '\u{1f}' || *c == '\u{7f}')).collect::<String>().trim().chars().take(160).collect()).unwrap_or_default();
         changes.insert("listing".into(), json!({ "enabled": enabled, "description": description }));
@@ -169,10 +183,16 @@ async fn whitelist_call(state: &AppState, args: &Value, f: impl Fn(&Path, bool, 
     }
 }
 
+/// Whether the server being asked about is a Bedrock Dedicated Server (its friends-only list is the allow-list).
+fn is_bds_profile(state: &AppState, args: &Value) -> bool {
+    profile_of(state, args).is_some_and(|p| bds::is_bedrock_server(p["type"].as_str().unwrap_or_default()))
+}
+
 pub async fn whitelist_status(state: &AppState, args: &Value) -> Value {
     let Some(profile) = profile_of(state, args) else { return json!({ "ok": false, "error": NOT_FOUND }) };
     let id = profile["id"].as_str().unwrap_or_default().to_string();
-    match whitelist::status(&dir_of(&profile)) {
+    let result = if bds::is_bedrock_server(profile["type"].as_str().unwrap_or_default()) { bds_allowlist::status(&dir_of(&profile)) } else { whitelist::status(&dir_of(&profile)) };
+    match result {
         Ok(mut v) => {
             v["ok"] = json!(true);
             v["running"] = json!(is_running(state, &id));
@@ -183,15 +203,18 @@ pub async fn whitelist_status(state: &AppState, args: &Value) -> Value {
 }
 pub async fn whitelist_add(state: &AppState, args: &Value) -> Value {
     let text = str_arg(args, "text").unwrap_or("").to_string();
-    whitelist_call(state, args, |d, r, s| whitelist::add_friends(d, &text, r, s)).await
+    let bedrock = is_bds_profile(state, args);
+    whitelist_call(state, args, |d, r, s| if bedrock { bds_allowlist::add_friends(d, &text, r, s) } else { whitelist::add_friends(d, &text, r, s) }).await
 }
 pub async fn whitelist_remove(state: &AppState, args: &Value) -> Value {
     let name = str_arg(args, "name").unwrap_or("").to_string();
-    whitelist_call(state, args, |d, r, s| whitelist::remove_friend(d, &name, r, s)).await
+    let bedrock = is_bds_profile(state, args);
+    whitelist_call(state, args, |d, r, s| if bedrock { bds_allowlist::remove_friend(d, &name, r, s) } else { whitelist::remove_friend(d, &name, r, s) }).await
 }
 pub async fn whitelist_set_enabled(state: &AppState, args: &Value) -> Value {
     let on = args["on"].as_bool().unwrap_or(false) || args["on"] == 1;
-    whitelist_call(state, args, |d, r, s| whitelist::set_enabled(d, on, r, s)).await
+    let bedrock = is_bds_profile(state, args);
+    whitelist_call(state, args, |d, r, s| if bedrock { bds_allowlist::set_enabled(d, on, r, s) } else { whitelist::set_enabled(d, on, r, s) }).await
 }
 
 // ─── Player accounts (cracked mode) ─────────────────────────────────────────
