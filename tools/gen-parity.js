@@ -55,10 +55,11 @@ const AREAS = [
   [/^update:/, 'Updates', 'updater.js (electron-updater)'],
   [/^(voice:|system:)/, 'System', 'voiceSetup.js, main.js'],
   [/^legacy:/, "Bringing the previous app's data over", 'new in this build (not in Electron)'],
+  [/^webcontrol:/, 'Web control (testers only)', 'new in this build (not in Electron 1.17.1; it is in the unreleased Electron web-control branch)'],
 ];
 
 // Channels this build adds on top of the Electron app's (tools/build-ui.js EXTRA_CHANNELS): not part of the parity count.
-const ADDED = channels.filter((c) => /^legacy:/.test(c));
+const ADDED = channels.filter((c) => /^(legacy|webcontrol):/.test(c));
 
 const rows = channels.map((c) => {
   const [, area, mod] = AREAS.find(([re]) => re.test(c)) || [null, 'Other', 'main.js'];

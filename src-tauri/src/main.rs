@@ -17,6 +17,7 @@ mod serversetup;
 mod sys;
 mod tunnelsetup;
 mod updatesetup;
+mod webcontrol;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32};
@@ -78,6 +79,8 @@ pub struct AppState {
     /// Finding, downloading and (when asked) installing a newer version of the app.
     pub updater: voxelport_core::updater::Updater,
     pub backups: backupservice::Backups,
+    /// Web control (testers only): friends press Start or Stop on the accounts site.
+    pub webcontrol: webcontrol::Control,
     pub tunnels: tunnelsetup::TunnelState,
     /// How many players are on the running server.
     pub players: AtomicU32,
@@ -209,6 +212,7 @@ fn main() {
                     )
                 },
                 backups: backupservice::Backups::default(),
+                webcontrol: webcontrol::Control::default(),
                 tunnels: tunnelsetup::TunnelState::default(),
                 players: AtomicU32::new(0),
                 closing: AtomicBool::new(false),
@@ -253,6 +257,7 @@ fn main() {
                 let server = window.state::<AppState>().server.clone();
                 window.state::<AppState>().closing.store(true, std::sync::atomic::Ordering::SeqCst);
                 window.state::<AppState>().tunnels.stop_all();
+                window.state::<AppState>().webcontrol.stop();
                 if server.is_running() {
                     api.prevent_close();
                     let app = window.app_handle().clone();

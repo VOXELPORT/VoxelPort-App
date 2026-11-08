@@ -117,6 +117,7 @@ pub async fn refresh(state: &AppState) {
     state.account.refresh_config().await;
     state.account.refresh_status().await;
     emit_state(state);
+    crate::webcontrol::sync(state);
 }
 
 /// Coming back to the window re-checks (at most once a minute), so a new plan, a changed rank or a removed account shows at once.

@@ -26,6 +26,8 @@ const preload = fs.readFileSync(path.join(ref, 'main', 'preload.js'), 'utf8').re
 const open = "exposeInMainWorld('vp', {";
 const body = preload.slice(preload.indexOf(open) + open.length, preload.lastIndexOf('});'));
 const allowed = [...body.match(/const allowed = \[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+// Events this build adds (web control, testers only).
+allowed.push('webcontrol:event');
 const onBlock = /on: \(channel, cb\) => \{[\s\S]*?\n  \},\n/;
 if (!onBlock.test(body)) throw new Error('preload.js: could not find the on() block');
 const converted = body
@@ -58,6 +60,13 @@ ${allowed.map((c) => `    '${c}',`).join('\n')}
     run: () => call('legacy:run'),
     dismiss: () => call('legacy:dismiss'),
   };
+  // Added by this build: web control (testers only; the backend answers available:false unless the app was started for it).
+  window.vp.webControlGet = () => call('webcontrol:get');
+  window.vp.webControlSet = (opts) => call('webcontrol:set', opts);
+  window.vp.webControlInvites = () => call('webcontrol:inviteList');
+  window.vp.webControlInviteCreate = (opts) => call('webcontrol:inviteCreate', opts);
+  window.vp.webControlInviteRemove = (id) => call('webcontrol:inviteRemove', { id });
+  window.vp.webControlOpenDashboard = () => call('webcontrol:openDashboard');
 })();
 `;
 fs.writeFileSync(path.join(ui, 'tauri-bridge.js'), bridge);
@@ -86,9 +95,22 @@ for (const p of patches) {
 }
 for (const [file, text] of touched) fs.writeFileSync(file, text);
 
+// --- extra translated strings (web control) -----------------------------------------------------------------
+// ui-extra/webcontrol-lang.json holds { language: { English text: translation } }; they are added to the end of each language file.
+const extraLang = JSON.parse(fs.readFileSync(path.join(root, 'ui-extra', 'webcontrol-lang.json'), 'utf8'));
+for (const [lang, entries] of Object.entries(extraLang)) {
+  const file = path.join(ui, 'lang', `${lang}.js`);
+  const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  const end = text.lastIndexOf('};');
+  if (end < 0) throw new Error(`lang/${lang}.js: closing brace not found`);
+  const quote = (v) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const add = Object.entries(entries).filter(([k]) => !text.includes(`'${quote(k)}':`)).map(([k, v]) => `  '${quote(k)}': '${quote(v)}',\n`).join('');
+  fs.writeFileSync(file, text.slice(0, end) + add + text.slice(end));
+}
+
 // --- channel allow-list for the Rust side ------------------------------------------------------------------
 // The channels the Electron preload knows, plus the ones this build adds (bringing the previous app's data over).
-const EXTRA_CHANNELS = ['legacy:detect', 'legacy:dismiss', 'legacy:run'];
+const EXTRA_CHANNELS = ['legacy:detect', 'legacy:dismiss', 'legacy:run', 'webcontrol:get', 'webcontrol:set', 'webcontrol:inviteList', 'webcontrol:inviteCreate', 'webcontrol:inviteRemove', 'webcontrol:openDashboard'];
 const channels = [...new Set([...[...preload.matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]), ...EXTRA_CHANNELS])].sort();
 fs.writeFileSync(path.join(root, 'src-tauri', 'src', 'channels.in'), '&[\n' + channels.map((c) => `    "${c}",`).join('\n') + '\n]\n');
 

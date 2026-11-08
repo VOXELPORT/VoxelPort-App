@@ -26,8 +26,8 @@ const MAX_PERKS: usize = 8;
 pub const UPI_ID: &str = "trazhub@upi";
 pub const UPI_LINK: &str = "upi://pay?pa=trazhub@upi&pn=VoxelPort&cu=INR&tn=Support%20VoxelPort";
 pub const SPONSORS_URL: &str = "https://github.com/sponsors/trazhub";
-pub const PAGE_URL: &str = "https://voxelport.in/#support";
-pub const PERKS_URL: &str = "https://voxelport.in/#supporters";
+pub const PAGE_URL: &str = "https://voxelport.github.io/support";
+pub const PERKS_URL: &str = "https://voxelport.github.io/support";
 pub const CONTACT: &str = "traz@voxelport.in";
 
 const DEFAULT_DISCLOSURE: &str = "Some of these are affiliate links: VoxelPort may earn a commission if you sign up, at no extra cost to you. VoxelPort itself stays free either way.";

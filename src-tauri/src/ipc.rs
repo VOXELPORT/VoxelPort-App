@@ -10,7 +10,7 @@ use voxelport_core::{bds, StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{addonsetup, appmisc, legacyimport, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, AppState};
+use crate::{addonsetup, appmisc, legacyimport, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, webcontrol, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -166,6 +166,13 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "server:profiles:list" => Ok(Value::Array(profiles::list(&state.data_dir))),
         "server:profiles:get" => Ok(str_arg(&args, "id").and_then(|id| profiles::get(&state.data_dir, id)).unwrap_or(Value::Null)),
         "server:state" => Ok(app_state(state)),
+
+        "webcontrol:get" => Ok(webcontrol::get(state)),
+        "webcontrol:set" => Ok(webcontrol::set(state, &args)),
+        "webcontrol:inviteList" => Ok(webcontrol::invite_list(state).await),
+        "webcontrol:inviteCreate" => Ok(webcontrol::invite_create(state, &args).await),
+        "webcontrol:inviteRemove" => Ok(webcontrol::invite_remove(state, &args).await),
+        "webcontrol:openDashboard" => Ok(webcontrol::open_dashboard()),
 
         "server:start" => start_server(state, &args).await,
         "server:stop" => {

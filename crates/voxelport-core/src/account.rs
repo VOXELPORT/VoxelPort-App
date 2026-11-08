@@ -103,6 +103,13 @@ pub struct AppAccount {
     inner: Arc<Inner>,
 }
 
+/// What a signed-in call to the accounts service answered.
+pub struct ApiReply {
+    pub ok: bool,
+    pub status: u16,
+    pub json: Value,
+}
+
 struct Reply {
     ok: bool,
     status: u16,
@@ -242,6 +249,21 @@ impl AppAccount {
             }
         }
         self.inner.state.lock().unwrap().config.clone()
+    }
+
+    /// A signed-in call for the rest of the app (web control). `status` 0 means the service could not be reached; 401 means
+    /// the account no longer knows this session, which is then forgotten on this PC. A redirect counts as unreachable.
+    pub async fn request(&self, method: &'static str, path: &str, body: Option<Value>, timeout: Duration) -> ApiReply {
+        let Some(session) = self.inner.state.lock().unwrap().session.clone() else { return ApiReply { ok: false, status: 401, json: json!({}) } };
+        match self.inner.call_timed(method, path, body, Some(&session), timeout).await {
+            Err(()) => ApiReply { ok: false, status: 0, json: json!({}) },
+            Ok(r) => {
+                if r.status == 401 {
+                    self.inner.forget_account();
+                }
+                ApiReply { ok: r.ok, status: r.status, json: r.json }
+            }
+        }
     }
 
     pub async fn sign_out(&self) {
@@ -397,10 +419,14 @@ impl Inner {
     }
 
     async fn call(&self, method: &'static str, path: &str, body: Option<Value>, session: Option<&str>) -> Result<Reply, ()> {
+        self.call_timed(method, path, body, session, REQUEST_TIMEOUT).await
+    }
+
+    async fn call_timed(&self, method: &'static str, path: &str, body: Option<Value>, session: Option<&str>, timeout: Duration) -> Result<Reply, ()> {
         let url = format!("{}{}", self.base_url, path);
         let auth = session.map(|s| format!("Bearer {s}"));
         tokio::task::spawn_blocking(move || {
-            let agent = ureq::AgentBuilder::new().redirects(0).timeout(REQUEST_TIMEOUT).build();
+            let agent = ureq::AgentBuilder::new().redirects(0).timeout(timeout).build();
             let mut req = agent.request(method, &url).set("content-type", "application/json");
             if let Some(a) = &auth {
                 req = req.set("authorization", a);

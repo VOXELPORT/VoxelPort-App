@@ -42,6 +42,7 @@
     'tunnel:region',
     'tunnel:notice',
     'backup:progress',
+    'webcontrol:event',
   ]);
 
   window.vp = {
@@ -200,4 +201,11 @@
     run: () => call('legacy:run'),
     dismiss: () => call('legacy:dismiss'),
   };
+  // Added by this build: web control (testers only; the backend answers available:false unless the app was started for it).
+  window.vp.webControlGet = () => call('webcontrol:get');
+  window.vp.webControlSet = (opts) => call('webcontrol:set', opts);
+  window.vp.webControlInvites = () => call('webcontrol:inviteList');
+  window.vp.webControlInviteCreate = (opts) => call('webcontrol:inviteCreate', opts);
+  window.vp.webControlInviteRemove = (id) => call('webcontrol:inviteRemove', { id });
+  window.vp.webControlOpenDashboard = () => call('webcontrol:openDashboard');
 })();

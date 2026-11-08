@@ -38,6 +38,7 @@ pub mod tunnel;
 pub mod updater;
 pub mod server_process;
 pub mod voice;
+pub mod webcontrol;
 pub mod whitelist;
 
 pub use fsutil::atomic_write;

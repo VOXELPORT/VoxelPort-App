@@ -46,6 +46,11 @@
         <button class="primary hidden" id="addServerBtn" type="button">+ Add Server</button>
       </div>
       <div class="server-list" id="serverList"></div>
+      <div class="set-group hidden" id="webControlCard">
+        <div class="set-group-title">Web control</div>
+        <p class="hint" id="webControlCardText">Let friends start, stop and watch your server from their phone or a browser.</p>
+        <button class="ghost" id="webControlOpenBtn" type="button">Set up</button>
+      </div>
       <div class="library-tools">
         <div class="library-imports">
           <p class="hint">Already have a server?</p>
@@ -635,6 +640,50 @@
       </div>
     </section>
 
+    <!-- WEB CONTROL -->
+    <section class="screen panel" id="screen-webcontrol">
+      <button class="back-link" data-back="screen-library">‹ Back</button>
+      <div class="screen-title"><div><div class="label">VoxelPort</div><h1>WEB CONTROL</h1></div></div>
+      <div class="set-group" id="webControlGroup">
+        <div class="set-group-title">Web control</div>
+        <label class="toggle-row"><input type="checkbox" id="webControlOn" /> <span>Let friends start and stop my server from the web</span></label>
+        <label class="field">
+          <span class="label">Server friends can start</span>
+          <select id="webControlProfile"></select>
+        </label>
+        <p class="hint" id="webControlStatus" role="status"></p>
+      </div>
+
+      <div class="set-group" id="webControlInvites">
+        <div class="set-group-title">Invite links</div>
+        <p class="hint">Anyone who opens your link, signs in with Discord and is in the VoxelPort Discord server can start, stop and restart your server and watch the console. They cannot run commands, open your files or see player IP addresses. Remove a link or a friend any time.</p>
+        <label class="field">
+          <span class="label">Link lasts</span>
+          <select id="webControlInviteDays">
+            <option value="1">1 day</option>
+            <option value="7" selected>7 days</option>
+            <option value="30">30 days</option>
+            <option value="0">Never expires</option>
+          </select>
+        </label>
+        <button class="primary" id="webControlInviteMake" type="button">Create invite link</button>
+        <p class="hint" id="webControlInviteMsg" role="status"></p>
+        <ul class="hint" id="webControlInviteList"></ul>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Open the dashboard</div>
+        <p class="hint">The web panel shows the servers shared with you, and lets you control your own from a phone.</p>
+        <button class="primary" id="webControlDashboardBtn" type="button">Open the dashboard</button>
+      </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Recent activity</div>
+        <p class="hint" id="webControlActivityEmpty">Nothing yet.</p>
+        <ul class="hint" id="webControlActivity"></ul>
+      </div>
+    </section>
+
     <!-- APP SETTINGS -->
     <section class="screen panel" id="screen-app-settings">
       <button class="back-link" data-back="screen-library">‹ Back</button>
@@ -760,5 +809,6 @@
   <script src="support.js"></script>
   <script src="app-settings.js"></script>
   <script src="discord-ui.js"></script>
+  <script src="webcontrol-ui.js"></script>
 </body>
 </html>
