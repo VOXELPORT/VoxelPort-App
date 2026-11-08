@@ -16,7 +16,6 @@
 </h3>
 
 <p align="center">
-  <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Linux.tar.gz"><img src="https://img.shields.io/badge/Download-Linux-F6CB2F?style=for-the-badge&logo=linux&logoColor=black&labelColor=15120F" alt="Download for Linux" height="40" /></a>
   <a href="https://voxelport.in/guides/host-minecraft-server-android-phone"><img src="https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black&labelColor=15120F" alt="Install the Android app" height="40" /></a>
 </p>
 
@@ -102,7 +101,7 @@ No. They join with normal Minecraft: Java Edition using the address the app give
 <details>
 <summary><b>Does it update itself?</b></summary>
 
-Yes on Windows: the installer updates itself. **Settings → Check for updates** tells you where you stand. On Linux, download the new release when one comes out.
+Yes on Windows: the installer updates itself. **Settings → Check for updates** tells you where you stand.
 </details>
 
 <details>

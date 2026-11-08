@@ -22,10 +22,6 @@ jobs:
               release/VoxelPort-Setup.exe.blockmap
               release/VoxelPort-Portable.exe
               release/latest.yml
-          - os: ubuntu-latest
-            build: npm run dist:linux -- --publish never
-            files: |
-              release/VoxelPort-Linux.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -65,7 +61,7 @@ jobs:
       - name: Generate SHA256SUMS.txt
         run: |
           cd artifacts
-          sha256sum *.exe *.tar.gz > SHA256SUMS.txt
+          sha256sum *.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish complete app release
@@ -79,7 +75,6 @@ jobs:
             artifacts/VoxelPort-Setup.exe.blockmap
             artifacts/VoxelPort-Portable.exe
             artifacts/latest.yml
-            artifacts/VoxelPort-Linux.tar.gz
             artifacts/SHA256SUMS.txt
           fail_on_unmatched_files: true
         env:
