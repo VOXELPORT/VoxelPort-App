@@ -157,3 +157,16 @@ The release installer (`VoxelPort_2.0.0-beta.1_x64-setup.exe`, 3.08 MiB) and the
 - Concurrent managed processes: the product runs one server at a time, so this was not built.
 - Crash recovery across an app restart and persistent services: the product has neither.
 - The Electron test suite (57 files) has not been ported; those tests are the specification for the remaining modules.
+
+## Latency of a server's small packets through the real relays (by hand, 2026-11-09)
+
+`lag_of_small_packets_through_the_real_relay` in `crates/voxelport-core/tests/tunnel.rs` (ignored by default; it opens a public port on the real relay for a few seconds). A stand-in server sends a burst of six 60-byte packets every 50 ms, stamped with one clock; the tunnel carries them through the real relay; a player on the public port reads them. This PC is about 11 ms from the India relay and about 190 ms from the Europe relay. One-way milliseconds, about 650-690 packets each:
+
+| Relay | Nagle's algorithm on the relay connection | p50 | p90 | p99 | max |
+|---|---|---|---|---|---|
+| India | off (now) | 11 | 12 | 13 | 13 |
+| India | on (2.0.0-beta.1 had it on) | 10 | 11 | 13 | 13 |
+| Europe | off (now) | 173 | 173 | 174 | 174 |
+| Europe | on (2.0.0-beta.1) | 241 | 306 | 338 | 346 |
+
+2.0.0-beta.1 opened its connection to the relay with Nagle's algorithm on (the Electron app's `ws` library and the Go tunnel both turn it off), so on a long path a small packet waited for the previous one to be acknowledged: up to about 165 ms extra at the 99th percentile on the Europe route, nothing visible on the short India route. Fixed in 2.0.0-beta.2 (`disable_nagle()` in `tunnel.rs`; a development build can set `VOXELPORT_TUNNEL_NAGLE=on` to bring it back for measuring). The experiment cannot tell how a player's own last mile behaves.

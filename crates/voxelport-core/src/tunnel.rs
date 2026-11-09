@@ -351,7 +351,7 @@ impl Tunnel {
             let url = format!("{}/ws", relay.trim_end_matches('/'));
             let config = WebSocketConfig::default().max_message_size(Some(MAX_WS_MESSAGE_BYTES)).max_frame_size(Some(MAX_WS_MESSAGE_BYTES));
             let handshake = if has_fallback { FALLBACK_HANDSHAKE_TIMEOUT } else { HANDSHAKE_TIMEOUT };
-            let connect = tokio::time::timeout(handshake, tokio_tungstenite::connect_async_with_config(url, Some(config), false));
+            let connect = tokio::time::timeout(handshake, tokio_tungstenite::connect_async_with_config(url, Some(config), disable_nagle()));
             tokio::pin!(connect);
             let connected = loop {
                 tokio::select! {
@@ -873,6 +873,18 @@ impl Session<'_> {
     }
 }
 
+/// The connection to the relay carries every player's small game packets, so Nagle's algorithm must be off: with it on, a small packet waits
+/// for the previous one to be acknowledged (a whole round trip to the relay, or a delayed acknowledgement), which players feel as lag even
+/// though the server itself runs fine. (The player sockets below, and the Electron and Android clients, already had it off.)
+pub(crate) fn disable_nagle() -> bool {
+    // A development build can turn Nagle back on (VOXELPORT_TUNNEL_NAGLE=on) to measure what it costs; release builds cannot.
+    #[cfg(debug_assertions)]
+    if std::env::var("VOXELPORT_TUNNEL_NAGLE").as_deref() == Ok("on") {
+        return false;
+    }
+    true
+}
+
 /// One player: connect to the local server, then pass bytes both ways. Local bytes are only read while the relay connection is keeping up.
 #[allow(clippy::too_many_arguments)]
 async fn player_task(conn: String, gen: u64, port: u16, to_actor: UnboundedSender<Internal>, mut rx: UnboundedReceiver<Vec<u8>>, pending: Arc<AtomicUsize>, outbound: Arc<AtomicUsize>, ev: UnboundedSender<TunnelEvent>) {
@@ -965,6 +977,12 @@ static _SEQ: AtomicU64 = AtomicU64::new(0);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_relay_connection_has_nagles_algorithm_off() {
+        // Every player's small game packets go through this one connection: with Nagle on they wait for acknowledgements and players feel lag.
+        assert!(disable_nagle());
+    }
 
     #[test]
     fn well_formed_frames_of_every_known_type_are_accepted() {

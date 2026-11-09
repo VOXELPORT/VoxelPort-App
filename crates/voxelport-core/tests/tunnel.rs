@@ -804,3 +804,90 @@ async fn the_secure_handshake_with_the_real_relay_works() {
     assert_eq!(response.status().as_u16(), 101);
     let _ = ws.close(None).await;
 }
+
+/// By hand, against the REAL relays: how long the small packets a server sends take to reach a player. A local stand-in server sends a
+/// burst of six 60-byte packets every 50 ms (each stamped with its send time on one clock), a tunnel carries them through the real relay,
+/// and a player connected to the public port reads them. Run it twice to see what Nagle's algorithm costs:
+///   VP_REGION=in|eu cargo test -p voxelport-core --test tunnel -- --ignored --nocapture lag
+///   VOXELPORT_TUNNEL_NAGLE=on VP_REGION=in cargo test ... (Nagle back on, development builds only)
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "talks to the real relays and opens a public port for a few seconds"]
+async fn lag_of_small_packets_through_the_real_relay() {
+    use std::time::Instant;
+    let region = std::env::var("VP_REGION").unwrap_or_else(|_| "in".into());
+    let (relays, play_host): (Vec<String>, &str) = if region == "eu" {
+        (vec!["wss://eu.voxelport.in".into()], "play-eu.voxelport.in")
+    } else {
+        (vec!["wss://direct.voxelport.in:26499".into(), "wss://relay.voxelport.in".into()], "play.voxelport.in")
+    };
+    let start = Instant::now();
+    // The stand-in server: after the player's first bytes, a burst of six stamped packets every 50 ms for six seconds.
+    let server = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_port = server.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut s, _)) = server.accept().await else { return };
+            s.set_nodelay(true).unwrap();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 256];
+                let _ = s.read(&mut buf).await; // the handshake
+                for _ in 0..120 {
+                    for _ in 0..6 {
+                        let mut pkt = [0u8; 60];
+                        pkt[..8].copy_from_slice(&(start.elapsed().as_micros() as u64).to_be_bytes());
+                        if s.write_all(&pkt).await.is_err() {
+                            return;
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            });
+        }
+    });
+    let token = format!("vp_{}", (0..32).map(|i| (b'a' + ((start.elapsed().as_nanos() as u64 >> (i % 20)) as u8 % 26)) as char).collect::<String>());
+    let (tunnel, mut rx) = Tunnel::new();
+    tunnel.start(StartParams { relay_urls: relays, token, local_port: server_port, client: Some("desktop/lag-test".into()), ..Default::default() });
+    let public = loop {
+        match tokio::time::timeout(Duration::from_secs(20), rx.recv()).await.expect("the relay answered").expect("events") {
+            TunnelEvent::Assigned { port, .. } => break port,
+            TunnelEvent::Error(e) => panic!("relay refused: {e}"),
+            _ => {}
+        }
+    };
+    println!("public port {public} on {play_host}");
+    let mut player = tokio::net::TcpStream::connect((play_host, public)).await.expect("a player reaches the public port");
+    player.set_nodelay(true).unwrap();
+    // A minimal Minecraft handshake (next state: login) and a login start, as a real client would send.
+    let mut hs = vec![0x00u8, 0x80, 0x06]; // packet id 0, protocol 768
+    hs.push(9);
+    hs.extend_from_slice(b"localhost");
+    hs.extend_from_slice(&25565u16.to_be_bytes());
+    hs.push(2);
+    let mut framed = vec![hs.len() as u8];
+    framed.extend_from_slice(&hs);
+    framed.extend_from_slice(&[7, 0, 5, b'b', b'e', b'n', b'c', b'h']);
+    player.write_all(&framed).await.unwrap();
+    let mut delays: Vec<u64> = Vec::new();
+    let mut buf = [0u8; 60];
+    let began = Instant::now();
+    while began.elapsed() < Duration::from_secs(7) {
+        match tokio::time::timeout(Duration::from_secs(2), player.read_exact(&mut buf)).await {
+            Ok(Ok(_)) => {
+                let sent = u64::from_be_bytes(buf[..8].try_into().unwrap());
+                let now = start.elapsed().as_micros() as u64;
+                delays.push(now.saturating_sub(sent) / 1000);
+            }
+            _ => break,
+        }
+    }
+    tunnel.stop();
+    delays.sort_unstable();
+    let pick = |q: f64| delays.get(((delays.len() as f64 - 1.0) * q) as usize).copied().unwrap_or(0);
+    println!(
+        "RESULT region={region} nagle={} packets={} one-way ms: p50={} p90={} p99={} max={}",
+        if std::env::var("VOXELPORT_TUNNEL_NAGLE").as_deref() == Ok("on") { "ON" } else { "off" },
+        delays.len(),
+        pick(0.5), pick(0.9), pick(0.99), delays.last().copied().unwrap_or(0)
+    );
+    assert!(delays.len() > 50, "the packets arrived");
+}
