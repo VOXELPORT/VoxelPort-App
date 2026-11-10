@@ -632,6 +632,58 @@ async fn against_a_v2_relay_payloads_travel_as_binary_frames_both_ways_and_contr
     r.finish().await;
 }
 
+/// A server sends far more than the tunnel's 4 MB "keep up" limit over a session (a joining player alone loads megabytes of chunks). The limit is
+/// for bytes waiting to go to the relay, not for bytes ever sent: 2.0.0-beta.1 counted every byte twice, so after about 4 MB the tunnel stopped
+/// reading the server and then dropped the players ("Connection Timed Out"). 12 MB each way, in both protocol modes, must flow without a stall.
+#[tokio::test]
+async fn far_more_than_the_backpressure_limit_flows_through_in_both_modes() {
+    const TOTAL: usize = 12 * 1024 * 1024;
+    for v2 in [false, true] {
+        let e = echo("").await;
+        let mut r = Rig::standard(e.port, |_| {}).await;
+        r.go_online(if v2 { json!({ "bin": 1 }) } else { json!({}) }).await;
+        let conn = hex_id(if v2 { 0xb2 } else { 0xb1 });
+        r.send(json!({ "type": "connect", "conn": conn, "ip": "203.0.113.5" })).await;
+        r.event(|ev| matches!(ev, TunnelEvent::Players(1))).await;
+        let data = payload(TOTAL, 9);
+        let (mut sent, mut got) = (0usize, 0usize);
+        // Keep the pipe balanced: never run more than 1 MB ahead of what has come back.
+        for chunk in data.chunks(32768) {
+            if v2 {
+                r.send_bin(FRAME_TCP, &conn, chunk).await;
+            } else {
+                r.send(json!({ "type": "data", "conn": conn, "data": b64(chunk) })).await;
+            }
+            sent += chunk.len();
+            while sent - got > 1024 * 1024 {
+                got += match r.next_msg().await {
+                    Message::Binary(b) => parse_binary_frame(&b).unwrap().payload.len(),
+                    Message::Text(t) => {
+                        let m: Value = serde_json::from_str(t.as_str()).unwrap();
+                        if m["type"] == "data" { unb64(m["data"].as_str().unwrap()).len() } else { 0 }
+                    }
+                    _ => 0,
+                };
+            }
+        }
+        while got < TOTAL {
+            got += match r.next_msg().await {
+                Message::Binary(b) => parse_binary_frame(&b).unwrap().payload.len(),
+                Message::Text(t) => {
+                    let m: Value = serde_json::from_str(t.as_str()).unwrap();
+                    if m["type"] == "data" { unb64(m["data"].as_str().unwrap()).len() } else { 0 }
+                }
+                _ => 0,
+            };
+        }
+        assert_eq!(got, TOTAL, "everything came back (v2: {v2})");
+        assert_eq!(sha(&e.received.lock().unwrap()), sha(&data), "and the server got it all, in order (v2: {v2})");
+        let stalled: Vec<String> = r.logs().into_iter().filter(|l| l.contains("stalled")).collect();
+        assert!(stalled.is_empty(), "the tunnel never called itself stalled (v2: {v2}): {stalled:?}");
+        r.finish().await;
+    }
+}
+
 #[tokio::test]
 async fn malformed_binary_frames_are_ignored_logged_once_and_the_tunnel_carries_on() {
     let e = echo("").await;
@@ -890,4 +942,94 @@ async fn lag_of_small_packets_through_the_real_relay() {
         pick(0.5), pick(0.9), pick(0.99), delays.last().copied().unwrap_or(0)
     );
     assert!(delays.len() > 50, "the packets arrived");
+}
+
+/// By hand, against the REAL relays: does a player stay connected for minutes? A stand-in server sends 20 MB at the start (like the
+/// chunks a player loads when joining) and then a 20-byte keep-alive every 10 seconds; the player counts what arrives and notes when the
+/// connection ends. Players report being disconnected after about two minutes ("Connection Timed Out"); this shows whether the tunnel does it.
+///   VP_REGION=in|eu VP_SECONDS=240 cargo test -p voxelport-core --test tunnel -- --ignored --nocapture long_session
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "talks to the real relays and holds a public port for minutes"]
+async fn long_session_through_the_real_relay() {
+    use std::time::Instant;
+    let region = std::env::var("VP_REGION").unwrap_or_else(|_| "in".into());
+    let seconds: u64 = std::env::var("VP_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(240);
+    let (relays, play_host): (Vec<String>, &str) = if region == "eu" {
+        (vec!["wss://eu.voxelport.in".into()], "play-eu.voxelport.in")
+    } else {
+        (vec!["wss://direct.voxelport.in:26499".into(), "wss://relay.voxelport.in".into()], "play.voxelport.in")
+    };
+    let server = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_port = server.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut s, _)) = server.accept().await else { return };
+            s.set_nodelay(true).unwrap();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 256];
+                let _ = s.read(&mut buf).await;
+                // 20 MB at about 4 MB/s, the pace of a real server loading chunks for a joining player. (Sent all at once it would overrun the
+                // relay's own queue for a player, 128 messages, which disconnects a player that cannot keep up: that is the relay's rule, not the tunnel's.)
+                let chunk = vec![7u8; 16 * 1024];
+                for _ in 0..(20 * 1024 / 16) {
+                    if s.write_all(&chunk).await.is_err() {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(4)).await;
+                }
+                loop {
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    if s.write_all(&[1u8; 20]).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    let t0 = Instant::now();
+    let token = format!("vp_{}", (0..32).map(|i| (b'a' + ((t0.elapsed().as_nanos() as u64 >> (i % 20)) as u8 % 26)) as char).collect::<String>());
+    let (tunnel, mut rx) = Tunnel::new();
+    tunnel.start(StartParams { relay_urls: relays, token, local_port: server_port, client: Some("desktop/long-test".into()), ..Default::default() });
+    let public = loop {
+        match tokio::time::timeout(Duration::from_secs(20), rx.recv()).await.expect("the relay answered").expect("events") {
+            TunnelEvent::Assigned { port, .. } => break port,
+            TunnelEvent::Error(e) => panic!("relay refused: {e}"),
+            _ => {}
+        }
+    };
+    println!("public port {public} on {play_host}, holding {seconds} s");
+    let mut player = tokio::net::TcpStream::connect((play_host, public)).await.expect("a player reaches the public port");
+    player.set_nodelay(true).unwrap();
+    let mut hs = vec![0x00u8, 0x80, 0x06];
+    hs.push(9);
+    hs.extend_from_slice(b"localhost");
+    hs.extend_from_slice(&25565u16.to_be_bytes());
+    hs.push(2);
+    let mut framed = vec![hs.len() as u8];
+    framed.extend_from_slice(&hs);
+    framed.extend_from_slice(&[7, 0, 5, b'b', b'e', b'n', b'c', b'h']);
+    player.write_all(&framed).await.unwrap();
+    let began = Instant::now();
+    let mut total = 0usize;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut burst_done: Option<u64> = None;
+    let mut ended: Option<String> = None;
+    let mut tunnel_events: Vec<String> = Vec::new();
+    while began.elapsed() < Duration::from_secs(seconds) {
+        tokio::select! {
+            r = player.read(&mut buf) => match r {
+                Ok(0) => { ended = Some("closed by the relay".into()); break; }
+                Ok(n) => { total += n; if burst_done.is_none() && total >= 20 * 1024 * 1024 { burst_done = Some(began.elapsed().as_millis() as u64); } }
+                Err(e) => { ended = Some(format!("error: {e}")); break; }
+            },
+            e = rx.recv() => if let Some(e) = e { tunnel_events.push(format!("{:?}@{}s", e, began.elapsed().as_secs())); },
+        }
+    }
+    tunnel.stop();
+    let note: Vec<String> = tunnel_events.into_iter().filter(|e| !e.starts_with("Ping") && !e.starts_with("Players")).take(10).collect();
+    println!(
+        "RESULT region={region} held={}s received={}MB burst_done_ms={:?} ended={:?} tunnel-events={:?}",
+        began.elapsed().as_secs(), total / 1_048_576, burst_done, ended, note
+    );
+    assert!(ended.is_none(), "the player was disconnected: {ended:?}");
 }

@@ -556,8 +556,10 @@ impl Session<'_> {
         let _ = self.out.send(Out::Msg(Message::Text(v.to_string().into()), 0));
     }
 
+    /// `weight` is the number of bytes of local data this frame carries; the writer takes it off `outbound` once the frame is sent. The bytes
+    /// were already added when the player task read them, so they must not be added again here (counting them twice made the counter grow for
+    /// good, and after about 4 MB of a server's output the tunnel stopped reading and then dropped every player).
     fn send_binary(&self, frame: Vec<u8>, weight: usize) {
-        self.outbound.fetch_add(weight, Ordering::SeqCst);
         let _ = self.out.send(Out::Msg(Message::Binary(frame.into()), weight));
     }
 
@@ -744,7 +746,6 @@ impl Session<'_> {
                     match (self.bin(), raw) {
                         (true, Some(raw)) => self.send_binary(build_binary_frame(FRAME_TCP, &raw, &data), n),
                         _ => {
-                            self.outbound.fetch_add(n, Ordering::SeqCst);
                             let _ = self.out.send(Out::Msg(Message::Text(json!({ "type": "data", "conn": conn, "data": B64.encode(&data) }).to_string().into()), n));
                         }
                     }
