@@ -121,4 +121,9 @@ fs.rmSync(localData, { recursive: true, force: true });
 fs.rmSync(roaming, { recursive: true, force: true });
 fs.rmSync(installDir, { recursive: true, force: true });
 if (where !== installDir && path.resolve(where).toLowerCase() === defaultDir.toLowerCase()) fs.rmSync(where, { recursive: true, force: true }); // the default folder, which this test checked did not exist
+// The installer remembers the last folder it installed to (HKCU\Software\VoxelPort\VoxelPort), and the uninstaller leaves that note behind, so the next
+// installer run by hand would offer this test's folder. Remove the note, but only when it still names the folder this test used.
+try {
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `$k = 'HKCU:\\Software\\VoxelPort\\VoxelPort'; if ((Test-Path $k) -and ((Get-Item $k).GetValue('') -eq $env:VP_SMOKE_DIR)) { Remove-Item $k -Recurse -Force; if (-not (Get-ChildItem 'HKCU:\\Software\\VoxelPort' -ErrorAction SilentlyContinue)) { Remove-Item 'HKCU:\\Software\\VoxelPort' -Force } }`], { stdio: 'ignore', env: { ...process.env, VP_SMOKE_DIR: installDir } });
+} catch { /* a leftover note is only a cosmetic problem */ }
 process.exit(done());
