@@ -125,6 +125,10 @@
     {
       "id": "eu",
       "label": "Europe"
+    },
+    {
+      "id": "la",
+      "label": "Los Angeles"
     }
   ]
 }

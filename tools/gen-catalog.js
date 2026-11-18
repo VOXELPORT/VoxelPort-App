@@ -22,7 +22,8 @@ const catalog = {
   // The server.properties each template starts a server with (used by the installer, never shown to the screens).
   templateProperties: Object.fromEntries(TEMPLATES.map((t) => [t.id, t.properties || {}])),
   // The same fields region:get lists.
-  regions: Object.values(REGIONS).map((r) => ({ id: r.id, label: r.label })),
+  // The pinned Electron reference only knows India and Europe; the Tauri build adds Los Angeles (crates/voxelport-core/src/regions.rs).
+  regions: [...Object.values(REGIONS).map((r) => ({ id: r.id, label: r.label })), { id: 'la', label: 'Los Angeles' }],
 };
 
 const out = path.join(__dirname, '..', 'src-tauri', 'src', 'catalog.json');

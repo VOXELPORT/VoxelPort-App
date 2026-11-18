@@ -2,7 +2,7 @@
 //! by. Ported from `regions.js`.
 //!
 //! `relay_urls` are tried in order (see the tunnel): India is reached directly first, then through Cloudflare if the direct port is
-//! blocked. The Europe relay serves wss straight on :443 with its own certificate, so it has a single relay URL. Custom addresses
+//! blocked. The Europe and Los Angeles relays serve wss straight on :443 with their own certificate, so each has a single relay URL. Custom addresses
 //! (supporters) exist on the India relay only; the app keeps an address on the region that owns it.
 
 use std::time::{Duration, Instant};
@@ -19,6 +19,7 @@ pub struct Region {
 pub const REGIONS: &[Region] = &[
     Region { id: "in", label: "India", relay_urls: &["wss://direct.voxelport.in:26499", "wss://relay.voxelport.in"], status_urls: &["https://direct.voxelport.in:26499/api/status", "https://relay.voxelport.in/api/status"], public_host: "play.voxelport.in" },
     Region { id: "eu", label: "Europe", relay_urls: &["wss://eu.voxelport.in"], status_urls: &["https://eu.voxelport.in/api/status"], public_host: "play-eu.voxelport.in" },
+    Region { id: "la", label: "Los Angeles", relay_urls: &["wss://la.voxelport.in"], status_urls: &["https://la.voxelport.in/api/status"], public_host: "play-la.voxelport.in" },
 ];
 pub const DEFAULT_REGION: &str = "in";
 /// The relay address "use VoxelPort's relay" stands for: the region is picked per tunnel. Any other address is a self-hosted relay.
@@ -132,14 +133,16 @@ mod tests {
     fn every_shipped_region_has_urls_and_a_public_host() {
         assert!(REGIONS.iter().all(|r| r.relay_urls.iter().all(|u| u.starts_with("wss://")) && r.status_urls.iter().all(|u| u.starts_with("https://")) && r.public_host.ends_with(".voxelport.in")));
         assert!(is_region(DEFAULT_REGION));
-        assert_eq!(REGIONS.iter().map(|r| r.id).collect::<Vec<_>>(), ["in", "eu"], "India and Europe ship; North America is not offered");
+        assert_eq!(REGIONS.iter().map(|r| r.id).collect::<Vec<_>>(), ["in", "eu", "la"], "India, Europe and Los Angeles ship; the closed North America (na) relay is not offered");
+        let la = region("la").unwrap();
+        assert_eq!((la.label, la.relay_urls, la.status_urls, la.public_host), ("Los Angeles", &["wss://la.voxelport.in"][..], &["https://la.voxelport.in/api/status"][..], "play-la.voxelport.in"));
         let eu = region("eu").unwrap();
         assert_eq!((eu.label, eu.relay_urls, eu.status_urls, eu.public_host), ("Europe", &["wss://eu.voxelport.in"][..], &["https://eu.voxelport.in/api/status"][..], "play-eu.voxelport.in"));
     }
 
     #[test]
     fn preferences_are_auto_plus_the_shipped_regions() {
-        for (given, want) in [("in", "in"), ("eu", "eu"), ("auto", "auto"), ("na", "auto"), ("mars", "auto"), ("", "auto")] {
+        for (given, want) in [("in", "in"), ("eu", "eu"), ("la", "la"), ("auto", "auto"), ("na", "auto"), ("mars", "auto"), ("", "auto")] {
             assert_eq!(normalize_preference(given), want, "{given}");
         }
     }
@@ -157,6 +160,16 @@ mod tests {
         assert_eq!(p.region.id, "in");
         let p = pick_region("auto", "", REGIONS, &fixed(&[("in", Some(150)), ("eu", Some(22))]));
         assert_eq!((p.region.id, p.reason), ("eu", "fastest"));
+    }
+
+    #[test]
+    fn a_player_near_los_angeles_gets_los_angeles_and_it_down_falls_back_to_the_next_best() {
+        let p = pick_region("auto", "", REGIONS, &fixed(&[("in", Some(250)), ("eu", Some(150)), ("la", Some(20))]));
+        assert_eq!((p.region.id, p.reason), ("la", "fastest"));
+        let p = pick_region("auto", "", REGIONS, &fixed(&[("in", Some(250)), ("eu", Some(150)), ("la", None)]));
+        assert_eq!(p.region.id, "eu");
+        let p = pick_region("la", "in", REGIONS, &never);
+        assert_eq!((p.region.id, p.reason), ("la", "chosen"));
     }
 
     #[test]
