@@ -24,6 +24,8 @@
 > [!IMPORTANT]
 > **VoxelPort has moved to a new app (2.0).** It is rebuilt on newer technology: about 3 MB instead of over 100 MB, does everything this app does, and is where every new feature goes.
 >
+> **This app is no longer updated.** It keeps the India and Europe relays, and custom addresses only on India. The Los Angeles relay, custom addresses on every relay and Supporter+ voice chat on every relay are in the new app.
+>
 > **Move in one click:** update this app to 1.18.0 and press **Update to the new VoxelPort**. It downloads and checks the new app, installs it, brings your servers, backups, VoxelPort ID, address and settings across, then removes this app. Your server folders and worlds are never touched, and if anything goes wrong this app and your data stay exactly as they are.
 >
 > **Or install it directly:** [VoxelPort-Setup.exe](https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Setup.exe) for Windows. You sign in with Discord once in the new app.
