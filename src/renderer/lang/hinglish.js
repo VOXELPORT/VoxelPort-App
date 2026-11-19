@@ -511,7 +511,7 @@
   'See what\'s new': 'Kya naya hai dekho',
   'A big change': 'Ek bada badlav',
   'NEW VOXELPORT': 'NAYA VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'Humne VoxelPort ko naye technology par dobara banaya hai. Naya app 100 MB se zyada ki jagah sirf lagbhag 3 MB ka hai, jaldi khulta hai aur wo sab karta hai jo ye app karta hai. Nayi features ab sirf naye app mein aayengi.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'Humne VoxelPort ko naye technology par dobara banaya hai. Naya app 100 MB se zyada ki jagah sirf lagbhag 3 MB ka hai, jaldi khulta hai aur wo sab karta hai jo ye app karta hai. Nayi features ab sirf naye app mein aayengi.',
   'What the update button does': 'Update button kya karta hai',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': 'Naya VoxelPort download karta hai aur check karta hai ki wo sach mein hamara hi hai.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'Use install karta hai aur tumhare servers, backups, VoxelPort ID, address aur settings naye app mein le aata hai.',

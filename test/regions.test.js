@@ -22,8 +22,12 @@ test('every shipped region has relay URLs, a status URL and a public host', () =
   assert.ok(REGIONS[DEFAULT_REGION], 'the default region is shipped');
 });
 
-test('India and Europe ship (North America is not offered)', () => {
-  assert.deepEqual(Object.keys(REGIONS), ['in', 'eu']);
+test('India, Europe and Los Angeles ship (the closed North America relay is not offered)', () => {
+  assert.deepEqual(Object.keys(REGIONS), ['in', 'eu', 'la']);
+  assert.equal(REGIONS.la.label, 'Los Angeles');
+  assert.deepEqual(REGIONS.la.relayUrls, ['wss://la.voxelport.in']);
+  assert.deepEqual(REGIONS.la.statusUrls, ['https://la.voxelport.in/api/status']);
+  assert.equal(REGIONS.la.publicHost, 'play-la.voxelport.in');
   assert.equal(REGIONS.eu.label, 'Europe');
   assert.deepEqual(REGIONS.eu.relayUrls, ['wss://eu.voxelport.in']);
   assert.deepEqual(REGIONS.eu.statusUrls, ['https://eu.voxelport.in/api/status']);
@@ -53,7 +57,16 @@ test('shipped regions: a player near India stays on India, one near Europe gets 
   assert.equal(europe.reason, 'fastest');
 });
 
-test('shipped regions: a custom address (India only) keeps the tunnel on India, even from Europe', async () => {
+test('shipped regions: a player near Los Angeles gets Los Angeles, and falls back when it is down', async () => {
+  const la = await pickRegion({ preference: 'auto', measure: fixed({ in: 250, eu: 150, la: 20 }) });
+  assert.equal(la.region.id, 'la');
+  const down = await pickRegion({ preference: 'auto', measure: fixed({ in: 250, eu: 150, la: Infinity }) });
+  assert.equal(down.region.id, 'eu');
+  const chosen = await pickRegion({ preference: 'la', measure: () => { throw new Error('measured'); } });
+  assert.equal(chosen.region.id, 'la');
+});
+
+test('shipped regions: a custom address keeps the tunnel on the region that owns it, even when another is faster', async () => {
   const res = await pickRegion({ preference: 'auto', nameRegion: 'in', measure: fixed({ in: 150, eu: 22 }) });
   assert.equal(res.region.id, 'in');
   assert.equal(res.reason, 'address');

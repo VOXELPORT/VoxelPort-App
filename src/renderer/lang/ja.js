@@ -494,7 +494,7 @@
   'See what\'s new': '新機能を見る',
   'A big change': '大きな変更',
   'NEW VOXELPORT': '新しい VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'VoxelPort をより新しい技術で作り直しました。新しいアプリは 100 MB 超ではなく約 3 MB で、起動も速く、このアプリでできることはすべてできます。新機能は今後、新しいアプリにのみ追加されます。',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'VoxelPort をより新しい技術で作り直しました。新しいアプリは 100 MB 超ではなく約 3 MB で、起動も速く、このアプリでできることはすべてできます。新機能は今後、新しいアプリにのみ追加されます。',
   'What the update button does': '更新ボタンがすること',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': '新しい VoxelPort をダウンロードし、確かに私たちのものであることを確認します。',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'インストールして、サーバー、バックアップ、VoxelPort ID、アドレス、設定を引き継ぎます。',
