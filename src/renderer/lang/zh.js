@@ -494,7 +494,7 @@
   'See what\'s new': '查看新变化',
   'A big change': '一次重大变化',
   'NEW VOXELPORT': '全新 VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': '我们用更新的技术重新构建了 VoxelPort。新应用只有约 3 MB，而不是超过 100 MB，启动更快，并且具备本应用的全部功能。新功能今后只会出现在新应用中。',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': '我们用更新的技术重新构建了 VoxelPort。新应用只有约 3 MB，而不是超过 100 MB，启动更快，并且具备本应用的全部功能。新功能今后只会出现在新应用中。',
   'What the update button does': '更新按钮会做什么',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': '下载新的 VoxelPort，并确认它确实出自我们。',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': '安装它，并把你的服务器、备份、VoxelPort ID、地址和设置一并迁移过去。',

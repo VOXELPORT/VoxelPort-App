@@ -494,7 +494,7 @@
   'See what\'s new': 'Xem có gì mới',
   'A big change': 'Một thay đổi lớn',
   'NEW VOXELPORT': 'VOXELPORT MỚI',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'Chúng tôi đã xây dựng lại VoxelPort trên công nghệ mới hơn. Ứng dụng mới chỉ khoảng 3 MB thay vì hơn 100 MB, khởi động nhanh hơn và làm được mọi thứ ứng dụng này làm. Tính năng mới sẽ chỉ có trên ứng dụng mới.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'Chúng tôi đã xây dựng lại VoxelPort trên công nghệ mới hơn. Ứng dụng mới chỉ khoảng 3 MB thay vì hơn 100 MB, khởi động nhanh hơn và làm được mọi thứ ứng dụng này làm. Tính năng mới sẽ chỉ có trên ứng dụng mới.',
   'What the update button does': 'Nút cập nhật làm gì',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': 'Tải VoxelPort mới và kiểm tra xem nó có đúng là của chúng tôi không.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'Cài đặt nó và chuyển máy chủ, bản sao lưu, ID VoxelPort, địa chỉ và cài đặt của bạn sang.',

@@ -494,7 +494,7 @@
   'See what\'s new': 'Yenilikleri gör',
   'A big change': 'Büyük bir değişiklik',
   'NEW VOXELPORT': 'YENİ VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'VoxelPort\'u daha yeni bir teknolojiyle baştan yaptık. Yeni uygulama 100 MB\'tan fazla yerine yaklaşık 3 MB, daha hızlı açılıyor ve bunun yaptığı her şeyi yapıyor. Yeni özellikler yalnızca yeni uygulamaya gelecek.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'VoxelPort\'u daha yeni bir teknolojiyle baştan yaptık. Yeni uygulama 100 MB\'tan fazla yerine yaklaşık 3 MB, daha hızlı açılıyor ve bunun yaptığı her şeyi yapıyor. Yeni özellikler yalnızca yeni uygulamaya gelecek.',
   'What the update button does': 'Güncelle düğmesi ne yapar',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': 'Yeni VoxelPort\'u indirir ve gerçekten bize ait olduğunu denetler.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'Onu kurar; sunucularını, yedeklerini, VoxelPort kimliğini, adresini ve ayarlarını taşır.',

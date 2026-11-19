@@ -494,7 +494,7 @@
   'See what\'s new': 'Что нового',
   'A big change': 'Большое изменение',
   'NEW VOXELPORT': 'НОВЫЙ VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'Мы заново создали VoxelPort на более современной технологии. Новое приложение занимает около 3 МБ вместо более чем 100 МБ, запускается быстрее и умеет всё, что умеет это. Новые функции появятся только в новом приложении.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'Мы заново создали VoxelPort на более современной технологии. Новое приложение занимает около 3 МБ вместо более чем 100 МБ, запускается быстрее и умеет всё, что умеет это. Новые функции появятся только в новом приложении.',
   'What the update button does': 'Что делает кнопка обновления',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': 'Скачивает новый VoxelPort и проверяет, что он действительно наш.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'Устанавливает его и переносит ваши серверы, резервные копии, ID VoxelPort, адрес и настройки.',

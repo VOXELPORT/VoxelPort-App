@@ -491,7 +491,7 @@
   'See what\'s new': 'Das ist neu',
   'A big change': 'Eine große Änderung',
   'NEW VOXELPORT': 'NEUES VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'Wir haben VoxelPort auf neuerer Technik neu gebaut. Die neue App ist etwa 3 MB statt über 100 MB groß, startet schneller und kann alles, was diese kann. Neue Funktionen gibt es nur noch in der neuen App.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'Wir haben VoxelPort auf neuerer Technik neu gebaut. Die neue App ist etwa 3 MB statt über 100 MB groß, startet schneller und kann alles, was diese kann. Neue Funktionen gibt es nur noch in der neuen App.',
   'What the update button does': 'Was die Update-Schaltfläche macht',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': 'Lädt das neue VoxelPort herunter und prüft, dass es wirklich von uns stammt.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'Installiert es und übernimmt deine Server, Backups, VoxelPort-ID, Adresse und Einstellungen.',

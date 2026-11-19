@@ -494,7 +494,7 @@
   'See what\'s new': '새로운 점 보기',
   'A big change': '큰 변화',
   'NEW VOXELPORT': '새로운 VOXELPORT',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': '더 최신 기술로 VoxelPort를 새로 만들었습니다. 새 앱은 100MB가 넘지 않고 약 3MB이며, 더 빨리 실행되고 이 앱이 하는 모든 것을 합니다. 앞으로 새 기능은 새 앱에만 추가됩니다.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': '더 최신 기술로 VoxelPort를 새로 만들었습니다. 새 앱은 100MB가 넘지 않고 약 3MB이며, 더 빨리 실행되고 이 앱이 하는 모든 것을 합니다. 앞으로 새 기능은 새 앱에만 추가됩니다.',
   'What the update button does': '업데이트 버튼이 하는 일',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': '새 VoxelPort를 다운로드하고 정말 우리가 만든 것인지 확인합니다.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': '설치한 뒤 서버, 백업, VoxelPort ID, 주소, 설정을 옮겨 옵니다.',

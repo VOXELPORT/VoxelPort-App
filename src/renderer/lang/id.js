@@ -492,7 +492,7 @@
   'See what\'s new': 'Lihat yang baru',
   'A big change': 'Perubahan besar',
   'NEW VOXELPORT': 'VOXELPORT BARU',
-  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB and does everything this one does. New features will only come to the new app.': 'Kami membangun ulang VoxelPort dengan teknologi yang lebih baru. Aplikasi baru berukuran sekitar 3 MB, bukan lebih dari 100 MB, terbuka lebih cepat, dan melakukan semua yang dilakukan aplikasi ini. Fitur baru hanya akan hadir di aplikasi baru.',
+  'We rebuilt VoxelPort on newer technology. The new app is about 3 MB instead of over 100 MB, starts faster and does everything this one does. New features will only come to the new app.': 'Kami membangun ulang VoxelPort dengan teknologi yang lebih baru. Aplikasi baru berukuran sekitar 3 MB, bukan lebih dari 100 MB, terbuka lebih cepat, dan melakukan semua yang dilakukan aplikasi ini. Fitur baru hanya akan hadir di aplikasi baru.',
   'What the update button does': 'Apa yang dilakukan tombol pembaruan',
   'Downloads the new VoxelPort and checks that it is genuinely ours.': 'Mengunduh VoxelPort baru dan memeriksa bahwa itu benar-benar milik kami.',
   'Installs it and brings your servers, backups, VoxelPort ID, address and settings across.': 'Memasangnya dan memindahkan server, cadangan, ID VoxelPort, alamat, dan pengaturan Anda.',
