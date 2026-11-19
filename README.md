@@ -79,7 +79,8 @@ Honest numbers, measured on one PC: **memory and start-up time are not better th
 ## ✨ What you get
 
 - 🌍 **No port forwarding** — the app dials out to the relay; your router and home IP stay private.
-- 🏷️ **Your own address** — claim `yourname.voxelport.in` for free. Friends join without a port number.
+- 🏷️ **Your own address** — a supporter perk: claim `yourname.voxelport.in` on any relay (India, Europe or Los Angeles). It stays on the relay where you claimed it. Friends join without a port number.
+- 🌍 **Three regions** — India, Europe and Los Angeles. Auto picks the closest; Supporter+ voice chat works on every region.
 - 📱 **Bedrock players too** — one switch installs Geyser + Floodgate so phone, console and Windows players join the same server.
 - 🎮 **Vanilla clients** — Java players need nothing but Minecraft.
 - ⚙️ **Settings screen** — game mode, difficulty, max players, whitelist, MOTD, view distance and more, without editing files.
