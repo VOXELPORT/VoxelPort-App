@@ -32,7 +32,7 @@ await sleep(600);
 const app = launch(exe, { env: {
   PATH: `${javaDir};${process.env.PATH}`,
   VOXELPORT_ACCOUNTS_URL: `http://127.0.0.1:${ACCOUNTS}`, VOXELPORT_NO_BROWSER: '1',
-  VOXELPORT_MC_API: mc.base, VOXELPORT_MODRINTH_API: `${mc.base}/v2`, VOXELPORT_RELAY_URL: relay.url,
+  VOXELPORT_MC_API: mc.base, VOXELPORT_MODRINTH_API: `${mc.base}/v2`, VOXELPORT_GEYSER_API: `${mc.base}/geyser`, VOXELPORT_RELAY_URL: relay.url,
 }, cdpPort: 9355 });
 const page = await connect(9355);
 
@@ -87,6 +87,6 @@ try {
 } finally {
   CDP.close(); page.close(); kill(app);
   if (original) fs.writeFileSync(profilesFile, original);
-  accounts.kill(); mc.stop?.(); relay.stop?.(); local.close();
+  accounts.kill(); mc.close?.(); relay.stop?.(); local.close();
   await sleep(500);
 }
