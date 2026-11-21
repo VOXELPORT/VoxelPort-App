@@ -30,6 +30,11 @@ const srvBedrockHost = $('srvBedrockHost');
 const srvBedrockPort = $('srvBedrockPort');
 const srvBedrockStatus = $('srvBedrockStatus');
 const srvListed = $('srvListed');
+const srvListPrompt = $('srvListPrompt');
+const srvListNowBtn = $('srvListNowBtn');
+// Dismissed for this run of the app once the host clicks through or says no later; never nags again this session.
+// (Per profile id, so switching servers doesn't carry a dismissal that belongs to a different one.)
+const listPromptDismissed = new Set();
 const nameView = $('nameView');
 const nameEdit = $('nameEdit');
 const nameCurrent = $('nameCurrent');
@@ -127,7 +132,12 @@ function renderAddress() {
     : !bedrock ? t('Bedrock needs an updated relay.')
     : assigned.bedrockReady !== true && !bedrockServer ? t('Restart your server once to activate this Bedrock address.') : '';
   srvBedrockStatus.classList.toggle('hidden', !srvBedrockStatus.textContent);
-  srvListed.classList.toggle('hidden', !(managingProfile && managingProfile.listing && managingProfile.listing.enabled));
+  const isListed = Boolean(managingProfile && managingProfile.listing && managingProfile.listing.enabled);
+  srvListed.classList.toggle('hidden', !isListed);
+  // Java-only (the relay can't list a Bedrock Dedicated Server tunnel): nudge a host who just went public and
+  // hasn't opted in yet, instead of leaving the public server list to find out about this feature on its own.
+  const canList = isPublic && managingProfile && !window.VPBedrockServer.isProfile(managingProfile);
+  srvListPrompt.classList.toggle('hidden', isListed || !canList || listPromptDismissed.has(managingProfileId));
   const hasName = Boolean(customAddress.name) && !editingName;
   nameView.classList.toggle('hidden', !hasName);
   nameEdit.classList.toggle('hidden', hasName);
@@ -366,6 +376,21 @@ makePublicBtn.addEventListener('click', async () => {
   const res = await window.vp.server.makePublic(managingProfileId);
   makePublicBtn.disabled = false;
   if (res && !res.ok && res.error) srvLogLine(t(res.error));
+});
+
+srvListNowBtn.addEventListener('click', async () => {
+  if (!managingProfileId) return;
+  const id = managingProfileId;
+  srvListNowBtn.disabled = true;
+  try {
+    const res = await window.vp.server.saveSettings({ id, listing: { enabled: true, description: '' } });
+    if (res && res.ok) { listPromptDismissed.add(id); await window.refreshManagedProfile(); }
+    else srvLogLine(t((res && res.error) || 'Could not list this server.'));
+  } catch (err) {
+    srvLogLine(t(String(err && err.message ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')));
+  } finally {
+    srvListNowBtn.disabled = false;
+  }
 });
 
 stopPublicBtn.addEventListener('click', () => window.vp.stop());
