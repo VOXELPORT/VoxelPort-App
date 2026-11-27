@@ -33,6 +33,7 @@ pub mod runtime_info;
 pub mod server_files;
 pub mod server_install;
 pub mod settings;
+pub mod sleep;
 pub mod support;
 pub mod tunnel;
 pub mod updater;
