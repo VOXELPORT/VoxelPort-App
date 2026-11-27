@@ -539,6 +539,17 @@
         <div class="hint hidden" id="bkRunningNote">Stop the server to restore a backup.</div>
         <div class="bk-list" id="bkList"></div>
       </div>
+
+      <div class="set-group">
+        <div class="set-group-title">Auto-sleep</div>
+        <label class="toggle-row">
+          <input type="checkbox" id="slAuto" />
+          <span><b>Stop when nobody is playing</b><span class="hint">Saves power on a PC nobody is using. A friend trying to join wakes it back up automatically.</span></span>
+        </label>
+        <div class="bk-fields">
+          <label class="field"><span class="label">After</span><select id="slIdle"></select></label>
+        </div>
+      </div>
     </section>
 
     <!-- SERVER FILES: browse the server folder and edit its text settings files -->

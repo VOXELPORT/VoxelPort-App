@@ -14,6 +14,7 @@ mod legacyimport;
 mod secrets;
 mod serverconfig;
 mod serversetup;
+mod sleepservice;
 mod sys;
 mod tunnelsetup;
 mod updatesetup;
@@ -28,10 +29,17 @@ use tauri::{Emitter, Manager, WindowEvent};
 use voxelport_core::account::AppAccount;
 use voxelport_core::gate::{record_install, InstallRecord};
 use voxelport_core::identity::{load_or_create_token, SecretBox};
+use voxelport_core::sleep::SleepSchedule;
 use voxelport_core::{Event, EventReceiver, ServerProcess, Status, StopPolicy};
 
 /// How long a window close waits for the server to save and stop before giving up (Electron's quit gate waits too).
 const QUIT_WAIT: Duration = Duration::from_secs(30);
+type AppSleepSchedule = SleepSchedule<Box<dyn Fn() -> voxelport_core::sleep::SleepSettings + Send + Sync>, Box<dyn Fn() + Send + Sync>>;
+/// How often the idle timer checks whether the server should sleep.
+const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(20);
+/// A wake-triggered start is retried at most this often, so a client hammering a crash-looping server can't
+/// cause a restart loop.
+const WAKE_RETRY_EVERY: Duration = Duration::from_secs(60);
 
 /// What a running server needs from Java, learned from its own output (see `javasetup`).
 pub struct JavaWatch {
@@ -91,6 +99,10 @@ pub struct AppState {
     pub java_watch: Mutex<Option<JavaWatch>>,
     pub java_lock: tokio::sync::Mutex<()>,
     pub last_refresh: Mutex<Option<Instant>>,
+    /// Stops the current server once it has sat empty for a while, per the active profile's own setting.
+    pub sleep_schedule: Mutex<AppSleepSchedule>,
+    /// When a wake-triggered start was last attempted, so a hammering or crash-looping client can't retry forever.
+    pub last_wake_attempt: Mutex<Option<Instant>>,
 }
 
 /// Forward the server's events to the page under the channel names the screens already listen to.
@@ -104,6 +116,13 @@ async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
                 if s == Status::Online {
                     backupservice::on_server_online(&app);
                     insights::on_online(&app.state::<AppState>());
+                    let state = app.state::<AppState>();
+                    // The server is confirmed up again, whether from a manual Start or a wake: the next sleep
+                    // cycle starts its idle clock fresh, and a wake-triggered start may be attempted again
+                    // next time, rather than inheriting a stale rate-limit window from hours earlier.
+                    state.sleep_schedule.lock().unwrap().reset();
+                    *state.last_wake_attempt.lock().unwrap() = None;
+                    state.tunnels.mark_awake();
                 }
                 appmisc::refresh_presence(&app.state::<AppState>());
                 r
@@ -220,6 +239,26 @@ fn main() {
                 java_watch: Mutex::new(None),
                 java_lock: tokio::sync::Mutex::new(()),
                 last_refresh: Mutex::new(Some(Instant::now())),
+                sleep_schedule: {
+                    let (settings_app, stop_app) = (app.handle().clone(), app.handle().clone());
+                    let settings: Box<dyn Fn() -> voxelport_core::sleep::SleepSettings + Send + Sync> = Box::new(move || {
+                        let state = settings_app.state::<AppState>();
+                        let Some(id) = state.active_profile.lock().unwrap().clone() else { return voxelport_core::sleep::SleepSettings { auto: false, idle_min: 20 } };
+                        let Some(profile) = voxelport_core::profiles::get(&state.data_dir, &id) else { return voxelport_core::sleep::SleepSettings { auto: false, idle_min: 20 } };
+                        voxelport_core::sleep::sleep_settings(&profile)
+                    });
+                    let stop: Box<dyn Fn() + Send + Sync> = Box::new(move || {
+                        let app = stop_app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app.state::<AppState>();
+                            state.tunnels.mark_asleep();
+                            insights::request_stop(&state);
+                            state.server.stop().await;
+                        });
+                    });
+                    Mutex::new(SleepSchedule::new(settings, stop))
+                },
+                last_wake_attempt: Mutex::new(None),
             });
             tunnelsetup::load(&app.state::<AppState>());
             // Started by the previous app's "update" button: bring its data over at once (see legacyimport.rs).
@@ -237,6 +276,21 @@ fn main() {
                 state.presence.set_enabled(appmisc::presence_pref(&state));
             });
             tauri::async_runtime::spawn(pump(app.handle().clone(), rx));
+            // Stops the current server once it has sat empty long enough, per the active profile's own setting.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(SLEEP_CHECK_EVERY).await;
+                    let state = handle.state::<AppState>();
+                    if state.active_profile.lock().unwrap().is_none() {
+                        continue;
+                    }
+                    let online = state.server.online_names();
+                    let ready = state.server.status() != Status::Stopped;
+                    let now = (voxelport_core::account::system_clock())();
+                    state.sleep_schedule.lock().unwrap().tick(&online, ready, now);
+                }
+            });
             // Ask the accounts service now and then every 15 minutes while the app is open.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

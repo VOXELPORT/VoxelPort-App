@@ -15,12 +15,16 @@
   const bkKeep = $('bkKeep');
   const bkList = $('bkList');
   const bkRunningNote = $('bkRunningNote');
+  const slAuto = $('slAuto');
+  const slIdle = $('slIdle');
 
   const INTERVALS = [10, 15, 30, 60, 120, 240];
   const KEEPS = [3, 5, 10, 20];
+  const IDLES = [10, 20, 30, 60];
 
   let profileId = null;
   let info = null;
+  let sleepInfo = null;
   let working = false; // a backup or restore is running (here or started elsewhere)
 
   const REASON_LABEL = () => ({
@@ -69,6 +73,11 @@
     bkAuto.checked = info.settings.auto;
     fillSelect(bkInterval, INTERVALS, info.settings.intervalMin, minutesLabel);
     fillSelect(bkKeep, KEEPS, info.settings.keep, (n) => String(n));
+    if (sleepInfo) {
+      slAuto.checked = sleepInfo.auto;
+      fillSelect(slIdle, IDLES, sleepInfo.idleMin, minutesLabel);
+      slIdle.closest('.bk-fields').classList.toggle('hidden', !sleepInfo.auto);
+    }
 
     bkNowBtn.disabled = working || !info.hasWorld;
     bkRunningNote.classList.toggle('hidden', !info.running);
@@ -127,10 +136,22 @@
   async function refresh() {
     if (!profileId) return;
     try { info = await window.vp.backups.info(profileId); } catch { return; }
+    try { sleepInfo = await window.vp.sleep.info(profileId); } catch { sleepInfo = null; }
     working = info.busy;
     bkProgress.classList.toggle('hidden', !working);
     render();
   }
+
+  async function saveSleepSettings() {
+    try {
+      sleepInfo = await window.vp.sleep.setSettings(profileId, { auto: slAuto.checked, idleMin: Number(slIdle.value) });
+    } catch (err) {
+      showStatus(String(err && err.message ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), true);
+    }
+    render();
+  }
+  slAuto.addEventListener('change', saveSleepSettings);
+  slIdle.addEventListener('change', saveSleepSettings);
 
   window.openBackupsScreen = async function openBackupsScreen(id) {
     profileId = id;

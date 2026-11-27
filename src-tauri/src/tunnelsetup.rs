@@ -60,6 +60,9 @@ pub struct TunnelState {
     voice_restart: Mutex<std::collections::HashSet<String>>,
     /// One voice set-up at a time.
     voice_lock: tokio::sync::Mutex<()>,
+    /// Shared with every `Tunnel::start()` call so the app's "should the relay treat this tunnel as asleep"
+    /// state can be re-asserted after a reconnect (a fresh `register`) without a new flag per session.
+    sleep_asleep: Arc<AtomicBool>,
 }
 
 impl TunnelState {
@@ -75,6 +78,25 @@ impl TunnelState {
     /// A tunnel that is connecting, online, reconnecting or still closing.
     pub fn any_live(&self) -> bool {
         self.tunnel.lock().unwrap().as_ref().is_some_and(Tunnel::is_live) || self.retiring.lock().unwrap().as_ref().is_some_and(Tunnel::is_live)
+    }
+    /// The tunnel currently in charge, if any — for callers outside this module that need to send it a command
+    /// (e.g. the sleep schedule's `mark_asleep`).
+    pub fn active_tunnel(&self) -> Option<Tunnel> {
+        self.tunnel.lock().unwrap().clone()
+    }
+    /// Tells the relay this tunnel's local server is asleep/awake, and remembers that state so it is re-sent
+    /// automatically if the control connection reconnects (see `sleep_asleep_at_start` in `tunnel.rs`).
+    pub fn mark_asleep(&self) {
+        self.sleep_asleep.store(true, Ordering::SeqCst);
+        if let Some(t) = self.active_tunnel() {
+            t.mark_asleep();
+        }
+    }
+    pub fn mark_awake(&self) {
+        self.sleep_asleep.store(false, Ordering::SeqCst);
+        if let Some(t) = self.active_tunnel() {
+            t.mark_awake();
+        }
     }
     /// The window is closing: let the tunnel go too.
     pub fn stop_all(&self) {
@@ -355,8 +377,7 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
         voice_port,
         voice_auto,
         client: Some(format!("desktop/{}", env!("CARGO_PKG_VERSION"))),
-        // TODO(Task 4): wire this to the real per-profile sleep state instead of a fresh, always-false flag.
-        sleep_asleep_at_start: Arc::new(AtomicBool::new(false)),
+        sleep_asleep_at_start: state.tunnels.sleep_asleep.clone(),
     });
     broadcast_state(state);
     json!({ "ok": true })
@@ -620,6 +641,29 @@ fn voice_assigned(app: &tauri::AppHandle, tunnel: Tunnel, host: String, port: Op
 
 // ─── Events from the tunnel ─────────────────────────────────────────────────
 
+/// The relay rejected a player because the local server is asleep: start it back up. Rate-limited to one attempt
+/// per `WAKE_RETRY_EVERY` so a hammering client (or a server that keeps crashing on boot) can't force a restart
+/// loop — the player who triggered this already got a disconnect message asking them to retry shortly, which is
+/// well inside that window, so a second `wake` before it elapses is not a second real signal worth acting on.
+fn on_wake_requested(app: &tauri::AppHandle, state: &AppState) {
+    {
+        let mut last = state.last_wake_attempt.lock().unwrap();
+        if last.is_some_and(|t| t.elapsed() < crate::WAKE_RETRY_EVERY) {
+            return;
+        }
+        *last = Some(Instant::now());
+    }
+    let Some(id) = state.tunnels.public_profile() else { return };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        // ipc::start_profile already answers "A server is already running." as Ok(json) rather than an Err, so
+        // the AlreadyRunning race (a manual Start winning at the same moment) is already a no-op here, not an
+        // error to surface — this is the resolved race, not a new guard.
+        let _ = ipc::start_profile(&state, &id, false).await;
+    });
+}
+
 /// Forwards one tunnel's events to the screens under the channel names they already listen to. An event from a tunnel that has been
 /// replaced is dropped, so an old tunnel finishing late cannot clear a newer one's state.
 fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::UnboundedReceiver<TunnelEvent>, public_host: String) {
@@ -690,8 +734,7 @@ fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::Unboun
                     }
                 }
                 TunnelEvent::UdpError(m) | TunnelEvent::VoiceError(m) => emit(&state, "server:log", format!("[VoxelPort] {m}")),
-                // TODO(Task 4): start the server (rate-limited) and call tunnel.mark_awake() once it's Online.
-                TunnelEvent::WakeRequested => {}
+                TunnelEvent::WakeRequested => on_wake_requested(&app, &state),
                 TunnelEvent::Stopped => {
                     // An old tunnel finishing after a newer one took over must not clear its state.
                     let other_current = state.tunnels.tunnel.lock().unwrap().as_ref().is_some_and(|c| !c.same(&tunnel));

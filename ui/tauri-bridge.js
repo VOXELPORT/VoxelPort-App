@@ -135,6 +135,11 @@
     openFolder: (id) => call('backup:openFolder', { id }),
   },
 
+  sleep: {
+    info: (id) => call('sleep:info', { id }),
+    setSettings: (id, settings) => call('sleep:settings:set', { id, settings }),
+  },
+
   accounts: {
     get: (id) => call('server:accounts:get', { id }),
     set: (id, cracked, confirmed) => call('server:accounts:set', { id, cracked, confirmed }),

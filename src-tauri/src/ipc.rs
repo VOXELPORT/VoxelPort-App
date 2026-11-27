@@ -10,7 +10,7 @@ use voxelport_core::{bds, StartConfig, Status};
 
 use voxelport_core::profiles;
 
-use crate::{addonsetup, appmisc, legacyimport, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sys, tunnelsetup, webcontrol, AppState};
+use crate::{addonsetup, appmisc, legacyimport, updatesetup, backupservice, catalog, discord, insights, javasetup, secrets, serverconfig, serversetup, sleepservice, sys, tunnelsetup, webcontrol, AppState};
 
 /// Every channel the screens can call (generated from preload.js). Anything else is refused.
 const KNOWN: &[&str] = include!("channels.in");
@@ -146,6 +146,8 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
         "backup:info" => backupservice::describe(state, &args),
         "backup:create" => Ok(backupservice::create(state, str_arg(&args, "id").unwrap_or_default(), "manual").await),
         "backup:settings:set" => backupservice::set_settings(state, &args),
+        "sleep:info" => sleepservice::describe(state, &args),
+        "sleep:settings:set" => sleepservice::set_settings(state, &args),
         "backup:delete" => backupservice::delete(state, &args),
         "backup:openFolder" => Ok(backupservice::open_folder(state, &args)),
         "backup:restore" => Ok(backupservice::restore(state, &args).await),

@@ -73,6 +73,8 @@
     "server:templates",
     "server:types",
     "server:versions",
+    "sleep:info",
+    "sleep:settings:set",
     "support:copyUpi",
     "support:get",
     "support:open",
