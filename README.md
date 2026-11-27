@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest"><img src="https://img.shields.io/badge/New%20app-2.0-5FAE3B?style=for-the-badge&labelColor=15120F" alt="New app, 2.0" /></a>
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases"><img src="https://img.shields.io/badge/Price-Free-F6CB2F?style=for-the-badge&labelColor=15120F" alt="Free" /></a>
-  <a href="https://voxelport.github.io/status"><img src="https://img.shields.io/badge/Relay-Status-43C8D8?style=for-the-badge&labelColor=15120F" alt="Relay status" /></a>
+  <a href="https://voxelport.in/status"><img src="https://img.shields.io/badge/Relay-Status-43C8D8?style=for-the-badge&labelColor=15120F" alt="Relay status" /></a>
   <a href="https://discord.gg/2wJbCPwP4r"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=15120F" alt="Join the Discord" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-C8262B?style=for-the-badge&labelColor=15120F" alt="MIT license" /></a>
 </p>
@@ -17,10 +17,10 @@
 
 <p align="center">
   <a href="https://github.com/VOXELPORT/VoxelPort-App/releases/latest/download/VoxelPort-Setup.exe"><img src="https://img.shields.io/badge/Download-Windows-F6CB2F?style=for-the-badge&logo=windows&logoColor=black&labelColor=15120F" alt="Download for Windows" height="40" /></a>
-  <a href="https://voxelport.github.io/guides/host-minecraft-server-android-phone"><img src="https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black&labelColor=15120F" alt="Install the Android app" height="40" /></a>
+  <a href="https://voxelport.in/guides/host-minecraft-server-android-phone"><img src="https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black&labelColor=15120F" alt="Install the Android app" height="40" /></a>
 </p>
 
-<p align="center"><sub>Windows 10 and 11 · <a href="https://voxelport.github.io">voxelport.github.io</a></sub></p>
+<p align="center"><sub>Windows 10 and 11 · <a href="https://voxelport.in">voxelport.in</a></sub></p>
 
 ---
 
@@ -38,7 +38,7 @@ Installing by hand? Open the new app and it offers to bring your data over from 
 
 | | |
 |:-:|---|
-| **1** | **Install** the app from [voxelport.github.io](https://voxelport.github.io/download) or the [release page](https://github.com/VOXELPORT/VoxelPort-App/releases/latest) and sign in with Discord once. Friends never need an account. |
+| **1** | **Install** the app from [voxelport.in](https://voxelport.in/download) or the [release page](https://github.com/VOXELPORT/VoxelPort-App/releases/latest) and sign in with Discord once. Friends never need an account. |
 | **2** | **Create** a new server (Vanilla, Paper, Fabric, or the Bedrock Dedicated Server) or **import** one you already have. |
 | **3** | Press **Start**, then **Make public**. You get an address like `play.voxelport.in:26137`. |
 | **4** | Friends paste it into **Multiplayer → Add Server**. Done. |
@@ -135,5 +135,5 @@ Prerequisites, the generated parts, the development switches and the release bui
 ---
 
 <p align="center">
-  <sub>Not affiliated with Mojang or Microsoft. Minecraft is a trademark of Mojang AB.<br />Made by <a href="https://github.com/trazhub">trazhub</a> · <a href="https://voxelport.github.io">voxelport.github.io</a></sub>
+  <sub>Not affiliated with Mojang or Microsoft. Minecraft is a trademark of Mojang AB.<br />Made by <a href="https://github.com/trazhub">trazhub</a> · <a href="https://voxelport.in">voxelport.in</a></sub>
 </p>
