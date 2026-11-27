@@ -37,6 +37,8 @@ const QUIT_WAIT: Duration = Duration::from_secs(30);
 type AppSleepSchedule = SleepSchedule<Box<dyn Fn() -> voxelport_core::sleep::SleepSettings + Send + Sync>, Box<dyn Fn() + Send + Sync>>;
 /// How often the idle timer checks whether the server should sleep.
 const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(20);
+/// How long the idle check waits for the server to say how many are playing.
+const SLEEP_PING_TIMEOUT: Duration = Duration::from_secs(3);
 /// A wake-triggered start is retried at most this often, so a client hammering a crash-looping server can't
 /// cause a restart loop.
 const WAKE_RETRY_EVERY: Duration = Duration::from_secs(60);
@@ -298,9 +300,18 @@ fn main() {
                     let state = handle.state::<AppState>();
                     let Some(id) = state.active_profile.lock().unwrap().clone() else { continue };
                     // The relay hears join attempts over TCP only, so a Bedrock Dedicated Server could never be woken.
-                    let is_bds = voxelport_core::profiles::get(&state.data_dir, &id).is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default()));
-                    let online = state.server.online_names();
-                    let ready = state.server.status() == Status::Online && !is_bds && state.tunnels.can_wake(&id);
+                    let profile = voxelport_core::profiles::get(&state.data_dir, &id);
+                    let is_bds = profile.as_ref().is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default()));
+                    let could = state.server.status() == Status::Online && !is_bds && state.tunnels.can_wake(&id);
+                    // The server itself is asked who is there too: a plugin can change the join messages the log is read for.
+                    let port = profile.as_ref().and_then(|p| p["port"].as_u64()).and_then(|p| u16::try_from(p).ok());
+                    let counted = match port {
+                        Some(port) if could => voxelport_core::slp::players_online(port, SLEEP_PING_TIMEOUT).await,
+                        _ => None,
+                    };
+                    let there = voxelport_core::sleep::who_is_there(&state.server.online_names(), counted);
+                    let ready = could && there.is_some();
+                    let online = there.unwrap_or_default();
                     let now = (voxelport_core::account::system_clock())() * sleep_clock_speed();
                     state.sleep_schedule.lock().unwrap().tick(&online, ready, now);
                 }

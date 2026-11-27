@@ -130,3 +130,15 @@ fn time_while_it_could_not_sleep_does_not_count_as_idle() {
     sched.tick(&[], true, 71 * 60_000);
     assert_eq!(stopped.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn the_servers_own_count_keeps_it_up_when_a_plugin_hides_the_join_messages() {
+    use voxelport_core::sleep::who_is_there;
+    let steve = vec!["Steve".to_string()];
+    assert_eq!(who_is_there(&[], Some(0)), Some(vec![]), "empty: the idle clock may run");
+    assert_eq!(who_is_there(&steve, Some(1)), Some(steve.clone()));
+    assert_eq!(who_is_there(&steve, Some(0)), Some(steve.clone()), "a hidden count does not overrule the log");
+    assert_eq!(who_is_there(&[], Some(2)).map(|p| p.is_empty()), Some(false), "players the log never mentioned");
+    assert_eq!(who_is_there(&[], None), None, "no answer: unknown, so not idle");
+    assert_eq!(who_is_there(&steve, None), None);
+}

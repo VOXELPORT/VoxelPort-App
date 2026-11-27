@@ -49,6 +49,17 @@ pub fn validate_sleep_settings(input: &Value) -> Result<serde_json::Map<String, 
     Ok(out)
 }
 
+/// Who counts as playing, from the log's join lines and the server's own count ([`crate::slp`]). None when the server
+/// did not answer: that is not knowing, so it must not count as empty. Either one seeing somebody is enough, because a
+/// plugin can change the join messages and another can hide the count.
+pub fn who_is_there(from_log: &[String], counted: Option<u64>) -> Option<Vec<String>> {
+    let counted = counted?;
+    if from_log.is_empty() && counted > 0 {
+        return Some(vec![format!("{counted} players")]);
+    }
+    Some(from_log.to_vec())
+}
+
 // ─── The idle timer ────────────────────────────────────────────────────────
 
 /// Decides when a server has sat empty long enough to stop itself. Plain, synchronously-testable logic: `tick`
