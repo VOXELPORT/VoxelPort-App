@@ -4,9 +4,9 @@ use serde_json::json;
 use voxelport_core::sleep::*;
 
 #[test]
-fn defaults_are_off_and_twenty_minutes() {
+fn defaults_are_on_and_twenty_minutes() {
     let s = sleep_settings(&json!({}));
-    assert_eq!(s, SleepSettings { auto: false, idle_min: 20 });
+    assert_eq!(s, SleepSettings { auto: true, idle_min: 20 });
 }
 
 #[test]
@@ -14,7 +14,7 @@ fn stored_settings_are_used_and_out_of_range_falls_back() {
     let s = sleep_settings(&json!({ "sleep": { "auto": true, "idleMin": 30 } }));
     assert_eq!(s, SleepSettings { auto: true, idle_min: 30 });
     let s = sleep_settings(&json!({ "sleep": { "auto": "yes", "idleMin": 1 } }));
-    assert_eq!(s, SleepSettings { auto: false, idle_min: 20 });
+    assert_eq!(s, SleepSettings { auto: true, idle_min: 20 });
 }
 
 #[test]
@@ -116,4 +116,17 @@ fn does_nothing_before_the_server_is_ready() {
     sched.tick(&[], false, 0);
     sched.tick(&[], false, 60 * 60_000);
     assert_eq!(stopped.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn time_while_it_could_not_sleep_does_not_count_as_idle() {
+    let stopped = Arc::new(AtomicUsize::new(0));
+    let s2 = stopped.clone();
+    let mut sched = SleepSchedule::new(|| SleepSettings { auto: true, idle_min: 10 }, move || { s2.fetch_add(1, Ordering::SeqCst); });
+    sched.tick(&[], true, 0);
+    sched.tick(&[], false, 60_000); // the tunnel drops
+    sched.tick(&[], true, 60 * 60_000); // and is back much later
+    assert_eq!(stopped.load(Ordering::SeqCst), 0, "must count again from here, not stop at once");
+    sched.tick(&[], true, 71 * 60_000);
+    assert_eq!(stopped.load(Ordering::SeqCst), 1);
 }

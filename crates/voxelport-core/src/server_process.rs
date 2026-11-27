@@ -40,11 +40,13 @@ fn leave_re() -> &'static Regex { static R: OnceLock<Regex> = OnceLock::new(); r
 fn player_re() -> &'static Regex { static R: OnceLock<Regex> = OnceLock::new(); re(&R, r"^[A-Za-z0-9_.*-]{1,32}$") }
 fn jar_re() -> &'static Regex { static R: OnceLock<Regex> = OnceLock::new(); re(&R, r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.jar$") }
 
-/// A server log line without its "[time] [thread/LEVEL]:" front. What the server means is the whole message
-/// after that, never a piece of it: chat is "<name> text", so a player typing "Bob joined the game" cannot pass
-/// for the server saying it.
+/// A server log line without its "[time] [thread/LEVEL]:" front (and the "System chat:" some versions add to
+/// the server's own announcements). What the server means is the whole message after that, never a piece of it:
+/// chat is "<name> text", so a player typing "Bob joined the game" cannot pass for the server saying it.
 pub fn strip_log_prefix(line: &str) -> String {
-    prefix_re().replace(line, "").trim_end().to_string()
+    let message = prefix_re().replace(line, "");
+    // Only at the very front, so a player cannot type it into a chat message.
+    message.strip_prefix("System chat: ").unwrap_or(&message).trim_end().to_string()
 }
 
 /// Which kind of server is running: the console of a Java server and of a Bedrock Dedicated Server print different lines.
@@ -649,6 +651,18 @@ mod tests {
         assert_eq!(strip_log_prefix("[12:00:00 INFO]: Done (1.2s)! For help"), "Done (1.2s)! For help");
         let chat = strip_log_prefix("[12:00:00] [Server thread/INFO]: <Bob> Alice joined the game");
         assert!(join_re().captures(&chat).is_none());
+    }
+
+    /// Paper 26.3 writes the server's own announcements as "System chat: Steve joined the game". Missing that
+    /// left the online list empty, so auto-sleep stopped the server under the people playing on it.
+    #[test]
+    fn a_system_chat_line_still_counts_as_the_server_speaking() {
+        let joined = strip_log_prefix("[12:30:02] [Server thread/INFO]: System chat: Steve joined the game");
+        assert_eq!(&join_re().captures(&joined).expect("join")[1], "Steve");
+        let left = strip_log_prefix("[12:30:28] [Server thread/INFO]: System chat: Steve left the game");
+        assert_eq!(&leave_re().captures(&left).expect("leave")[1], "Steve");
+        let chat = strip_log_prefix("[12:00:00] [Server thread/INFO]: <Bob> System chat: Alice left the game");
+        assert!(leave_re().captures(&chat).is_none());
     }
 
     #[test]

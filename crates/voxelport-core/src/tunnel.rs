@@ -198,6 +198,8 @@ struct Inner {
     /// Registered with the relay and online.
     running: AtomicBool,
     bin: AtomicBool,
+    /// The relay said it can wake a sleeping server.
+    relay_wakes: AtomicBool,
     manual_stop: AtomicBool,
     bedrock_public: AtomicU32,
     voice_public: AtomicU32,
@@ -222,6 +224,7 @@ impl Tunnel {
             live: AtomicBool::new(false),
             running: AtomicBool::new(false),
             bin: AtomicBool::new(false),
+            relay_wakes: AtomicBool::new(false),
             manual_stop: AtomicBool::new(false),
             bedrock_public: AtomicU32::new(0),
             voice_public: AtomicU32::new(0),
@@ -247,6 +250,10 @@ impl Tunnel {
     /// Registered with the relay and online.
     pub fn is_running(&self) -> bool {
         self.0.running.load(Ordering::SeqCst)
+    }
+    /// The relay of the current connection can wake a sleeping server; without that, one must not be put to sleep.
+    pub fn relay_wakes(&self) -> bool {
+        self.0.relay_wakes.load(Ordering::SeqCst)
     }
     /// Protocol v2 (binary frames) is on for the current connection.
     pub fn is_binary(&self) -> bool {
@@ -614,6 +621,7 @@ impl Session<'_> {
                 let inner = &self.t.0;
                 inner.running.store(true, Ordering::SeqCst);
                 inner.bin.store(msg["bin"].as_i64() == Some(1), Ordering::SeqCst); // only the relay saying so turns it on
+                inner.relay_wakes.store(msg["sleep"].as_bool() == Some(true), Ordering::SeqCst);
                 *reconnect_delay = Duration::from_secs(1);
                 let bedrock_public = if self.p.bedrock_port.is_some() { msg["bedrock_port"].as_u64().map(|p| p as u16) } else { None };
                 inner.bedrock_public.store(u32::from(bedrock_public.unwrap_or(0)), Ordering::SeqCst);

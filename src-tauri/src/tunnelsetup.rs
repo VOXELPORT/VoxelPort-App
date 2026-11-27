@@ -98,10 +98,10 @@ impl TunnelState {
             t.mark_awake();
         }
     }
-    /// Whether this server may be put to sleep: only when it is the public one on a connected tunnel, because
+    /// Whether this server may be put to sleep: only when it is the public one on a connected tunnel to a relay that can wake it, because
     /// nothing else could wake it again.
     pub fn can_wake(&self, id: &str) -> bool {
-        self.public_profile().as_deref() == Some(id) && self.active_tunnel().is_some_and(|t| t.is_running())
+        self.public_profile().as_deref() == Some(id) && self.active_tunnel().is_some_and(|t| t.is_running() && t.relay_wakes())
     }
     /// The window is closing: let the tunnel go too.
     pub fn stop_all(&self) {

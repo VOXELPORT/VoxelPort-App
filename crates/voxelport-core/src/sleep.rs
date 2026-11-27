@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 
-pub const DEFAULTS: (bool, i64) = (false, 20); // auto, idleMin
+pub const DEFAULTS: (bool, i64) = (true, 20); // auto, idleMin
 pub const IDLE_RANGE: (i64, i64) = (5, 360);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,7 +72,13 @@ impl<S: Fn() -> SleepSettings, F: Fn()> SleepSchedule<S, F> {
     /// One tick of the clock: `online` is who is playing right now, `ready` is whether the server has finished
     /// starting, `now_ms` is the current time. Calls `stop` at most once per time the server becomes ready.
     pub fn tick(&mut self, online: &[String], ready: bool, now_ms: i64) {
-        if !ready || self.asleep {
+        if self.asleep {
+            return;
+        }
+        if !ready {
+            // Time it could not have slept (still starting, tunnel down) is not idle time.
+            self.idle_since_ms = None;
+            self.was_occupied = false;
             return;
         }
         let occupied = !online.is_empty();

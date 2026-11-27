@@ -1033,3 +1033,28 @@ async fn long_session_through_the_real_relay() {
     );
     assert!(ended.is_none(), "the player was disconnected: {ended:?}");
 }
+
+/// A server may only be put to sleep on a relay that says it can wake it; an older relay never says so.
+#[tokio::test]
+async fn only_a_relay_that_announces_it_can_wake_a_server_counts() {
+    let mut rig = Rig::standard(1, |_| {}).await;
+    assert!(!rig.tunnel.relay_wakes());
+    rig.send(json!({ "type": "port", "port": 26000 })).await;
+    rig.send(json!({ "type": "port", "port": 26000, "sleep": true })).await;
+    let t = rig.tunnel.clone();
+    for _ in 0..200 {
+        if t.relay_wakes() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(t.relay_wakes());
+    rig.send(json!({ "type": "port", "port": 26000 })).await;
+    for _ in 0..200 {
+        if !t.relay_wakes() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(!t.relay_wakes(), "an older relay must switch it off again");
+}
