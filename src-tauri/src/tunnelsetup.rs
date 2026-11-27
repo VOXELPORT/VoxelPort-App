@@ -6,7 +6,7 @@
 //! (`voice.rs`) from the rank and voice port the relay hands out.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -355,6 +355,8 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
         voice_port,
         voice_auto,
         client: Some(format!("desktop/{}", env!("CARGO_PKG_VERSION"))),
+        // TODO(Task 4): wire this to the real per-profile sleep state instead of a fresh, always-false flag.
+        sleep_asleep_at_start: Arc::new(AtomicBool::new(false)),
     });
     broadcast_state(state);
     json!({ "ok": true })
@@ -688,6 +690,8 @@ fn wire(app: tauri::AppHandle, tunnel: Tunnel, mut rx: tokio::sync::mpsc::Unboun
                     }
                 }
                 TunnelEvent::UdpError(m) | TunnelEvent::VoiceError(m) => emit(&state, "server:log", format!("[VoxelPort] {m}")),
+                // TODO(Task 4): start the server (rate-limited) and call tunnel.mark_awake() once it's Online.
+                TunnelEvent::WakeRequested => {}
                 TunnelEvent::Stopped => {
                     // An old tunnel finishing after a newer one took over must not clear its state.
                     let other_current = state.tunnels.tunnel.lock().unwrap().as_ref().is_some_and(|c| !c.same(&tunnel));

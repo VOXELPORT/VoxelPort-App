@@ -137,6 +137,8 @@ pub fn is_valid_relay_message(msg: &Value) -> bool {
         }
         // An announcement from the relay's operator. The text is shown, never acted on.
         "notice" => opt_str_max(msg, "message", 300) && opt(msg, "seconds").map_or(true, |s| int_of(s).is_some_and(|n| (0..=172_800).contains(&n))),
+        // The relay rejected a player because this tunnel is asleep; it carries no fields beyond the type.
+        "wake" => true,
         _ => true,
     }
 }
@@ -160,6 +162,8 @@ pub enum TunnelEvent {
     UdpError(String),
     VoiceError(String),
     Notice { message: String, seconds: u64 },
+    /// The relay rejected a player because this tunnel is asleep: start the server back up.
+    WakeRequested,
     Stopped,
 }
 
@@ -176,6 +180,9 @@ pub struct StartParams {
     pub voice_auto: bool,
     /// "desktop/1.7.0": goes into the relay's log so a support question can be answered.
     pub client: Option<String>,
+    /// The app's current "should the relay treat this tunnel as asleep" state, shared so a reconnect (a fresh
+    /// `register`) can re-assert it without `Tunnel` needing a public getter that duplicates app-level state.
+    pub sleep_asleep_at_start: Arc<AtomicBool>,
 }
 
 enum Cmd {
@@ -310,6 +317,17 @@ impl Tunnel {
 
     pub fn release_name(&self) {
         self.send_cmd(Cmd::Send(json!({ "type": "release_name" })));
+    }
+
+    /// Tells the relay this tunnel's local server has gone idle/stopped: a connecting player is rejected with a
+    /// wake-up message instead of being bridged to nothing. The tunnel itself stays up; only the local process is asleep.
+    pub fn mark_asleep(&self) {
+        self.send_cmd(Cmd::Send(json!({ "type": "asleep" })));
+    }
+
+    /// Tells the relay the local server is back up: new connections bridge normally again.
+    pub fn mark_awake(&self) {
+        self.send_cmd(Cmd::Send(json!({ "type": "awake" })));
     }
 
     /// Publishes (or, with None, withdraws) this server's public-list entry. Sent again after every registration.
@@ -620,9 +638,15 @@ impl Session<'_> {
                 if let Some(l) = listing {
                     self.send_json(&json!({ "type": "listing", "listing": l }));
                 }
+                // A reconnect is a fresh register: the relay's own asleep flag does not survive it, so the app's
+                // real current state is re-asserted every time, the same way the listing is re-sent above.
+                if self.p.sleep_asleep_at_start.load(Ordering::SeqCst) {
+                    self.send_json(&json!({ "type": "asleep" }));
+                }
             }
             "name" => self.emit(TunnelEvent::Name { name: str_of("name").unwrap_or_default(), address: str_of("address").unwrap_or_default() }),
             "name_error" => self.emit(TunnelEvent::NameError(str_of("message").unwrap_or_else(|| "Could not set that address.".into()))),
+            "wake" => self.emit(TunnelEvent::WakeRequested),
             "listing_error" => self.emit(TunnelEvent::ListingError(str_of("message").unwrap_or_else(|| "Could not list this server.".into()))),
             "notice" => self.emit(TunnelEvent::Notice { message: str_of("message").unwrap_or_default(), seconds: msg["seconds"].as_u64().unwrap_or(0) }),
             "udp_error" => {
@@ -1000,6 +1024,11 @@ mod tests {
             assert!(!is_valid_relay_message(&m), "{}", m.to_string().chars().take(80).collect::<String>());
         }
         assert!(is_valid_relay_message(&json!({ "type": "pong", "rank": "supporter_plus" })));
+    }
+
+    #[test]
+    fn wake_message_is_a_known_valid_type() {
+        assert!(is_valid_relay_message(&json!({ "type": "wake" })));
     }
 
     #[test]
