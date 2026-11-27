@@ -55,7 +55,7 @@ try {
     check('making a server public before it is started is refused', (await page.ev(`vp.server.makePublic(${J(id)})`)).error === 'Start this server before making it public.');
     check('an unknown server is refused', (await page.ev("vp.server.makePublic('nope')")).error === 'Server profile not found.');
     let reg = await page.ev('vp.region.get()');
-    check('the region screen starts on Auto with both regions and no active one', reg.preference === 'auto' && JSON.stringify(reg.regions.map((r) => r.id)) === '["in","eu"]' && reg.active === null && reg.addressRegion === null, J(reg));
+    check('the region screen starts on Auto with all three regions and no active one', reg.preference === 'auto' && JSON.stringify(reg.regions.map((r) => r.id)) === '["in","eu","la"]' && reg.active === null && reg.addressRegion === null, J(reg));
     check('a region can be chosen, and a nonsense one becomes Auto', (await page.ev("vp.region.set('in')")).preference === 'in' && (await page.ev("vp.region.set('mars')")).preference === 'auto' && (await page.ev("vp.region.set('in')")).preference === 'in');
     check('the choice is saved in preferences.json', JSON.parse(fs.readFileSync(path.join(dataDir, 'preferences.json'), 'utf8')).region === 'in');
 
