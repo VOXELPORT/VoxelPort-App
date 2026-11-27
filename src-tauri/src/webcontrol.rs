@@ -108,6 +108,7 @@ impl Actions for ShellActions {
                     if !state.server.is_running() {
                         return Outcome::err("The server is not running.");
                     }
+                    state.tunnels.mark_awake(); // a deliberate Stop is not a sleep
                     crate::insights::request_stop(state);
                     state.server.stop().await;
                     Outcome::ok("Stopping")

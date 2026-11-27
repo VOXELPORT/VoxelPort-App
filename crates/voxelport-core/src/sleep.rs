@@ -87,7 +87,12 @@ impl<S: Fn() -> SleepSettings, F: Fn()> SleepSchedule<S, F> {
         }
         let since = self.idle_since_ms.expect("set above");
         let settings = (self.settings)();
-        if settings.auto && now_ms - since >= settings.idle_min * 60_000 {
+        if !settings.auto {
+            // Time spent with the setting off does not count, so ticking the box never stops the server at once.
+            self.idle_since_ms = Some(now_ms);
+            return;
+        }
+        if now_ms - since >= settings.idle_min * 60_000 {
             self.asleep = true;
             (self.stop)();
         }

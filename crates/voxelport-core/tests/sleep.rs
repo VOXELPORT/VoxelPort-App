@@ -93,6 +93,22 @@ fn only_sleeps_once_per_readiness_never_stopping_twice_in_a_row() {
 }
 
 #[test]
+fn turning_it_on_after_a_long_idle_starts_the_count_then_not_in_the_past() {
+    let stopped = Arc::new(AtomicUsize::new(0));
+    let s2 = stopped.clone();
+    let on = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let o2 = on.clone();
+    let mut sched = SleepSchedule::new(move || SleepSettings { auto: o2.load(Ordering::SeqCst), idle_min: 10 }, move || { s2.fetch_add(1, Ordering::SeqCst); });
+    sched.tick(&[], true, 0);
+    sched.tick(&[], true, 60 * 60_000);
+    on.store(true, Ordering::SeqCst);
+    sched.tick(&[], true, 61 * 60_000);
+    assert_eq!(stopped.load(Ordering::SeqCst), 0, "must not stop the moment the box is ticked");
+    sched.tick(&[], true, 70 * 60_000);
+    assert_eq!(stopped.load(Ordering::SeqCst), 1);
+}
+
+#[test]
 fn does_nothing_before_the_server_is_ready() {
     let stopped = Arc::new(AtomicUsize::new(0));
     let s2 = stopped.clone();

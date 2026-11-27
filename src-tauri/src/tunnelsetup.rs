@@ -98,6 +98,11 @@ impl TunnelState {
             t.mark_awake();
         }
     }
+    /// Whether this server may be put to sleep: only when it is the public one on a connected tunnel, because
+    /// nothing else could wake it again.
+    pub fn can_wake(&self, id: &str) -> bool {
+        self.public_profile().as_deref() == Some(id) && self.active_tunnel().is_some_and(|t| t.is_running())
+    }
     /// The window is closing: let the tunnel go too.
     pub fn stop_all(&self) {
         if let Some(t) = self.tunnel.lock().unwrap().as_ref() {
@@ -368,6 +373,7 @@ pub async fn start_internal(state: &AppState, a: StartArgs) -> Value {
     }
     *state.tunnels.public_profile.lock().unwrap() = a.profile_id.clone();
     state.tunnels.manual.store(a.profile_id.is_none(), Ordering::SeqCst);
+    state.tunnels.sleep_asleep.store(false, Ordering::SeqCst); // a new tunnel never starts out asleep
     tunnel.start(StartParams {
         relay_urls,
         token: state.device.lock().unwrap().token.clone(),
@@ -410,6 +416,7 @@ pub async fn make_public(state: &AppState, args: &Value) -> Value {
 pub async fn tunnel_stop(state: &AppState) -> Value {
     state.tunnels.start_seq.fetch_add(1, Ordering::SeqCst); // cancels a start that is still picking its region
     retire(state);
+    state.tunnels.sleep_asleep.store(false, Ordering::SeqCst);
     *state.tunnels.public_profile.lock().unwrap() = None;
     state.tunnels.manual.store(false, Ordering::SeqCst);
     broadcast_state(state);
@@ -421,7 +428,9 @@ pub fn on_server_exit(state: &AppState, exited: Option<&str>) {
     // (Electron stopped the tunnel here even for the deliberate Bedrock restart, which then left Bedrock unreachable until the person made
     // the server public again; its own message says players reconnect automatically, so the restart now keeps the tunnel.)
     let restarting = state.tunnels.bedrock_restarting.load(Ordering::SeqCst);
-    if let (Some(id), Some(public), false) = (exited, state.tunnels.public_profile(), restarting) {
+    // A sleeping server keeps its tunnel: the relay needs it to hear that someone wants to join.
+    let asleep = state.tunnels.sleep_asleep.load(Ordering::SeqCst);
+    if let (Some(id), Some(public), false) = (exited, state.tunnels.public_profile(), restarting || asleep) {
         if id == public {
             if let Some(t) = state.tunnels.tunnel.lock().unwrap().as_ref() {
                 t.stop();

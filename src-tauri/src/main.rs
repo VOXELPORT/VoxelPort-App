@@ -105,6 +105,19 @@ pub struct AppState {
     pub last_wake_attempt: Mutex<Option<Instant>>,
 }
 
+/// A development build can run the idle clock faster (`VOXELPORT_SLEEP_SPEED=60`: a minute counts as a second),
+/// so testing auto-sleep does not mean waiting for it. Compiled out of release builds.
+fn sleep_clock_speed() -> i64 {
+    #[cfg(debug_assertions)]
+    {
+        std::env::var("VOXELPORT_SLEEP_SPEED").ok().and_then(|s| s.parse().ok()).filter(|n| (1..=600).contains(n)).unwrap_or(1)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        1
+    }
+}
+
 /// Forward the server's events to the page under the channel names the screens already listen to.
 async fn pump(app: tauri::AppHandle, mut rx: EventReceiver) {
     while let Some(ev) = rx.recv().await {
@@ -252,6 +265,7 @@ fn main() {
                         tauri::async_runtime::spawn(async move {
                             let state = app.state::<AppState>();
                             state.tunnels.mark_asleep();
+                            let _ = app.emit("server:log", "[VoxelPort] Nobody is playing, so the server is going to sleep. It starts again when someone tries to join.");
                             insights::request_stop(&state);
                             state.server.stop().await;
                         });
@@ -282,12 +296,12 @@ fn main() {
                 loop {
                     tokio::time::sleep(SLEEP_CHECK_EVERY).await;
                     let state = handle.state::<AppState>();
-                    if state.active_profile.lock().unwrap().is_none() {
-                        continue;
-                    }
+                    let Some(id) = state.active_profile.lock().unwrap().clone() else { continue };
+                    // The relay hears join attempts over TCP only, so a Bedrock Dedicated Server could never be woken.
+                    let is_bds = voxelport_core::profiles::get(&state.data_dir, &id).is_some_and(|p| voxelport_core::bds::is_bedrock_server(p["type"].as_str().unwrap_or_default()));
                     let online = state.server.online_names();
-                    let ready = state.server.status() != Status::Stopped;
-                    let now = (voxelport_core::account::system_clock())();
+                    let ready = state.server.status() == Status::Online && !is_bds && state.tunnels.can_wake(&id);
+                    let now = (voxelport_core::account::system_clock())() * sleep_clock_speed();
                     state.sleep_schedule.lock().unwrap().tick(&online, ready, now);
                 }
             });

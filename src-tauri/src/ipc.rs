@@ -178,6 +178,8 @@ async fn dispatch(state: &AppState, channel: &str, args: Value) -> Result<Value,
 
         "server:start" => start_server(state, &args).await,
         "server:stop" => {
+            // A deliberate Stop is not a sleep, even one pressed while a wake is still starting the server.
+            state.tunnels.mark_awake();
             insights::request_stop(state);
             state.server.stop().await;
             Ok(json!({ "ok": true }))
